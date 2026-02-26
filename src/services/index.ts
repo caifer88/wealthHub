@@ -9,6 +9,10 @@ export const gasService = {
     bitcoinTransactions: BitcoinTransaction[],
     stockTransactions: StockTransaction[]
   ) {
+    if (!config.gasUrl) {
+      console.warn('⚠️ GAS URL not configured. Skipping save.')
+      return
+    }
     
     const dataToSend = {
       assets,
@@ -29,7 +33,13 @@ export const gasService = {
   },
 
   async fetchData() {
+    if (!config.gasUrl) {
+      throw new Error('GAS URL not configured')
+    }
     const response = await fetch(config.gasUrl)
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
     return response.json()
   }
 }
