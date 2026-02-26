@@ -105,20 +105,41 @@ async def fetch_month_prices(
         last_business_day = get_last_business_day(year, month)
         logger.info(f"📅 Last business day: {format_date(last_business_day)}")
         
-        # Load assets from GAS (or use sample for now)
+        # Load assets from GAS (required - no sample fallback)
         assets = await _load_assets_from_gas()
+        if not assets:
+            logger.error("❌ No assets loaded from GAS - GAS_URL may not be configured")
+            return FetchMonthResponse(
+                success=False,
+                message="Could not load assets. Ensure GAS_URL is configured and accessible.",
+                year=year,
+                month=month,
+                lastBusinessDay=format_date(last_business_day),
+                prices=[],
+                errors=["No assets available from GAS"]
+            )
+        
         logger.info(f"📦 Loaded {len(assets)} assets")
         
-        # Organize assets by type
-        crypto_assets = [a for a in assets if "BTC" in str(a.get("ticker", "")).upper()]
-        fund_assets = [a for a in assets if a.get("isin") and len(str(a.get("isin"))) == 12]
-        stock_assets = [a for a in assets if a.get("ticker") and a.get("ticker") != "BTC-USD" and a.get("category") in ["Stock", "Stocks"]]
+        # Filter only non-archived assets with price identifiers
+        active_assets = [a for a in assets if not a.get("archived", False)]
         
-        logger.info(f"🔍 Found: {len(crypto_assets)} crypto, {len(fund_assets)} funds, {len(stock_assets)} stocks")
+        # Organize assets by type
+        crypto_assets = [a for a in active_assets if a.get("ticker") and "BTC" in str(a.get("ticker", "")).upper()]
+        fund_assets = [a for a in active_assets if a.get("isin") and a.get("category") == "Fund"]
+        stock_assets = [a for a in active_assets if a.get("ticker") and "BTC" not in str(a.get("ticker", "")).upper() and a.get("category") in ["Stock", "Stocks"]]
+        broker_assets = [a for a in active_assets if a.get("componentTickers") and a.get("category") == "Broker"]
+        
+        logger.info(f"🔍 Found: {len(crypto_assets)} crypto, {len(fund_assets)} funds, {len(stock_assets)} stocks, {len(broker_assets)} broker assets")
         
         # Fetch Bitcoin price
         if crypto_assets:
-            btc_data = PriceFetcher.fetch_bitcoin_price(last_business_day)
+            btc_asset = crypto_assets[0]  # Get the first BTC asset
+            btc_data = PriceFetcher.fetch_bitcoin_price(
+                date=last_business_day,
+                asset_id=btc_asset["id"],
+                asset_name=btc_asset["name"]
+            )
             if btc_data:
                 prices.append(btc_data)
             else:
@@ -158,9 +179,33 @@ async def fetch_month_prices(
                 if missing:
                     errors.extend([f"Failed to fetch price for {t}" for t in missing])
         
+        # Fetch broker/composite asset prices (multiple component tickers)
+        for broker in broker_assets:
+            component_tickers = broker.get("componentTickers", [])
+            if not component_tickers:
+                logger.warning(f"Broker {broker.get('name')} has no component tickers")
+                continue
+            
+            logger.info(f"📦 Fetching component tickers for {broker.get('name')}: {component_tickers}")
+            
+            # Create tickers map for broker components
+            tickers_map = {
+                ticker: (f"{broker.get('name')} - {ticker}", broker["id"])
+                for ticker in component_tickers
+            }
+            
+            broker_prices = PriceFetcher.fetch_multiple_stocks(tickers_map, last_business_day)
+            prices.extend(broker_prices)
+            
+            # Log missing component tickers
+            fetched_tickers = {p.ticker for p in broker_prices if p.ticker}
+            missing = set(component_tickers) - fetched_tickers
+            if missing:
+                errors.extend([f"Failed to fetch {broker.get('name')} component {t}" for t in missing])
+        
         logger.info(f"✅ Fetched {len(prices)} prices successfully")
         
-        # Return error if no prices fetched - do NOT use test data
+        # Return error if no prices fetched
         if len(prices) == 0:
             logger.error("❌ No prices could be fetched from any source")
             return FetchMonthResponse(
@@ -170,11 +215,11 @@ async def fetch_month_prices(
                 month=month,
                 lastBusinessDay=format_date(last_business_day),
                 prices=[],
-                errors=errors if errors else ["No data available from yfinance, Morningstar, or Financial Times"]
+                errors=errors if errors else ["No assets with ticker/ISIN found or all fetch attempts failed"]
             )
         
         # Only persist to GAS if we actually fetched prices
-        if prices and settings.GAS_URL:
+        if prices and settings.VITE_GAS_URL:
             await _persist_prices_to_gas(prices, year, month, last_business_day)
         
         return FetchMonthResponse(
@@ -187,11 +232,15 @@ async def fetch_month_prices(
             errors=errors
         )
         
+    except HTTPException:
+        # Re-raise HTTP exceptions (for explicit error responses)
+        raise
     except Exception as e:
-        logger.error(f"❌ Error in fetch-month: {str(e)}", exc_info=True)
+        error_msg = str(e) if str(e) else type(e).__name__
+        logger.error(f"❌ Error in fetch-month: {error_msg}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error fetching prices: {str(e)}"
+            detail=f"Error fetching prices: {error_msg}"
         )
 
 
@@ -212,7 +261,7 @@ async def update_prices(price_data: List[PriceData]):
         logger.info(f"📝 Updating {len(price_data)} prices")
         
         # Persist to GAS
-        if settings.GAS_URL:
+        if settings.VITE_GAS_URL:
             await _persist_prices_to_gas(price_data)
         
         return {
@@ -251,14 +300,14 @@ async def get_assets():
 async def _load_assets_from_gas() -> List[dict]:
     """
     Load assets from Google Apps Script.
-    Falls back to sample data if GAS is unavailable.
+    No fallback to sample data - requires real assets from GAS.
     """
-    if not settings.GAS_URL:
-        logger.warning("⚠️ GAS URL not configured, using sample assets")
-        return _get_sample_assets()
+    if not settings.VITE_GAS_URL:
+        logger.error("❌ GAS_URL not configured - cannot load assets")
+        return []
     
     try:
-        response = requests.get(settings.GAS_URL, timeout=settings.TIMEOUT)
+        response = requests.get(settings.VITE_GAS_URL, timeout=settings.TIMEOUT)
         response.raise_for_status()
         
         data = response.json()
@@ -267,12 +316,12 @@ async def _load_assets_from_gas() -> List[dict]:
             logger.info(f"✅ Loaded {len(assets)} assets from GAS")
             return assets
         else:
-            logger.warning("Invalid response from GAS, using sample assets")
-            return _get_sample_assets()
+            logger.error("❌ Invalid response from GAS")
+            return []
             
     except Exception as e:
-        logger.error(f"❌ Error loading from GAS: {str(e)}, using sample assets")
-        return _get_sample_assets()
+        logger.error(f"❌ Error loading from GAS: {str(e)}")
+        return []
 
 
 async def _persist_prices_to_gas(
@@ -285,7 +334,7 @@ async def _persist_prices_to_gas(
     Persist prices to Google Apps Script in data.json.
     Updates existing entries or adds new ones.
     """
-    if not settings.GAS_URL:
+    if not settings.VITE_GAS_URL:
         logger.warning("⚠️ GAS URL not configured, cannot persist prices")
         return False
     
@@ -324,7 +373,7 @@ async def _persist_prices_to_gas(
         
         # Send to GAS
         response = requests.post(
-            settings.GAS_URL,
+            settings.VITE_GAS_URL,
             json=payload,
             timeout=settings.TIMEOUT
         )
@@ -340,11 +389,11 @@ async def _persist_prices_to_gas(
 
 async def _load_data_from_gas() -> dict:
     """Load full data structure from GAS"""
-    if not settings.GAS_URL:
+    if not settings.VITE_GAS_URL:
         return {}
     
     try:
-        response = requests.get(settings.GAS_URL, timeout=settings.TIMEOUT)
+        response = requests.get(settings.VITE_GAS_URL, timeout=settings.TIMEOUT)
         response.raise_for_status()
         data = response.json()
         return data.get("data", {}) if data.get("success") else {}
@@ -354,36 +403,8 @@ async def _load_data_from_gas() -> dict:
 
 
 def _get_sample_assets() -> List[dict]:
-    """Return sample assets for development/testing"""
-    return [
-        {
-            "id": "btc-usd",
-            "name": "Bitcoin",
-            "category": "Crypto",
-            "ticker": "BTC-USD",
-            "color": "#F7931A",
-            "baseAmount": 5000,
-            "archived": False
-        },
-        {
-            "id": "numantia-patrimonio",
-            "name": "Numantia Patrimonio Global",
-            "category": "Fund",
-            "isin": "ES0173311103",
-            "color": "#6366F1",
-            "baseAmount": 10000,
-            "archived": False
-        },
-        {
-            "id": "aapl-stock",
-            "name": "Apple Inc.",
-            "category": "Stocks",
-            "ticker": "AAPL",
-            "color": "#555555",
-            "baseAmount": 3000,
-            "archived": False
-        }
-    ]
+    """DEPRECATED: This function should not be used. Use real assets from GAS instead."""
+    return []
 
 
 if __name__ == "__main__":

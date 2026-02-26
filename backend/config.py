@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:3000,http://frontend:5173"
     
     # Google Apps Script
-    GAS_URL: Optional[str] = None
+    VITE_GAS_URL: Optional[str] = None
     
     # Price Fetcher Settings
     TIMEOUT: int = 30

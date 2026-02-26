@@ -191,21 +191,26 @@ export default function Assets() {
       const year = now.getFullYear()
       const month = now.getMonth() + 1
 
+      console.log(`🔄 Iniciando actualización de NAVs para ${year}-${String(month).padStart(2, '0')}`)
+
       // Call backend API
       const response = await fetch(
         `${config.backendUrl}/fetch-month?year=${year}&month=${month}`
       )
 
       if (!response.ok) {
-        throw new Error(`API error: ${response.status}`)
+        const errorText = await response.text()
+        console.error(`Error HTTP ${response.status}:`, errorText)
+        throw new Error(`Error HTTP ${response.status}: ${errorText || 'Sin detalles disponibles'}`)
       }
 
       const result: FetchMonthResponse = await response.json()
+      console.log('Respuesta del servidor:', result)
 
       if (result.success) {
         // Convert prices to history entries
         const monthStr = `${year}-${String(month).padStart(2, '0')}`
-        const newHistoryEntries = result.prices.map((price: PriceData) => ({
+        const newHistoryEntries = result.prices.map((price) => ({
           id: generateUUID(),
           month: monthStr,
           assetId: price.assetId,
@@ -213,13 +218,24 @@ export default function Assets() {
           contribution: price.price
         }))
 
+        // Build detailed message with updated assets info
+        const successLines: string[] = []
+        const sourceGroups: { [key: string]: string[] } = {}
+        
         // Update history (merge with existing)
         const updatedHistory = [...history]
         for (const newEntry of newHistoryEntries) {
-          // Check if entry for this month/asset already exists
+          // Find the asset to get its name, ticker, isin
+          const asset = assets.find(a => a.id === newEntry.assetId)
+          
+          // Check if entry for this month/asset already exists to get old value
           const existingIndex = updatedHistory.findIndex(
             h => h.month === newEntry.month && h.assetId === newEntry.assetId
           )
+          
+          let oldValue = existingIndex >= 0 ? updatedHistory[existingIndex].nav : 0
+          let isUpdate = existingIndex >= 0
+          
           if (existingIndex >= 0) {
             // Update existing
             updatedHistory[existingIndex] = newEntry
@@ -227,33 +243,96 @@ export default function Assets() {
             // Add new
             updatedHistory.push(newEntry)
           }
+
+          // Build detail string for this asset
+          if (asset) {
+            const identifier = asset.ticker || asset.isin || asset.name
+            const priceData = result.prices.find(p => p.assetId === newEntry.assetId)
+            const source = priceData?.source || 'unknown'
+            const sourceLabel = {
+              'yfinance': '📈 Yahoo Finance',
+              'binance_api': '🔗 Binance API',
+              'ft_markets': '📰 FT Markets',
+              'user_input': '📝 Manual',
+              'fund_scraper': '🔍 Web Scraper',
+              'morningstar': '⭐ Morningstar'
+            }[source] || source
+            
+            const changeInfo = isUpdate 
+              ? `${formatCurrency(Math.round(oldValue))} → ${formatCurrency(Math.round(newEntry.nav))}`
+              : `Nuevo: ${formatCurrency(Math.round(newEntry.nav))}`
+            
+            const line = `${asset.name} (${identifier})\n    Precio: ${formatCurrency(Math.round(newEntry.nav))}\n    Cambio: ${changeInfo}\n    Fuente: ${sourceLabel}`
+            successLines.push(line)
+            
+            // Group by source for summary
+            if (!sourceGroups[sourceLabel]) {
+              sourceGroups[sourceLabel] = []
+            }
+            sourceGroups[sourceLabel].push(asset.name)
+            
+            console.log(`✅ ${asset.name}: ${changeInfo} (${sourceLabel})`)
+          }
         }
 
         setHistory(updatedHistory)
         
-        // Show success message with errors (if any)
-        let message = `✅ Se obtuvieron ${result.prices.length} precios. Último día hábil: ${result.lastBusinessDay}`
+        // Build comprehensive success message with better formatting
+        let message = `✅ ACTUALIZACIÓN COMPLETADA\n`
+        message += `╔════════════════════════════════════════╗\n`
+        message += `║  Fecha: ${result.lastBusinessDay}                     ║\n`
+        message += `║  Activos: ${result.prices.length}                              ║\n`
+        message += `╚════════════════════════════════════════╝\n\n`
+        
+        message += `DETALLES POR ACTIVO:\n`
+        message += `───────────────────────────────────────\n\n`
+        message += successLines.join('\n\n')
+        
+        // Add summary by source
+        message += `\n\n───────────────────────────────────────\n`
+        message += `RESUMEN POR FUENTE:\n\n`
+        Object.entries(sourceGroups).forEach(([source, assetList]) => {
+          message += `${source}: ${assetList.join(', ')}\n`
+        })
+        
         if (result.errors && result.errors.length > 0) {
-          message += ` | Errores: ${result.errors.join('; ')}`
+          message += `\n───────────────────────────────────────\n`
+          message += `⚠️ ADVERTENCIAS:\n\n`
+          result.errors.forEach(error => {
+            message += `• ${error}\n`
+          })
+          console.warn('Errores en la actualización:', result.errors)
         }
+        
+        console.log(`✅ Actualización completada: ${result.prices.length} activos procesados`)
         setFetchMessage(message)
       } else {
         // Show what specifically failed
         let errorMsg = result.message || 'No se obtuvieron precios'
         if (result.errors && result.errors.length > 0) {
-          errorMsg += ` - Detalles: ${result.errors.join('; ')}`
+          errorMsg += `\n\nDETALLES DE ERRORES:\n`
+          result.errors.forEach(e => {
+            errorMsg += `• ${e}\n`
+          })
+          console.error('Errores del servidor:', result.errors)
         }
-        setFetchMessage(`❌ ${errorMsg}`)
+        console.error('Actualización fallida:', errorMsg)
+        setFetchMessage(`❌ ERROR EN LA ACTUALIZACIÓN\n╔════════════════════════════════════════╗\n\n${errorMsg}\n\n╚════════════════════════════════════════╝`)
       }
     } catch (error) {
-      console.error('Error fetching prices:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido'
+      console.error('Error fetching prices:', {
+        error: errorMessage,
+        backendUrl: config.backendUrl,
+        timestamp: new Date().toISOString()
+      })
       setFetchMessage(
-        `❌ Error: No se pudo conectar al backend en ${config.backendUrl}`
+        `❌ ERROR DE CONEXIÓN\n╔════════════════════════════════════════╗\n\nNo se pudo conectar al backend\n\nServidor: ${config.backendUrl}\nError: ${errorMessage}\n\n╚════════════════════════════════════════╝`
       )
     } finally {
       setIsFetchingPrices(false)
-      // Clear message after 5 seconds
-      setTimeout(() => setFetchMessage(''), 5000)
+      // Clear message after 12 seconds
+      setTimeout(() => setFetchMessage(''), 12000)
     }
   }
 
@@ -297,13 +376,13 @@ export default function Assets() {
       {/* Mensaje de estado del fetch */}
       {fetchMessage && (
         <Card className={`${
-          fetchMessage.includes('✅') ? 'border-l-4 border-green-500' : 'border-l-4 border-red-500'
-        }`}>
-          <p className={`${
-            fetchMessage.includes('✅') ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'
-          }`}>
+          fetchMessage.includes('✅') ? 'border-l-4 border-green-600 bg-green-50 dark:bg-slate-900 dark:border-green-400' : 'border-l-4 border-red-600 bg-red-50 dark:bg-slate-900 dark:border-red-400'
+        } p-4`}>
+          <div className={`${
+            fetchMessage.includes('✅') ? 'text-green-900 dark:text-green-100' : 'text-red-900 dark:text-red-100'
+          } whitespace-pre-wrap font-mono text-xs sm:text-sm leading-relaxed`}>
             {fetchMessage}
-          </p>
+          </div>
         </Card>
       )}
 

@@ -8,7 +8,7 @@ services:
       - "8000:8000"
     environment:
       - FRONTEND_URL=http://localhost:3000,http://frontend:5173
-      - GAS_URL=${GAS_URL:-}
+      - VITE_GAS_URL=${VITE_GAS_URL:-}
       - DEBUG=True
     volumes:
       - ./backend:/app

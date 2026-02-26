@@ -36,6 +36,7 @@ class Asset(BaseModel):
     riskLevel: Optional[str] = None
     isin: Optional[str] = None  # NEW: ISIN for funds and some assets
     ticker: Optional[str] = None  # NEW: Ticker for stocks and crypto
+    componentTickers: Optional[List[str]] = None  # NEW: For broker assets with multiple holdings
     
     class Config:
         json_schema_extra = {
@@ -49,7 +50,8 @@ class Asset(BaseModel):
                 "targetAllocation": 30,
                 "riskLevel": "Medio",
                 "isin": "ES0165151004",
-                "ticker": None
+                "ticker": None,
+                "componentTickers": None
             }
         }
 

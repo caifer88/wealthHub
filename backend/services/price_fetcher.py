@@ -16,7 +16,7 @@ class PriceFetcher:
     }
 
     @staticmethod
-    def fetch_bitcoin_price(date: datetime) -> Optional[PriceData]:
+    def fetch_bitcoin_price(date: datetime, asset_id: str = None, asset_name: str = "Bitcoin") -> Optional[PriceData]:
         # Intento 1: Yahoo Finance
         try:
             # En nuevas versiones de yfinance, no se debe inyectar session manualmente
@@ -32,8 +32,8 @@ class PriceFetcher:
             if not hist.empty:
                 close_price = float(hist['Close'].iloc[-1])
                 return PriceData(
-                    assetId="btc",
-                    assetName="Bitcoin",
+                    assetId=asset_id or "btc",
+                    assetName=asset_name,
                     ticker="BTC-EUR",
                     price=round(close_price, 2),
                     currency="EUR",
@@ -48,8 +48,8 @@ class PriceFetcher:
             res = requests.get("https://api.binance.com/api/v3/ticker/price?symbol=BTCEUR", timeout=10)
             data = res.json()
             return PriceData(
-                assetId="btc",
-                assetName="Bitcoin",
+                assetId=asset_id or "btc",
+                assetName=asset_name,
                 ticker="BTC-EUR",
                 price=round(float(data['price']), 2),
                 currency="EUR",
@@ -69,7 +69,14 @@ class PriceFetcher:
                 # Usamos download directamente que a veces es más estable que el objeto Ticker
                 data = yf.download(ticker_symbol, period="5d", progress=False)
                 if not data.empty:
-                    price = float(data['Close'].iloc[-1])
+                    # Asegurar que obtenemos un valor numérico (no una Series)
+                    close_value = data['Close'].iloc[-1]
+                    # Convertir a float, manejo especial para Series 
+                    if hasattr(close_value, 'item'):
+                        price = float(close_value.item())
+                    else:
+                        price = float(close_value)
+                    
                     prices.append(PriceData(
                         assetId=asset_id,
                         assetName=name,
@@ -78,6 +85,7 @@ class PriceFetcher:
                         fetchedAt=format_datetime_iso(datetime.now()),
                         source="yfinance"
                     ))
+                    logger.info(f"✅ {ticker_symbol}: {round(price, 2)} EUR")
             except Exception as e:
                 logger.warning(f"Error con {ticker_symbol}: {e}")
         return prices
