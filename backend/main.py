@@ -369,7 +369,7 @@ def _get_sample_assets() -> List[dict]:
             "id": "numantia-patrimonio",
             "name": "Numantia Patrimonio Global",
             "category": "Fund",
-            "isin": "ES0165151004",
+            "isin": "ES0173311103",
             "color": "#6366F1",
             "baseAmount": 10000,
             "archived": False
