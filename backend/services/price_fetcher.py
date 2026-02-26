@@ -19,10 +19,10 @@ class PriceFetcher:
     def fetch_bitcoin_price(date: datetime) -> Optional[PriceData]:
         # Intento 1: Yahoo Finance
         try:
-            session = requests.Session()
-            session.headers.update(PriceFetcher.HEADERS)
-            btc_ticker = yf.Ticker("BTC-USD", session=session)
-            ticker = yf.Ticker("BTC-EUR", session=session)
+            # En nuevas versiones de yfinance, no se debe inyectar session manualmente
+            # yfinance usa curl_cffi internamente para evitar bloqueos
+            btc_ticker = yf.Ticker("BTC-USD")
+            ticker = yf.Ticker("BTC-EUR")
             hist = ticker.history(period="5d") # Pedimos 5 días para asegurar
             btc_hist = btc_ticker.history(period="5d")
 
@@ -63,13 +63,11 @@ class PriceFetcher:
     @staticmethod
     def fetch_multiple_stocks(tickers: Dict[str, Tuple[str, str]], date: datetime) -> List[PriceData]:
         prices = []
-        session = requests.Session()
-        session.headers.update(PriceFetcher.HEADERS)
         
         for ticker_symbol, (name, asset_id) in tickers.items():
             try:
                 # Usamos download directamente que a veces es más estable que el objeto Ticker
-                data = yf.download(ticker_symbol, period="5d", session=session, progress=False)
+                data = yf.download(ticker_symbol, period="5d", progress=False)
                 if not data.empty:
                     price = float(data['Close'].iloc[-1])
                     prices.append(PriceData(
