@@ -10,14 +10,19 @@ export interface Asset {
   riskLevel?: string;
   isin?: string;  // ISIN for mutual funds
   ticker?: string;  // Ticker for stocks and crypto
+  participations: number;  // Number of shares/participations
+  meanCost: number;  // Average cost per participation
 }
 
 export interface HistoryEntry {
   id: string;
   month: string;
   assetId: string;
-  nav: number;
-  contribution: number;
+  participations: number;  // Number of shares/participations
+  liquidNavValue: number;  // Liquid asset value per share
+  nav: number;  // Net Asset Value (participations * liquidNavValue)
+  contribution: number;  // Amount contributed/invested
+  meanCost: number;  // Average cost per participation
 }
 
 export interface BitcoinTransaction {

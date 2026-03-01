@@ -7,7 +7,7 @@ import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
-import { formatCurrency, formatDate, generateUUID } from '../utils'
+import { formatCurrency, formatDate, generateUUID, isCurrentMonth, getMonthFromDate } from '../utils'
 import type { BitcoinTransaction } from '../types'
 
 interface FormData {
@@ -102,6 +102,18 @@ export default function Bitcoin() {
     e.preventDefault()
     if (formData.amountEUR <= 0 || formData.meanPrice <= 0) return
 
+    // Validación: solo permitir editar transacciones del mes actual
+    if (editingTransaction && !isCurrentMonth(getMonthFromDate(editingTransaction.date || ''))) {
+      alert('No se pueden editar transacciones de meses anteriores')
+      return
+    }
+    
+    // Si no estamos editando, solo permitir crear transacciones del mes actual
+    if (!editingTransaction && !isCurrentMonth(getMonthFromDate(formData.date))) {
+      alert('Solo se pueden crear transacciones del mes actual')
+      return
+    }
+
     if (editingTransaction) {
       setBitcoinTransactions(bitcoinTransactions.map(t =>
         t.id === editingTransaction.id ? { ...createTransaction(formData), id: t.id } : t
@@ -116,6 +128,11 @@ export default function Bitcoin() {
   }, [formData, editingTransaction, bitcoinTransactions, createTransaction])
 
   const handleOpenModal = useCallback((transaction?: BitcoinTransaction) => {
+    // Solo permitir editar transacciones del mes actual
+    if (transaction && !isCurrentMonth(getMonthFromDate(transaction.date || ''))) {
+      return
+    }
+    
     if (transaction) {
       setEditingTransaction(transaction)
       setFormData({
@@ -132,7 +149,17 @@ export default function Bitcoin() {
   }, [])
 
   const handleDelete = useCallback((id: string) => {
-    setBitcoinTransactions(bitcoinTransactions.filter(t => t.id !== id))
+    const transaction = bitcoinTransactions.find(t => t.id === id)
+    
+    // Solo permitir eliminar transacciones del mes actual
+    if (transaction && !isCurrentMonth(getMonthFromDate(transaction.date || ''))) {
+      alert('No se pueden eliminar transacciones de meses anteriores')
+      return
+    }
+    
+    if (confirm('¿Está seguro de que desea eliminar esta transacción?')) {
+      setBitcoinTransactions(bitcoinTransactions.filter(t => t.id !== id))
+    }
   }, [bitcoinTransactions, setBitcoinTransactions])
 
   const handleCloseModal = useCallback(() => {
@@ -297,18 +324,28 @@ export default function Bitcoin() {
                   <td className="py-3 px-4 text-right font-bold dark:text-white">{formatCurrency(Math.round(tx.totalCost || 0))}</td>
                   <td className="py-3 px-4 text-right font-bold text-indigo-600">{formatCurrency(Math.round(tx.meanPrice || 0))}</td>
                   <td className="py-3 px-4 text-center flex gap-2 justify-center">
-                    <button
-                      onClick={() => handleOpenModal(tx)}
-                      className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded transition-colors"
-                    >
-                      <Edit3 size={14} className="text-blue-500" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(tx.id)}
-                      className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded transition-colors"
-                    >
-                      <Trash2 size={14} className="text-rose-500" />
-                    </button>
+                    {isCurrentMonth(getMonthFromDate(tx.date || '')) ? (
+                      <>
+                        <button
+                          onClick={() => handleOpenModal(tx)}
+                          className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded transition-colors"
+                          title="Editar"
+                        >
+                          <Edit3 size={14} className="text-blue-500" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(tx.id)}
+                          className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded transition-colors"
+                          title="Eliminar"
+                        >
+                          <Trash2 size={14} className="text-rose-500" />
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                        Mes anterior
+                      </span>
+                    )}
                   </td>
                 </tr>
               )

@@ -124,13 +124,84 @@ async def fetch_month_prices(
         # Filter only non-archived assets with price identifiers
         active_assets = [a for a in assets if not a.get("archived", False)]
         
-        # Organize assets by type
-        crypto_assets = [a for a in active_assets if a.get("ticker") and "BTC" in str(a.get("ticker", "")).upper()]
-        fund_assets = [a for a in active_assets if a.get("isin") and a.get("category") == "Fund"]
-        stock_assets = [a for a in active_assets if a.get("ticker") and "BTC" not in str(a.get("ticker", "")).upper() and a.get("category") in ["Stock", "Stocks"]]
-        broker_assets = [a for a in active_assets if a.get("componentTickers") and a.get("category") == "Broker"]
+        # Debug: Log categories found
+        categories = set(a.get("category") for a in active_assets if a.get("category"))
+        logger.info(f"📋 Categories found in assets: {categories}")
+        for asset in active_assets:
+            logger.debug(f"  - {asset.get('name')}: category={asset.get('category')}, ticker={asset.get('ticker')}, isin={asset.get('isin')}, componentTickers={asset.get('componentTickers')}")
         
-        logger.info(f"🔍 Found: {len(crypto_assets)} crypto, {len(fund_assets)} funds, {len(stock_assets)} stocks, {len(broker_assets)} broker assets")
+        # Organize assets by type
+        crypto_assets = [a for a in active_assets if a.get("category") == "Crypto" and "BTC" in str(a.get("ticker", "")).upper()]
+        fund_assets = [a for a in active_assets if a.get("category") == "Fund"]
+        
+        # Build broker_assets from stockTransactions grouped by broker
+        # Load full data to get stockTransactions
+        full_data = await _load_data_from_gas()
+        logger.info(f"📥 Full data keys from GAS: {list(full_data.keys())}")
+        
+        stock_transactions = full_data.get("stockTransactions", [])
+        logger.info(f"📋 Found {len(stock_transactions)} stockTransactions")
+        
+        broker_assets_dict = {}  # broker_name -> asset object with tickers
+        
+        if stock_transactions:
+            # Check if transactions have broker field
+            has_broker_field = stock_transactions[0].get("broker") is not None if stock_transactions else False
+            logger.info(f"📊 StockTransactions have broker field: {has_broker_field}")
+            
+            if has_broker_field:
+                # Strategy 1: Group by broker field (preferred)
+                broker_tickers = {}
+                for tx in stock_transactions:
+                    broker = tx.get("broker")
+                    ticker = tx.get("ticker")
+                    if broker and ticker:
+                        if broker not in broker_tickers:
+                            broker_tickers[broker] = set()
+                        broker_tickers[broker].add(ticker)
+                
+                # Create broker_assets from grouped tickers
+                for broker_name, tickers in broker_tickers.items():
+                    broker_assets_dict[broker_name] = {
+                        "name": broker_name,
+                        "id": f"broker-{broker_name.lower()}",
+                        "category": "Broker",
+                        "componentTickers": list(tickers)
+                    }
+                
+                logger.info(f"📊 Found brokers from stockTransactions: {list(broker_assets_dict.keys())}")
+                for broker, tickers in broker_tickers.items():
+                    logger.info(f"  - {broker}: {tickers}")
+            else:
+                # Strategy 2: Fallback - assign all tickers to existing Stocks assets
+                logger.warning("⚠️ StockTransactions missing 'broker' field - using fallback strategy")
+                
+                all_tickers = set()
+                for tx in stock_transactions:
+                    ticker = tx.get("ticker")
+                    if ticker:
+                        all_tickers.add(ticker)
+                
+                logger.info(f"📊 Extracted tickers from stockTransactions: {all_tickers}")
+                
+                # Find assets with category "Stocks" (brokers) and assign all tickers to them
+                stocks_assets = [a for a in active_assets if a.get("category") == "Stocks"]
+                logger.info(f"📊 Found {len(stocks_assets)} Stocks assets (brokers): {[a.get('name') for a in stocks_assets]}")
+                
+                for broker_asset in stocks_assets:
+                    broker_assets_dict[broker_asset.get("name")] = {
+                        "name": broker_asset.get("name"),
+                        "id": broker_asset["id"],
+                        "category": "Broker",
+                        "componentTickers": list(all_tickers)
+                    }
+                    logger.info(f"  ✅ Assigned {len(all_tickers)} tickers to {broker_asset.get('name')}: {all_tickers}")
+        else:
+            logger.warning("⚠️ No stockTransactions found in GAS data")
+        
+        broker_assets = list(broker_assets_dict.values())
+        
+        logger.info(f"🔍 Found: {len(crypto_assets)} crypto, {len(fund_assets)} funds, {len(broker_assets)} broker assets")
         
         # Fetch Bitcoin price
         if crypto_assets:
@@ -161,23 +232,7 @@ async def fetch_month_prices(
                 prices.append(price_data)
             else:
                 errors.append(f"Failed to fetch price for {fund.get('name')} ({fund.get('isin')})")
-        
-        # Fetch stock prices
-        if stock_assets:
-            tickers_map = {
-                a["ticker"]: (a["name"], a["id"])
-                for a in stock_assets if a.get("ticker")
-            }
-            
-            if tickers_map:
-                stock_prices = PriceFetcher.fetch_multiple_stocks(tickers_map, last_business_day)
-                prices.extend(stock_prices)
-                
-                # Log missing stocks
-                fetched_tickers = {p.ticker for p in stock_prices if p.ticker}
-                missing = set(tickers_map.keys()) - fetched_tickers
-                if missing:
-                    errors.extend([f"Failed to fetch price for {t}" for t in missing])
+
         
         # Fetch broker/composite asset prices (multiple component tickers)
         for broker in broker_assets:

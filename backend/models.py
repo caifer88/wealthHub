@@ -34,9 +34,11 @@ class Asset(BaseModel):
     archived: bool = False
     targetAllocation: Optional[float] = None
     riskLevel: Optional[str] = None
-    isin: Optional[str] = None  # NEW: ISIN for funds and some assets
-    ticker: Optional[str] = None  # NEW: Ticker for stocks and crypto
-    componentTickers: Optional[List[str]] = None  # NEW: For broker assets with multiple holdings
+    isin: Optional[str] = None  # ISIN for funds and some assets
+    ticker: Optional[str] = None  # Ticker for stocks and crypto
+    componentTickers: Optional[List[str]] = None  # For broker assets with multiple holdings
+    participations: float = 0.0  # Number of shares/participations
+    meanCost: float = 0.0  # Average cost per participation
     
     class Config:
         json_schema_extra = {
@@ -51,7 +53,9 @@ class Asset(BaseModel):
                 "riskLevel": "Medio",
                 "isin": "ES0165151004",
                 "ticker": None,
-                "componentTickers": None
+                "componentTickers": None,
+                "participations": 400.5,
+                "meanCost": 25.0
             }
         }
 
@@ -61,8 +65,11 @@ class HistoryEntry(BaseModel):
     id: str
     month: str  # Format: YYYY-MM
     assetId: str
-    nav: float  # Net Asset Value
+    participations: float  # Number of shares/participations
+    liquidNavValue: float  # Liquid asset value per share (fetched from market)
+    nav: float  # Net Asset Value (participations * liquidNavValue)
     contribution: float  # Amount contributed/invested
+    meanCost: float  # Average cost per participation
 
 
 class PriceData(BaseModel):

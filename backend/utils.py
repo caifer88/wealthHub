@@ -114,19 +114,19 @@ def merge_price_updates(existing_data: list, new_prices: list) -> list:
     Returns:
         Merged price data
     """
-    # Create a map of existing data by (month, assetId)
+    # Create a map of existing data by (month, assetId) with index
     existing_map = {}
-    for entry in existing_data:
+    for idx, entry in enumerate(existing_data):
         key = (entry.get("month"), entry.get("assetId"))
-        existing_map[key] = entry
+        existing_map[key] = (idx, entry)
     
     # Update or insert new prices
     result = list(existing_data)
     for new_price in new_prices:
         key = (new_price.get("month"), new_price.get("assetId"))
         if key in existing_map:
-            # Update existing entry
-            idx = result.index(existing_map[key])
+            # Update existing entry using stored index
+            idx = existing_map[key][0]
             result[idx] = new_price
             logger.debug(f"Updated price for {new_price.get('assetId')} in {new_price.get('month')}")
         else:

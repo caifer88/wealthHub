@@ -72,3 +72,21 @@ export const generateUUID = (): string => {
     return v.toString(16)
   })
 }
+
+// Obtiene el mes actual en formato "YYYY-MM"
+export const getCurrentMonth = (): string => {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  return `${year}-${month}`
+}
+
+// Verifica si un mes es el mes actual
+export const isCurrentMonth = (monthStr: string): boolean => {
+  return monthStr === getCurrentMonth()
+}
+
+// Extrae el mes de una fecha en formato "YYYY-MM-DD" -> "YYYY-MM"
+export const getMonthFromDate = (dateStr: string): string => {
+  return dateStr.slice(0, 7)
+}

@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react'
-import { Trash2, Edit3, Plus, ArrowUp, ArrowDown, Archive, ArchiveX, RefreshCw } from 'lucide-react'
+import { Trash2, Edit3, Plus, Archive, ArchiveX, RefreshCw, ExternalLink } from 'lucide-react'
 import { useWealth } from '../context/WealthContext'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
@@ -29,7 +29,9 @@ export default function Assets() {
     riskLevel: 'Medio',
     archived: false,
     isin: '',
-    ticker: ''
+    ticker: '',
+    participations: 0,
+    meanCost: 0
   })
 
   const categories = ['Renta variable', 'Efectivo', 'Crypto', 'Stocks', 'Plan de pensiones']
@@ -94,7 +96,9 @@ export default function Assets() {
         riskLevel: asset.riskLevel || 'Medio',
         archived: asset.archived || false,
         isin: asset.isin || '',
-        ticker: asset.ticker || ''
+        ticker: asset.ticker || '',
+        participations: asset.participations || 0,
+        meanCost: asset.meanCost || 0
       })
     } else {
       setEditingAsset(null)
@@ -107,7 +111,9 @@ export default function Assets() {
         riskLevel: 'Medio',
         archived: false,
         isin: '',
-        ticker: ''
+        ticker: '',
+        participations: 0,
+        meanCost: 0
       })
     }
     setIsModalOpen(true)
@@ -131,7 +137,9 @@ export default function Assets() {
               riskLevel: formData.riskLevel,
               archived: formData.archived,
               isin: formData.isin || undefined,
-              ticker: formData.ticker || undefined
+              ticker: formData.ticker || undefined,
+              participations: formData.participations,
+              meanCost: formData.meanCost
             }
           : a
       )
@@ -152,7 +160,9 @@ export default function Assets() {
         riskLevel: formData.riskLevel,
         archived: false,
         isin: formData.isin || undefined,
-        ticker: formData.ticker || undefined
+        ticker: formData.ticker || undefined,
+        participations: formData.participations,
+        meanCost: formData.meanCost
       }
       setAssets([...assets, newAsset])
     }
@@ -210,13 +220,24 @@ export default function Assets() {
       if (result.success) {
         // Convert prices to history entries
         const monthStr = `${year}-${String(month).padStart(2, '0')}`
-        const newHistoryEntries = result.prices.map((price) => ({
-          id: generateUUID(),
-          month: monthStr,
-          assetId: price.assetId,
-          nav: price.price,
-          contribution: price.price
-        }))
+        const newHistoryEntries = result.prices.map((price) => {
+          // Find asset to get participation count
+          const asset = assets.find(a => a.id === price.assetId)
+          const participations = asset?.participations || 0
+          const liquidNavValue = price.price
+          const nav = participations * liquidNavValue
+          
+          return {
+            id: generateUUID(),
+            month: monthStr,
+            assetId: price.assetId,
+            participations: participations,
+            liquidNavValue: liquidNavValue,
+            nav: nav,
+            contribution: nav,
+            meanCost: asset?.meanCost || 0
+          }
+        })
 
         // Build detailed message with updated assets info
         const successLines: string[] = []
@@ -262,7 +283,7 @@ export default function Assets() {
               ? `${formatCurrency(Math.round(oldValue))} → ${formatCurrency(Math.round(newEntry.nav))}`
               : `Nuevo: ${formatCurrency(Math.round(newEntry.nav))}`
             
-            const line = `${asset.name} (${identifier})\n    Precio: ${formatCurrency(Math.round(newEntry.nav))}\n    Cambio: ${changeInfo}\n    Fuente: ${sourceLabel}`
+            const line = `${asset.name} (${identifier})\n    Participaciones: ${newEntry.participations}\n    Liquidativo: ${formatCurrency(newEntry.liquidNavValue)}\n    NAV: ${formatCurrency(Math.round(newEntry.nav))}\n    Cambio: ${changeInfo}\n    Fuente: ${sourceLabel}`
             successLines.push(line)
             
             // Group by source for summary
@@ -276,8 +297,6 @@ export default function Assets() {
         }
 
         setHistory(updatedHistory)
-        
-        // Build comprehensive success message with better formatting
         let message = `✅ ACTUALIZACIÓN COMPLETADA\n`
         message += `╔════════════════════════════════════════╗\n`
         message += `║  Fecha: ${result.lastBusinessDay}                     ║\n`
@@ -408,140 +427,126 @@ export default function Assets() {
         </div>
       )}
 
-      {/* Tabla de Activos */}
-      <Card title="Lista de Activos" className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-slate-200 dark:border-slate-800">
-                <th 
-                  onClick={() => {
-                    if (sortColumn === 'name') {
-                      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
-                    } else {
-                      setSortColumn('name')
-                      setSortDirection('asc')
-                    }
-                  }}
-                  className="text-left py-3 px-4 font-bold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-slate-900 dark:hover:text-slate-200 select-none"
-                >
-                  <div className="flex items-center gap-2">
-                    Nombre
-                    {sortColumn === 'name' && (sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />)}
-                  </div>
-                </th>
-                <th 
-                  onClick={() => {
-                    if (sortColumn === 'category') {
-                      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
-                    } else {
-                      setSortColumn('category')
-                      setSortDirection('asc')
-                    }
-                  }}
-                  className="text-left py-3 px-4 font-bold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-slate-900 dark:hover:text-slate-200 select-none"
-                >
-                  <div className="flex items-center gap-2">
-                    Categoría
-                    {sortColumn === 'category' && (sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />)}
-                  </div>
-                </th>
-                <th 
-                  onClick={() => {
-                    if (sortColumn === 'value') {
-                      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
-                    } else {
-                      setSortColumn('value')
-                      setSortDirection('desc')
-                    }
-                  }}
-                  className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-slate-900 dark:hover:text-slate-200 select-none"
-                >
-                  <div className="flex items-center justify-end gap-2">
-                    Valor
-                    {sortColumn === 'value' && (sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />)}
-                  </div>
-                </th>
-                <th 
-                  onClick={() => {
-                    if (sortColumn === 'percentage') {
-                      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
-                    } else {
-                      setSortColumn('percentage')
-                      setSortDirection('desc')
-                    }
-                  }}
-                  className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-slate-900 dark:hover:text-slate-200 select-none"
-                >
-                  <div className="flex items-center justify-end gap-2">
-                    % de Cartera
-                    {sortColumn === 'percentage' && (sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />)}
-                  </div>
-                </th>
-                <th className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-400">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedAssetValues.map(asset => (
-                <tr 
-                  key={asset.id} 
-                  className={`border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 ${
-                    asset.archived ? 'opacity-50 bg-slate-100 dark:bg-slate-900' : ''
-                  }`}
-                >
-                  <td className={`py-3 px-4 font-semibold ${
-                    asset.archived ? 'line-through text-slate-400 dark:text-slate-600' : 'dark:text-white'
-                  }`}>
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: asset.color, opacity: asset.archived ? 0.5 : 1 }}></div>
-                      {asset.name}
-                      {asset.archived && <span className="text-xs ml-2 px-2 py-1 bg-slate-300 dark:bg-slate-700 rounded text-slate-700 dark:text-slate-300">Archivado</span>}
+      {/* Vista de Activos - Grid de tarjetas compactas */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {sortedAssetValues.length === 0 ? (
+          <div className="col-span-full">
+            <Card>
+              <div className="text-center py-12">
+                <p className="text-slate-500 dark:text-slate-400 mb-4">No hay activos para mostrar</p>
+                <Button variant="primary" onClick={() => handleOpenModal()}>
+                  <Plus size={16} className="mr-2" />
+                  Crear primer activo
+                </Button>
+              </div>
+            </Card>
+          </div>
+        ) : (
+          sortedAssetValues.map(asset => {
+            const assetHistory = history.filter(h => h.assetId === asset.id).sort((a, b) => 
+              new Date(b.month).getTime() - new Date(a.month).getTime()
+            )
+            const lastEntry = assetHistory[0]
+            
+            const participations = asset.participations || 0
+            const meanCost = asset.meanCost || 0
+            const invested = participations * meanCost
+            const currentValue = asset.currentNAV
+            const gain = currentValue - invested
+            const gainPercent = invested > 0 ? (gain / invested) * 100 : 0
+            const liquidNavValue = participations > 0 ? currentValue / participations : 0
+            
+            return (
+              <Card 
+                key={asset.id}
+                className={`overflow-hidden transition-all hover:shadow-lg ${asset.archived ? 'opacity-50' : ''}`}
+              >
+                {/* Header compacto */}
+                <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800">
+                  <h3 className={`text-base font-bold truncate ${asset.archived ? 'line-through text-slate-400' : 'dark:text-white'}`}>
+                    {asset.name}
+                  </h3>
+                  {(asset.isin || asset.ticker) && (
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                      {asset.isin || asset.ticker}
+                    </p>
+                  )}
+                </div>
+
+                {/* Valor de mercado principal */}
+                <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mb-1">Valor de Mercado</p>
+                  <p className="text-2xl font-bold dark:text-white">{formatCurrency(Math.round(currentValue))}</p>
+                  <p className={`text-sm font-semibold mt-1 ${gain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {gain >= 0 ? '↑' : '↓'} {formatCurrency(Math.abs(Math.round(gain)))} ({gainPercent.toFixed(1)}%)
+                  </p>
+                </div>
+
+                {/* Métricas en dos columnas */}
+                <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-1">Participaciones</p>
+                      <p className="text-sm font-bold dark:text-white">{participations.toLocaleString('es-ES', { maximumFractionDigits: 3 })}</p>
                     </div>
-                  </td>
-                  <td className={`py-3 px-4 ${asset.archived ? 'text-slate-400 dark:text-slate-600' : 'text-slate-600 dark:text-slate-400'}`}>{asset.category}</td>
-                  <td className={`py-3 px-4 text-right font-bold ${
-                    asset.archived ? 'text-slate-400 dark:text-slate-600' : 'dark:text-white'
-                  }`}>
-                    {formatCurrency(Math.round(asset.currentNAV))}
-                  </td>
-                  <td className={`py-3 px-4 text-right font-bold ${
-                    asset.archived ? 'text-slate-400 dark:text-slate-600' : 'text-indigo-600'
-                  }`}>
-                    {totalNAV > 0 && !asset.archived ? ((asset.currentNAV / totalNAV) * 100).toFixed(1) : asset.archived ? '-' : 0}%
-                  </td>
-                  <td className="py-3 px-4 text-right space-x-2">
-                    <button
-                      onClick={() => handleOpenModal(asset)}
-                      className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors"
-                      title="Editar"
-                    >
-                      <Edit3 size={16} className="text-indigo-600" />
-                    </button>
-                    <button
-                      onClick={() => handleToggleArchived(asset.id)}
-                      className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors"
-                      title={asset.archived ? "Desarchizar" : "Archivar"}
-                    >
-                      {asset.archived ? (
-                        <ArchiveX size={16} className="text-blue-500" />
-                      ) : (
-                        <Archive size={16} className="text-amber-500" />
-                      )}
-                    </button>
-                    <button
-                      onClick={() => handleDelete(asset.id)}
-                      className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors"
-                      title="Eliminar"
-                    >
-                      <Trash2 size={16} className="text-rose-500" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+                    <div>
+                      <p className="text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-1">Coste Medio</p>
+                      <p className="text-sm font-bold dark:text-white">{formatCurrency(meanCost)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-1">Liquidativo</p>
+                      <p className="text-sm font-bold dark:text-white">{formatCurrency(liquidNavValue)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-1">Invertido</p>
+                      <p className="text-sm font-bold dark:text-white">{formatCurrency(Math.round(invested))}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Porcentaje de cartera */}
+                {!asset.archived && totalNAV > 0 && (
+                  <div className="px-5 py-2 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center text-xs">
+                    <p className="text-slate-600 dark:text-slate-400">% Cartera</p>
+                    <p className="font-bold text-indigo-600">
+                      {((currentValue / totalNAV) * 100).toFixed(1)}%
+                    </p>
+                  </div>
+                )}
+
+                {/* Acciones */}
+                <div className="px-5 py-2 flex justify-end gap-1 bg-slate-50 dark:bg-slate-900">
+                  <button
+                    onClick={() => handleOpenModal(asset)}
+                    className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-800 rounded transition-colors"
+                    title="Editar"
+                  >
+                    <Edit3 size={14} className="text-indigo-600" />
+                  </button>
+                  <button
+                    onClick={() => handleToggleArchived(asset.id)}
+                    className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-800 rounded transition-colors"
+                    title={asset.archived ? "Desarchizar" : "Archivar"}
+                  >
+                    {asset.archived ? (
+                      <ArchiveX size={14} className="text-blue-500" />
+                    ) : (
+                      <Archive size={14} className="text-amber-500" />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => handleDelete(asset.id)}
+                    className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-800 rounded transition-colors"
+                    title="Eliminar"
+                  >
+                    <Trash2 size={14} className="text-rose-500" />
+                  </button>
+                </div>
+              </Card>
+            )
+          })
+        )}
+      </div>
 
       {/* Modal de Edición */}
       <Modal
@@ -602,6 +607,32 @@ export default function Assets() {
             onChange={(e) => setFormData({ ...formData, riskLevel: e.target.value })}
             options={riskLevels.map(r => ({ value: r, label: r }))}
           />
+
+          <div className="border-t pt-4 space-y-4">
+            <h3 className="font-semibold text-slate-700 dark:text-slate-300">
+              Participaciones y Coste Medio
+            </h3>
+
+            <Input
+              label="Número de Participaciones"
+              type="number"
+              value={formData.participations}
+              onChange={(e) => setFormData({ ...formData, participations: parseFloat(e.target.value) || 0})}
+              step="0.00001"
+              min="0"
+              placeholder="Ej: 100.5"
+            />
+
+            <Input
+              label="Coste Medio por Participación (€)"
+              type="number"
+              value={formData.meanCost}
+              onChange={(e) => setFormData({ ...formData, meanCost: parseFloat(e.target.value) || 0})}
+              step="0.01"
+              min="0"
+              placeholder="Ej: 25.50"
+            />
+          </div>
 
           <div className="border-t pt-4 space-y-4">
             <h3 className="font-semibold text-slate-700 dark:text-slate-300">

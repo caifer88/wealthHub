@@ -31,78 +31,110 @@ const sanitizeBitcoinTransactions = (txs: any[]): BitcoinTransaction[] => {
 const SAMPLE_DATA = {
   assets: [
     {
-      id: 'asset-1',
-      name: 'Acciones Española',
-      category: 'Inversión' as const,
-      color: '#4F46E5',
-      baseAmount: 5500,
+      id: 'asset-basalto',
+      name: 'Basalto',
+      category: 'Fund' as const,
+      color: '#6366f1',
+      baseAmount: 37931.26,
       archived: false,
-      targetAllocation: 30,
-      riskLevel: 'medium' as const
+      targetAllocation: 25,
+      riskLevel: 'Medio' as const,
+      isin: 'ES0164691083',
+      participations: 3786.90437,
+      meanCost: 10.02
     },
     {
-      id: 'asset-2',
-      name: 'Criptomonedas',
-      category: 'Criptomonedas' as const,
-      color: '#F97316',
-      baseAmount: 3300,
+      id: 'asset-sp500',
+      name: 'Vanguard U.S. 500 Stock Index Fund EUR Acc',
+      category: 'Fund' as const,
+      color: '#10b981',
+      baseAmount: 12022.38,
+      archived: false,
+      targetAllocation: 35,
+      riskLevel: 'Medio' as const,
+      isin: 'IE0032126645',
+      participations: 181.47,
+      meanCost: 66.25
+    },
+    {
+      id: 'asset-numantia',
+      name: 'Renta 4 Multigestión Numantia Patrimonio Global',
+      category: 'Fund' as const,
+      color: '#f59e0b',
+      baseAmount: 15647.22,
       archived: false,
       targetAllocation: 20,
-      riskLevel: 'high' as const
+      riskLevel: 'Medio' as const,
+      isin: 'ES0173311103',
+      participations: 603.156901,
+      meanCost: 25.97
     },
     {
-      id: 'asset-3',
-      name: 'Cash',
-      category: 'Efectivo' as const,
-      color: '#22C55E',
-      baseAmount: 2000,
+      id: 'asset-numantia-pp',
+      name: 'Numantia Pensiones PP',
+      category: 'Pension Plan' as const,
+      color: '#8b5cf6',
+      baseAmount: 26718.44,
       archived: false,
-      targetAllocation: 50,
-      riskLevel: 'low' as const
+      targetAllocation: 20,
+      riskLevel: 'Medio' as const,
+      isin: 'N5430',
+      participations: 2056.8217,
+      meanCost: 12.99
+    },
+    {
+      id: 'asset-cash',
+      name: 'Cash',
+      category: 'Cash' as const,
+      color: '#22C55E',
+      baseAmount: 0,
+      archived: false,
+      targetAllocation: 0,
+      riskLevel: 'Bajo' as const,
+      participations: 0,
+      meanCost: 0
     }
   ] as Asset[],
   history: [
     {
       id: 'hist-1',
-      month: '2024-01',
-      assetId: 'asset-1',
-      nav: 5000,
-      contribution: 5000
+      month: '2026-03',
+      assetId: 'asset-basalto',
+      participations: 3786.90437,
+      liquidNavValue: 10.02,
+      nav: 37931.26,
+      contribution: 37931.26,
+      meanCost: 10.02
     },
     {
       id: 'hist-2',
-      month: '2024-01',
-      assetId: 'asset-2',
-      nav: 3000,
-      contribution: 3000
+      month: '2026-03',
+      assetId: 'asset-sp500',
+      participations: 181.47,
+      liquidNavValue: 66.25,
+      nav: 12022.38,
+      contribution: 12022.38,
+      meanCost: 66.25
     },
     {
       id: 'hist-3',
-      month: '2024-01',
-      assetId: 'asset-3',
-      nav: 2000,
-      contribution: 2000
+      month: '2026-03',
+      assetId: 'asset-numantia',
+      participations: 603.156901,
+      liquidNavValue: 25.97,
+      nav: 15647.22,
+      contribution: 15647.22,
+      meanCost: 25.97
     },
     {
       id: 'hist-4',
-      month: '2024-02',
-      assetId: 'asset-1',
-      nav: 5300,
-      contribution: 5000
-    },
-    {
-      id: 'hist-5',
-      month: '2024-02',
-      assetId: 'asset-2',
-      nav: 3200,
-      contribution: 3000
-    },
-    {
-      id: 'hist-6',
-      month: '2024-02',
-      assetId: 'asset-3',
-      nav: 2000,
-      contribution: 2000
+      month: '2026-03',
+      assetId: 'asset-numantia-pp',
+      participations: 2056.8217,
+      liquidNavValue: 12.99,
+      nav: 26718.44,
+      contribution: 26718.44,
+      meanCost: 12.99
     }
   ] as HistoryEntry[],
   bitcoinTransactions: [
