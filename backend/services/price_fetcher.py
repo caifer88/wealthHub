@@ -5,6 +5,7 @@ from typing import Optional, Dict, List, Tuple
 from datetime import datetime, timedelta
 import logging
 from models import PriceData
+from cachetools import cached, TTLCache
 from utils import format_datetime_iso
 
 logger = logging.getLogger(__name__)
@@ -15,7 +16,9 @@ class PriceFetcher:
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
     }
 
+
     @staticmethod
+    @cached(cache=TTLCache(maxsize=10, ttl=3600))  # 1 hour cache
     def fetch_bitcoin_price(date: datetime, asset_id: str = None, asset_name: str = "Bitcoin") -> Optional[PriceData]:
         # Intento 1: Yahoo Finance
         try:
@@ -60,7 +63,9 @@ class PriceFetcher:
             logger.error(f"❌ Fallo total en BTC: {e}")
             return None
 
+
     @staticmethod
+    @cached(cache=TTLCache(maxsize=50, ttl=14400), key=lambda tickers, date: str(tickers) + str(date))  # 4 hours cache
     def fetch_multiple_stocks(tickers: Dict[str, Tuple[str, str]], date: datetime) -> List[PriceData]:
         prices = []
         

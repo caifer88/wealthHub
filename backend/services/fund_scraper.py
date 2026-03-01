@@ -5,6 +5,7 @@ from datetime import datetime
 import logging
 import re
 from models import PriceData
+from cachetools import cached, TTLCache
 from utils import format_datetime_iso
 
 logger = logging.getLogger(__name__)
@@ -14,7 +15,10 @@ class FundScraper:
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
     }
 
+
+    # Cache valid for 4 hours (14400 seconds)
     @staticmethod
+    @cached(cache=TTLCache(maxsize=100, ttl=14400))
     def fetch_fund_price(isin: str, asset_name: str, asset_id: str) -> Optional[PriceData]:
         """Try multiple strategies to fetch fund price"""
         
