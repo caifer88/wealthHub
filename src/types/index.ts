@@ -44,6 +44,7 @@ export interface StockTransaction {
   pricePerShare: number;
   fees: number;
   totalAmount: number;
+  broker?: string;  // Broker identifier (e.g., "IB" for Interactive Brokers)
 }
 
 export interface SyncState {
@@ -57,7 +58,7 @@ export interface Metrics {
   totalInv: number;
   totalProfit: number;
   roi: number;
-  liquidez: number;
+  cash: number;
 }
 
 export interface PriceData {

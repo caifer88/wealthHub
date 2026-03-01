@@ -1,12 +1,13 @@
 import { useState, useMemo } from 'react'
-import { Trash2, Edit3 } from 'lucide-react'
+import { Trash2, Edit3, RefreshCw } from 'lucide-react'
 import { useWealth } from '../context/WealthContext'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
-import { formatCurrency, generateUUID, isCurrentMonth, getCurrentMonth } from '../utils'
+import { formatCurrency, generateUUID, isCurrentMonth, getCurrentMonth, formatCurrencyDecimals } from '../utils'
+import { config } from '../config'
 import type { HistoryEntry } from '../types'
 
 export default function History() {
@@ -14,6 +15,8 @@ export default function History() {
   const [selectedYear, setSelectedYear] = useState<string | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingEntry, setEditingEntry] = useState<HistoryEntry | null>(null)
+  const [isFetchingPrices, setIsFetchingPrices] = useState(false)
+  const [fetchMessage, setFetchMessage] = useState('')
   const [entries, setEntries] = useState<Array<{ assetId: string; nav: string; contribution: string; participations?: string; liquidNavValue?: string; meanCost?: string }>>([
     { assetId: '', nav: '', contribution: '', participations: '', liquidNavValue: '', meanCost: '' }
   ])
@@ -184,6 +187,112 @@ export default function History() {
     setEntries(newEntries)
   }
 
+  const handleFetchPrices = async () => {
+    try {
+      setIsFetchingPrices(true)
+      setFetchMessage('Obteniendo precios...')
+
+      // Get current month and year
+      const now = new Date()
+      const year = now.getFullYear()
+      const month = now.getMonth() + 1
+
+      console.log(`🔄 Iniciando actualización de NAVs para ${year}-${String(month).padStart(2, '0')}`)
+
+      // Call backend API
+      const response = await fetch(
+        `${config.backendUrl}/fetch-month?year=${year}&month=${month}`
+      )
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error(`Error HTTP ${response.status}:`, errorText)
+        throw new Error(`Error HTTP ${response.status}: ${errorText || 'Sin detalles disponibles'}`)
+      }
+
+      const result: any = await response.json()
+      console.log('Respuesta del servidor:', result)
+
+      if (result.success) {
+        // Convert prices to history entries
+        const monthStr = `${year}-${String(month).padStart(2, '0')}`
+        const priceMap = new Map(result.prices.map((p: any) => [p.assetId, p]))
+        
+        // Procesar todos los activos activos
+        const newHistoryEntries = assets
+          .filter(asset => !asset.archived)
+          .map((asset) => {
+            const price = priceMap.get(asset.id) as any
+            const participations = asset.participations || 0
+            
+            // Obtener la entrada existente para este mes
+            const existingEntry = history.find(h => h.month === monthStr && h.assetId === asset.id)
+            
+            // Para Cash, obtener la entrada más reciente (cualquier mes)
+            const lastCashEntry = asset.name === 'Cash' 
+              ? history.filter(h => h.assetId === asset.id).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
+              : null
+            
+            // Si tiene precio nuevo del backend, usar ese; si no, usar el anterior
+            let liquidNavValue: number
+            if (price && price.price !== undefined && price.price !== null) {
+              liquidNavValue = price.price
+            } else if (existingEntry) {
+              // Si no hay precio nuevo pero existe entrada anterior en el mismo mes, mantener el liquidNavValue
+              liquidNavValue = existingEntry.liquidNavValue
+            } else if (asset.name === 'Cash' && lastCashEntry) {
+              // Para Cash, mantener el último valor conocido
+              liquidNavValue = lastCashEntry.liquidNavValue
+            } else {
+              // Si no hay ni precio ni entrada anterior, usar 0
+              liquidNavValue = 0
+            }
+            
+            // Para Cash, el nav es directamente el liquidNavValue (no participations * liquidNavValue)
+            const nav = asset.name === 'Cash' ? liquidNavValue : (participations * liquidNavValue)
+            const contribution = existingEntry ? existingEntry.contribution : 0
+            
+            return {
+              id: existingEntry?.id || generateUUID(),
+              month: monthStr,
+              assetId: asset.id,
+              participations: participations,
+              liquidNavValue: liquidNavValue,
+              nav: nav,
+              contribution: contribution,
+              meanCost: asset.meanCost || 0
+            }
+          })
+
+        // Update history (merge with existing)
+        const updatedHistory = [...history]
+        for (const newEntry of newHistoryEntries) {
+          const existingIndex = updatedHistory.findIndex(
+            h => h.month === newEntry.month && h.assetId === newEntry.assetId
+          )
+          
+          if (existingIndex >= 0) {
+            updatedHistory[existingIndex] = newEntry
+          } else {
+            updatedHistory.push(newEntry)
+          }
+        }
+
+        setHistory(updatedHistory)
+        setFetchMessage(`✅ Actualización completada\n\n${newHistoryEntries.length} activos actualizados`)
+        console.log('✅ NAVs actualizados correctamente')
+      } else {
+        throw new Error(result.message || 'Error desconocido')
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Error desconocido'
+      setFetchMessage(`❌ Error al actualizar precios:\n${errorMessage}`)
+      console.error('❌ Error:', errorMessage)
+    } finally {
+      setIsFetchingPrices(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <header className="flex justify-between items-start">
@@ -195,9 +304,19 @@ export default function History() {
             Evolución mensual de tus activos
           </p>
         </div>
-        <Button variant="primary" onClick={() => handleOpenModal()}>
-          + Nuevo Registro
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            variant="secondary" 
+            onClick={handleFetchPrices}
+            disabled={isFetchingPrices}
+          >
+            <RefreshCw size={16} className={`mr-2 ${isFetchingPrices ? 'animate-spin' : ''}`} />
+            {isFetchingPrices ? 'Actualizando...' : 'Actualizar NAV'}
+          </Button>
+          <Button variant="primary" onClick={() => handleOpenModal()}>
+            + Nuevo Registro
+          </Button>
+        </div>
       </header>
 
       {/* Selector de año */}
@@ -217,6 +336,21 @@ export default function History() {
             </button>
           ))}
         </div>
+      )}
+
+      {/* Mensaje de estado de actualización */}
+      {fetchMessage && (
+        <Card className={`border-l-4 ${
+          fetchMessage.includes('✅') 
+            ? 'border-l-green-500 bg-green-50 dark:bg-green-900/20' 
+            : 'border-l-red-500 bg-red-50 dark:bg-red-900/20'
+        }`}>
+          <div className={`${
+            fetchMessage.includes('✅') ? 'text-green-900 dark:text-green-100' : 'text-red-900 dark:text-red-100'
+          } whitespace-pre-wrap font-mono text-xs sm:text-sm leading-relaxed`}>
+            {fetchMessage}
+          </div>
+        </Card>
       )}
 
       {/* Historial por mes */}
@@ -252,6 +386,7 @@ export default function History() {
                     <thead>
                       <tr className="border-b border-slate-200 dark:border-slate-700">
                         <th className="text-left py-1.5 px-2 font-bold text-slate-600 dark:text-slate-400">Activo</th>
+                        <th className="text-right py-1.5 px-2 font-bold text-slate-600 dark:text-slate-400">Aportaciones</th>
                         <th className="text-right py-1.5 px-2 font-bold text-slate-600 dark:text-slate-400">NAV</th>
                         {isCurrentMonthDisplayed && <th className="text-center py-1.5 px-2 font-bold text-slate-600 dark:text-slate-400">Acc.</th>}
                       </tr>
@@ -275,7 +410,10 @@ export default function History() {
                               )}
                             </td>
                             <td className="py-1.5 px-2 text-right font-bold dark:text-white">
-                              {formatCurrency(Math.round(entry.nav))}
+                              {formatCurrencyDecimals(entry.contribution, 2)}
+                            </td>
+                            <td className="py-1.5 px-2 text-right font-bold dark:text-white">
+                              {formatCurrencyDecimals(entry.nav, 2)}
                             </td>
                             {isCurrentMonthDisplayed && (
                               <td className="py-1.5 px-2 text-center flex gap-0.5 justify-center">

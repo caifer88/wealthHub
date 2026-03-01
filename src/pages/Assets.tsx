@@ -7,12 +7,12 @@ import { MetricCard } from '../components/ui/MetricCard'
 import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
-import { formatCurrency, generateUUID } from '../utils'
+import { formatCurrency, generateUUID, calculateMeanCost, calculateTotalInvested, getCurrentParticipations, formatCurrencyDecimals } from '../utils'
 import { config } from '../config'
 import type { Asset, FetchMonthResponse } from '../types'
 
 export default function Assets() {
-  const { assets, setAssets, history, setHistory, saveDataToGAS } = useWealth()
+  const { assets, setAssets, history, setHistory, stockTransactions, saveDataToGAS } = useWealth()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null)
   const [sortColumn] = useState<'name' | 'category' | 'value' | 'percentage'>('name')
@@ -22,7 +22,7 @@ export default function Assets() {
   const [fetchMessage, setFetchMessage] = useState('')
   const [formData, setFormData] = useState({
     name: '',
-    category: 'Renta variable',
+    category: 'Fund',
     color: '#6366f1',
     baseAmount: 0,
     targetAllocation: 0,
@@ -34,8 +34,8 @@ export default function Assets() {
     meanCost: 0
   })
 
-  const categories = ['Renta variable', 'Efectivo', 'Crypto', 'Stocks', 'Plan de pensiones']
-  const colors = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4']
+  const categories = ['Fund', 'Cash', 'Crypto', 'Stocks', 'Plan de pensiones']
+  const colors = ['#6366f1', '#0f1010', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4']
   const riskLevels = ['Bajo', 'Medio', 'Alto']
 
   // Show active assets if showArchived is false, otherwise show all
@@ -72,9 +72,24 @@ export default function Assets() {
     }
   }, [])
 
+  // Función para calcular el NAV correcto de un activo considerando componentes
+  const getAssetValueWithComponents = (asset: Asset): number => {
+    const componentAssets = assets.filter(a => 
+      a.name && asset.name && a.name.length < asset.name.length && asset.name.includes(a.name) && a.id !== asset.id
+    )
+    
+    if (componentAssets.length > 0) {
+      // Si tiene componentes, retornar la suma
+      return componentAssets.reduce((sum, comp) => sum + getAssetNAV(comp.id), 0)
+    }
+    
+    // Si no tiene componentes, retornar su NAV directo
+    return getAssetNAV(asset.id)
+  }
+
   const assetValues = assets.map(a => ({
     ...a,
-    currentNAV: getAssetNAV(a.id)
+    currentNAV: getAssetValueWithComponents(a)
   }))
 
   const totalNAV = assetValues.filter(a => !a.archived).reduce((sum, a) => sum + a.currentNAV, 0)
@@ -104,7 +119,7 @@ export default function Assets() {
       setEditingAsset(null)
       setFormData({
         name: '',
-        category: 'Renta variable',
+        category: 'Fund',
         color: '#6366f1',
         baseAmount: 0,
         targetAllocation: 0,
@@ -220,24 +235,53 @@ export default function Assets() {
       if (result.success) {
         // Convert prices to history entries
         const monthStr = `${year}-${String(month).padStart(2, '0')}`
-        const newHistoryEntries = result.prices.map((price) => {
-          // Find asset to get participation count
-          const asset = assets.find(a => a.id === price.assetId)
-          const participations = asset?.participations || 0
-          const liquidNavValue = price.price
-          const nav = participations * liquidNavValue
-          
-          return {
-            id: generateUUID(),
-            month: monthStr,
-            assetId: price.assetId,
-            participations: participations,
-            liquidNavValue: liquidNavValue,
-            nav: nav,
-            contribution: nav,
-            meanCost: asset?.meanCost || 0
-          }
-        })
+        const priceMap = new Map(result.prices.map((p: any) => [p.assetId, p]))
+        
+        // Procesar todos los activos activos
+        const newHistoryEntries = assets
+          .filter(asset => !asset.archived)
+          .map((asset) => {
+            const price = priceMap.get(asset.id)
+            const participations = asset.participations || 0
+            
+            // Obtener la entrada existente para este mes
+            const existingEntry = history.find(h => h.month === monthStr && h.assetId === asset.id)
+            
+            // Para Cash, obtener la entrada más reciente (cualquier mes)
+            const lastCashEntry = asset.name === 'Cash' 
+              ? history.filter(h => h.assetId === asset.id).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
+              : null
+            
+            // Si tiene precio nuevo del backend, usar ese; si no, usar el anterior
+            let liquidNavValue: number
+            if (price && price.price !== undefined && price.price !== null) {
+              liquidNavValue = price.price
+            } else if (existingEntry) {
+              // Si no hay precio nuevo pero existe entrada anterior en el mismo mes, mantener el liquidNavValue
+              liquidNavValue = existingEntry.liquidNavValue
+            } else if (asset.name === 'Cash' && lastCashEntry) {
+              // Para Cash, mantener el último valor conocido
+              liquidNavValue = lastCashEntry.liquidNavValue
+            } else {
+              // Si no hay ni precio ni entrada anterior, usar 0
+              liquidNavValue = 0
+            }
+            
+            // Para Cash, el nav es directamente el liquidNavValue (no participations * liquidNavValue)
+            const nav = asset.name === 'Cash' ? liquidNavValue : (participations * liquidNavValue)
+            const contribution = existingEntry ? existingEntry.contribution : 0
+            
+            return {
+              id: existingEntry?.id || generateUUID(),
+              month: monthStr,
+              assetId: asset.id,
+              participations: participations,
+              liquidNavValue: liquidNavValue,
+              nav: nav,
+              contribution: contribution,
+              meanCost: asset.meanCost || 0
+            }
+          })
 
         // Build detailed message with updated assets info
         const successLines: string[] = []
@@ -280,10 +324,10 @@ export default function Assets() {
             }[source] || source
             
             const changeInfo = isUpdate 
-              ? `${formatCurrency(Math.round(oldValue))} → ${formatCurrency(Math.round(newEntry.nav))}`
-              : `Nuevo: ${formatCurrency(Math.round(newEntry.nav))}`
+              ? `${formatCurrencyDecimals(oldValue, 2)} → ${formatCurrencyDecimals(newEntry.nav, 2)}`
+              : `Nuevo: ${formatCurrencyDecimals(newEntry.nav, 2)}`
             
-            const line = `${asset.name} (${identifier})\n    Participaciones: ${newEntry.participations}\n    Liquidativo: ${formatCurrency(newEntry.liquidNavValue)}\n    NAV: ${formatCurrency(Math.round(newEntry.nav))}\n    Cambio: ${changeInfo}\n    Fuente: ${sourceLabel}`
+            const line = `${asset.name} (${identifier})\n    Participaciones: ${newEntry.participations}\n    Liquidativo: ${formatCurrencyDecimals(newEntry.liquidNavValue, 2)}\n    NAV: ${formatCurrencyDecimals(newEntry.nav, 2)}\n    Cambio: ${changeInfo}\n    Fuente: ${sourceLabel}`
             successLines.push(line)
             
             // Group by source for summary
@@ -443,13 +487,90 @@ export default function Assets() {
           </div>
         ) : (
           sortedAssetValues.map(asset => {
-            const participations = asset.participations || 0
-            const meanCost = asset.meanCost || 0
-            const invested = participations * meanCost
+            const participations = getCurrentParticipations(asset.id, history)
+            const meanCost = calculateMeanCost(asset.id, history)
+            const invested = calculateTotalInvested(asset.id, history)
             const currentValue = asset.currentNAV
-            const gain = currentValue - invested
-            const gainPercent = invested > 0 ? (gain / invested) * 100 : 0
             const liquidNavValue = participations > 0 ? currentValue / participations : 0
+            
+            // Activo especial: Cash - mostrar solo valor
+            if (asset.name === 'Cash') {
+              return (
+                <Card 
+                  key={asset.id}
+                  className="overflow-hidden transition-all hover:shadow-lg flex flex-col justify-center items-center py-8 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20"
+                >
+                  <div className="text-center">
+                    <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-2">Efectivo Disponible</p>
+                    <p className="text-4xl font-black dark:text-white">{formatCurrency(Math.round(currentValue))}</p>
+                  </div>
+                </Card>
+              )
+            }
+            
+            // Para Interactive Brokers: obtener posiciones abiertas de stockTransactions
+            // Para otros activos: buscar componentes por nombre
+            let positionsData: Array<{ticker: string; nav: number; shares: number; avgPrice: number}> = []
+            
+            if (asset.name === 'Interactive Brokers') {
+              // Agrupar transacciones por ticker para IB
+              const ibTransactions = stockTransactions.filter(tx => tx.broker === 'Interactive Brokers')
+              const tickerMap = new Map<string, {shares: number; totalCost: number; txCount: number}>()
+              
+              for (const tx of ibTransactions) {
+                const existing = tickerMap.get(tx.ticker) || {shares: 0, totalCost: 0, txCount: 0}
+                if (tx.type === 'buy') {
+                  existing.shares += tx.shares
+                  existing.totalCost += tx.totalAmount
+                } else {
+                  existing.shares -= tx.shares
+                  existing.totalCost -= tx.totalAmount
+                }
+                existing.txCount++
+                tickerMap.set(tx.ticker, existing)
+              }
+              
+              // Convertir a datos de posición (usando el último liquidNavValue del histórico)
+              for (const [ticker, data] of tickerMap.entries()) {
+                if (data.shares > 0) {
+                  // Buscar el activo correspondiente para obtener el precio actual
+                  const tickerAsset = assets.find(a => a.ticker === ticker)
+                  const lastHistory = tickerAsset ? 
+                    history.filter(h => h.assetId === tickerAsset.id).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0] 
+                    : null
+                  
+                  const currentPrice = lastHistory ? lastHistory.liquidNavValue : (data.totalCost / data.shares)
+                  const nav = data.shares * currentPrice
+                  const avgPrice = data.totalCost / data.shares
+                  
+                  positionsData.push({
+                    ticker,
+                    nav,
+                    shares: data.shares,
+                    avgPrice
+                  })
+                }
+              }
+            } else {
+              // Para otros activos, buscar por nombre
+              const componentAssets = assets.filter(a => 
+                a.name && asset.name && a.name.length < asset.name.length && asset.name.includes(a.name) && a.id !== asset.id
+              )
+              positionsData = componentAssets.map(comp => ({
+                ticker: comp.ticker || comp.isin || comp.name,
+                nav: getAssetNAV(comp.id),
+                shares: getCurrentParticipations(comp.id, history),
+                avgPrice: calculateMeanCost(comp.id, history)
+              }))
+            }
+            
+            const hasPositions = positionsData.length > 0
+            const componentValue = positionsData.reduce((sum, p) => sum + p.nav, 0)
+            
+            // Si hay componentes, usar su suma como el valor del activo contenedor
+            const valueToDisplay = hasPositions ? componentValue : currentValue
+            const gainToDisplay = valueToDisplay - invested
+            const gainPercentDisplay = invested > 0 ? (gainToDisplay / invested) * 100 : 0
             
             return (
               <Card 
@@ -471,40 +592,76 @@ export default function Assets() {
                 {/* Valor de mercado principal */}
                 <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
                   <p className="text-xs text-slate-600 dark:text-slate-400 mb-1">Valor de Mercado</p>
-                  <p className="text-2xl font-bold dark:text-white">{formatCurrency(Math.round(currentValue))}</p>
-                  <p className={`text-sm font-semibold mt-1 ${gain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {gain >= 0 ? '↑' : '↓'} {formatCurrency(Math.abs(Math.round(gain)))} ({gainPercent.toFixed(1)}%)
-                  </p>
+                  <p className="text-2xl font-bold dark:text-white">{formatCurrencyDecimals(valueToDisplay, 2)}</p>
+                  {hasPositions ? (
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      Suma: {positionsData.map(p => p.ticker).join(' + ')}
+                    </p>
+                  ) : (
+                    <p className={`text-sm font-semibold mt-1 ${gainToDisplay >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {gainToDisplay >= 0 ? '↑' : '↓'} {formatCurrency(Math.abs(Math.round(gainToDisplay)))} ({gainPercentDisplay.toFixed(1)}%)
+                    </p>
+                  )}
                 </div>
 
-                {/* Métricas en dos columnas */}
-                <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <p className="text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-1">Participaciones</p>
-                      <p className="text-sm font-bold dark:text-white">{participations.toLocaleString('es-ES', { maximumFractionDigits: 3 })}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-1">Coste Medio</p>
-                      <p className="text-sm font-bold dark:text-white">{formatCurrency(meanCost)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-1">Liquidativo</p>
-                      <p className="text-sm font-bold dark:text-white">{formatCurrency(liquidNavValue)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-1">Invertido</p>
-                      <p className="text-sm font-bold dark:text-white">{formatCurrency(Math.round(invested))}</p>
+                {/* Métricas en dos columnas O Resumen de posiciones para contenedores */}
+                {hasPositions ? (
+                  <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800">
+                    <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-3">Posiciones Abiertas</p>
+                    <div className="space-y-2">
+                      {positionsData.map((position) => {
+                        const positionInvested = position.shares * position.avgPrice
+                        const positionGain = position.nav - positionInvested
+                        const positionGainPercent = positionInvested > 0 ? (positionGain / positionInvested) * 100 : 0
+                        
+                        return (
+                          <div key={position.ticker} className="flex justify-between items-center p-2 bg-slate-50 dark:bg-slate-900/50 rounded">
+                            <div className="flex-1">
+                              <p className="text-sm font-semibold dark:text-white">{position.ticker}</p>
+                              <p className="text-xs text-slate-500 dark:text-slate-400">
+                                {position.shares.toLocaleString('es-ES', { maximumFractionDigits: 4 })} @ {formatCurrencyDecimals(position.avgPrice, 2)}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs font-semibold dark:text-white">{formatCurrencyDecimals(position.nav, 2)}</p>
+                              <p className={`text-sm font-bold ${positionGain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {positionGain >= 0 ? '↑' : '↓'} {positionGainPercent.toFixed(1)}%
+                              </p>
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-1">Participaciones</p>
+                        <p className="text-sm font-bold dark:text-white">{participations.toLocaleString('es-ES', { maximumFractionDigits: 3 })}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-1">Coste Medio</p>
+                        <p className="text-sm font-bold dark:text-white">{formatCurrencyDecimals(meanCost, 2)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-1">Liquidativo</p>
+                        <p className="text-sm font-bold dark:text-white">{formatCurrencyDecimals(liquidNavValue, 2)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-1">Invertido</p>
+                        <p className="text-sm font-bold dark:text-white">{formatCurrency(Math.round(invested))}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Porcentaje de cartera */}
                 {!asset.archived && totalNAV > 0 && (
                   <div className="px-5 py-2 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center text-xs">
                     <p className="text-slate-600 dark:text-slate-400">% Cartera</p>
                     <p className="font-bold text-indigo-600">
-                      {((currentValue / totalNAV) * 100).toFixed(1)}%
+                      {((valueToDisplay / totalNAV) * 100).toFixed(1)}%
                     </p>
                   </div>
                 )}

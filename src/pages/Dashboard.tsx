@@ -93,8 +93,8 @@ export default function Dashboard() {
           color="text-indigo-600"
         />
         <MetricCard
-          title="Liquidez"
-          value={formatCurrency(metrics.liquidez)}
+          title="Cash"
+          value={formatCurrency(metrics.cash)}
           subtitle="Efectivo disponible"
           color="text-emerald-600"
         />

@@ -26,7 +26,28 @@ const sanitizeBitcoinTransactions = (txs: any[]): BitcoinTransaction[] => {
   })
 }
 
-// Sample data for initialization
+const sanitizeStockTransactions = (txs: any[]): StockTransaction[] => {
+  if (!Array.isArray(txs)) return []
+  return txs.map((tx: any) => {
+    let txType: 'buy' | 'sell' = 'buy'
+    if (tx.type === 'Compra' || tx.type === 'buy') {
+      txType = 'buy'
+    } else if (tx.type === 'Venta' || tx.type === 'sell') {
+      txType = 'sell'
+    }
+    return {
+      id: tx.id || generateUUID(),
+      ticker: tx.ticker || '',
+      date: tx.date || new Date().toISOString().split('T')[0],
+      type: txType,
+      shares: parseFloat(tx.shares) || 0,
+      pricePerShare: parseFloat(tx.pricePerShare) || 0,
+      fees: parseFloat(tx.fees) || 0,
+      totalAmount: parseFloat(tx.totalAmount) || 0,
+      broker: tx.broker || undefined
+    } as StockTransaction
+  })
+}
 const SAMPLE_DATA = {
   assets: [
     {
@@ -71,7 +92,7 @@ const SAMPLE_DATA = {
     {
       id: 'asset-numantia-pp',
       name: 'Numantia Pensiones PP',
-      category: 'Pension Plan' as const,
+      category: 'Fund' as const,
       color: '#8b5cf6',
       baseAmount: 26718.44,
       archived: false,
@@ -165,7 +186,8 @@ const SAMPLE_DATA = {
       shares: 10,
       pricePerShare: 150,
       fees: 5,
-      totalAmount: 1505
+      totalAmount: 1505,
+      broker: 'Interactive Brokers'
     },
     {
       id: 'stock-2',
@@ -175,7 +197,8 @@ const SAMPLE_DATA = {
       shares: 5,
       pricePerShare: 380,
       fees: 3,
-      totalAmount: 1903
+      totalAmount: 1903,
+      broker: 'Interactive Brokers'
     },
     {
       id: 'stock-3',
@@ -185,7 +208,8 @@ const SAMPLE_DATA = {
       shares: 8,
       pricePerShare: 160,
       fees: 4,
-      totalAmount: 1284
+      totalAmount: 1284,
+      broker: 'Interactive Brokers'
     }
   ] as StockTransaction[]
 }
@@ -281,7 +305,8 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               shares: parseFloat(tx.shares) || 0,
               pricePerShare: parseFloat(tx.pricePerShare) || 0,
               fees: parseFloat(tx.fees) || 0,
-              totalAmount: parseFloat(tx.totalAmount) || 0
+              totalAmount: parseFloat(tx.totalAmount) || 0,
+              broker: tx.broker || undefined
             } as StockTransaction
           })
           
@@ -351,7 +376,7 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const activeAssets = assets.filter(a => !a.archived)
     const cashAsset = activeAssets.find(a => a.name === 'Cash')
-    const liquidez = cashAsset?.baseAmount || 0
+    const cash = cashAsset?.baseAmount || 0
 
     // Calcular NAV total y ROI (excluyendo Cash para ganancia/pérdida)
     let totalNAV = 0
@@ -388,7 +413,7 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       totalInv: totalInvested,
       totalProfit,
       roi,
-      liquidez
+      cash
     })
   }, [assets, history])
 
@@ -401,7 +426,7 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setAssets(result.data.assets || [])
         setHistory(result.data.history || [])
         setBitcoinTransactions(sanitizeBitcoinTransactions(result.data.bitcoinTransactions || []))
-        setStockTransactions(result.data.stockTransactions || [])
+        setStockTransactions(sanitizeStockTransactions(result.data.stockTransactions || []))
         setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }))
       }
     } catch (error) {
@@ -411,7 +436,7 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setAssets(localAssets)
         setHistory(JSON.parse(localStorage.getItem('wm_history_v4') || '[]'))
         setBitcoinTransactions(sanitizeBitcoinTransactions(JSON.parse(localStorage.getItem('wm_bitcoinTransactions_v4') || '[]')))
-        setStockTransactions(JSON.parse(localStorage.getItem('wm_stockTransactions_v4') || '[]'))
+        setStockTransactions(sanitizeStockTransactions(JSON.parse(localStorage.getItem('wm_stockTransactions_v4') || '[]')))
         setSyncState(prev => ({ ...prev, syncError: 'Usando datos locales' }))
       }
     }

@@ -1,6 +1,6 @@
 # WealthHub
 
-Una aplicación web de gestión y visualización de activos financieros (Fondos, Criptomonedas, Acciones, Efectivo) con capacidades de sincronización automática a Google Apps Script (GAS) y Docker.
+Una aplicación web de gestión y visualización de activos financieros (Fondos, Criptomonedas, Acciones, Cash) con capacidades de sincronización automática a Google Apps Script (GAS) y Docker.
 
 ## Características
 
