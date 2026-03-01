@@ -5,6 +5,7 @@ Data models for WealthHub Backend
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from enum import Enum
+from decimal import Decimal
 
 
 class AssetCategory(str, Enum):
@@ -30,15 +31,15 @@ class Asset(BaseModel):
     name: str
     category: str
     color: str
-    baseAmount: float
+    baseAmount: Decimal
     archived: bool = False
-    targetAllocation: Optional[float] = None
+    targetAllocation: Optional[Decimal] = None
     riskLevel: Optional[str] = None
     isin: Optional[str] = None  # ISIN for funds and some assets
     ticker: Optional[str] = None  # Ticker for stocks and crypto
     componentTickers: Optional[List[str]] = None  # For broker assets with multiple holdings
-    participations: float = 0.0  # Number of shares/participations
-    meanCost: float = 0.0  # Average cost per participation
+    participations: Decimal = Decimal('0.0')  # Number of shares/participations
+    meanCost: Decimal = Decimal('0.0')  # Average cost per participation
     
     class Config:
         json_schema_extra = {
@@ -65,11 +66,11 @@ class HistoryEntry(BaseModel):
     id: str
     month: str  # Format: YYYY-MM
     assetId: str
-    participations: float  # Number of shares/participations
-    liquidNavValue: float  # Liquid asset value per share (fetched from market)
-    nav: float  # Net Asset Value (participations * liquidNavValue)
-    contribution: float  # Amount contributed/invested
-    meanCost: float  # Average cost per participation
+    participations: Decimal  # Number of shares/participations
+    liquidNavValue: Decimal  # Liquid asset value per share (fetched from market)
+    nav: Decimal  # Net Asset Value (participations * liquidNavValue)
+    contribution: Decimal  # Amount contributed/invested
+    meanCost: Decimal  # Average cost per participation
 
 
 class PriceData(BaseModel):
@@ -78,7 +79,7 @@ class PriceData(BaseModel):
     assetName: str
     ticker: Optional[str] = None
     isin: Optional[str] = None
-    price: float
+    price: Decimal
     currency: str = "EUR"
     fetchedAt: str  # ISO format datetime
     source: str  # e.g., "yfinance", "morningstar", "ft_markets"

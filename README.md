@@ -1,155 +1,64 @@
-# WealthHub v2 - Vite + React Refactor
+# WealthHub
 
-A modern, componentized portfolio management application built with Vite, React, TypeScript, and Tailwind CSS.
+Una aplicación web de gestión y visualización de activos financieros (Fondos, Criptomonedas, Acciones, Efectivo) con capacidades de sincronización automática a Google Apps Script (GAS) y Docker.
 
-## Quick Start
+## Características
 
-- **Local Development**: `npm install && npm run dev` → http://localhost:3000
-- **Production Build**: `npm run build`
-- **Docker/Umbrel**: See [UMBREL.md](UMBREL.md) for installation instructions
+- 📊 **Gestión Multiactivos**: Soporte para criptomonedas, fondos de inversión, acciones y otros.
+- ⚙️ **Cálculo de Proyecciones**: Interés compuesto y métricas financieras (`Decimal` backend integration para precisión extrema).
+- ☁️ **Sincronización Cloud**: Respaldo automático utilizando Google Apps Script (GAS).
+- 🐳 **Docker & Umbrel**: Listo para despliegues auto-alojados.
 
-## Project Structure
+## Stack Tecnológico
 
-```
-src/
-├── components/
-│   ├── ui/                 # Reusable UI components (Card, Button, Modal, etc.)
-│   └── layouts/           # Layout components
-├── pages/                 # Page components (Dashboard, History, Bitcoin, etc.)
-├── context/              # React Context (WealthContext)
-├── hooks/                # Custom React hooks
-├── services/             # External services (GAS, PDF export, etc.)
-├── types/                # TypeScript type definitions
-├── utils/                # Utility functions
-├── App.tsx               # Main app component
-└── main.tsx              # Entry point
-```
+- **Frontend:** React 18, Vite, TypeScript, Tailwind CSS, Recharts.
+- **Backend:** Python 3.12, FastAPI, Pydantic (Validación tipada con soporte Decimal).
+- **Herramientas de Sincronización:** Google Apps Script (GAS).
 
-## Features
+## Arquitectura
 
-- ✅ **Componentized Architecture**: Modular, reusable components
-- ✅ **Global State Management**: Context API with custom hooks
-- ✅ **Google Apps Script Integration**: Sync with Google Drive
-- ✅ **Dark Mode**: Built-in theme switching
-- ✅ **Responsive Design**: Mobile-first with Tailwind CSS
-- ✅ **Multi-asset Support**: Assets, Bitcoin, Stocks portfolio management
-- ✅ **Compound Interest Projections**: Financial calculations
-- ✅ **PDF & JSON Export**: Download backups
+- `src/`: Aplicación Frontend React.
+    - `src/components/`: Componentes UI reutilizables (Card, Button, Modal, etc).
+    - `src/context/`: Gestión de estado de la aplicación.
+    - `src/utils/`: Funciones de formateo (DRY formatters).
+- `backend/`: API Backend en FastAPI.
+    - `models.py`: Modelos Pydantic.
+    - `services/gas_service.py`: Lógica de sincronización delegada con Google Apps Script.
+    - `main.py`: Rutas principales de la aplicación.
 
-## Getting Started
+## Instalación y Desarrollo
 
-### Environment Configuration
+### Prerrequisitos
+- Node.js o Bun (para el Frontend).
+- Python 3.12 (para el Backend).
+- URL de Google Apps Script configurado.
 
-Copy `.env.example` to `.env` and configure your environment variables:
+### Backend
 
 \`\`\`bash
-cp .env.example .env
+cd backend
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env  # Configurar GAS_URL
+uvicorn main:app --reload
 \`\`\`
 
-Then edit `.env` with your values:
-
-\`\`\`env
-# Google Apps Script URL for data synchronization
-VITE_GAS_URL=https://script.google.com/macros/s/YOUR_GAS_SCRIPT_ID/exec
-\`\`\`
-
-**Note**: Environment variables must be prefixed with `VITE_` to be exposed to the frontend in Vite.
-
-### Install Dependencies
+### Frontend
 
 \`\`\`bash
-npm install
+npm install # o bun install
+npm run dev # o bun run dev
 \`\`\`
 
-### Development Server
+## Guía de Despliegue con Docker
+
+Ejecuta los siguientes comandos para levantar tanto el frontend como el backend:
 
 \`\`\`bash
-npm run dev
+docker-compose up -d --build
 \`\`\`
 
-Open http://localhost:3000 in your browser.
+Esto expondrá la aplicación Frontend en el puerto definido y el Backend localmente para que la app se conecte.
 
-### Build for Production
-
-\`\`\`bash
-npm run build
-\`\`\`
-
-## Technology Stack
-
-- **Frontend**: React 18 + TypeScript
-- **Build Tool**: Vite
-- **Styling**: Tailwind CSS
-- **Charts**: Recharts
-- **Icons**: Lucide React
-- **PDF Export**: jsPDF
-- **Backend**: Google Apps Script
-
-## Architecture
-
-### State Management
-- **WealthContext**: Centralized global state management using React Context API
-- **Custom Hooks**: 
-  - `useROIMetrics`: Calculate ROI for each asset
-  - `useCumulativeReturn`: Track cumulative returns over time
-  - `useEvolutionData`: Build historical wealth evolution data
-- **localStorage**: Persistent storage with keys: `wm_assets_v4`, `wm_history_v4`, `wm_bitcoinTransactions_v4`, `wm_stockTransactions_v4`
-
-### Directory Structure
-```
-src/
-├── components/ui/          # Reusable UI components: Button, Card, Input, Modal, Select, MetricCard
-├── pages/                  # Page components: Dashboard, History, Assets, Bitcoin, Stocks, Projections, Statistics
-├── context/                # React Context: WealthContext with global state
-├── hooks/                  # Custom hooks for calculations
-├── services/               # External services: GAS sync, PDF/JSON export
-├── types/                  # TypeScript interfaces
-├── utils/                  # Utility functions: formatting, UUID generation
-├── App.tsx                 # Main app component with tab navigation
-└── main.tsx                # Application entry point
-```
-
-### Data Sync
-- **Primary**: localStorage for immediate persistence
-- **Secondary**: Google Apps Script (GAS) for cloud backup via `VITE_GAS_URL` environment variable
-- **Automatic**: Changes trigger `saveDataToGAS()` for real-time sync
-- **Configuration**: Set `VITE_GAS_URL` in `.env` file to enable cloud sync
-
-### Styling
-- **Framework**: Tailwind CSS v3 with custom theme
-- **Dark Mode**: Automatic via `.dark` class on root element
-- **Responsive**: Mobile-first design with responsive breakpoints (md, lg)
-- **Components**: Consistent border-radius (rounded-2xl, rounded-3xl), spacing, and color scheme
-
-## Tips & Best Practices
-
-1. **Adding Features**: New components go in `src/components/ui/`, pages in `src/pages/`
-2. **State Updates**: Always trigger through WealthContext functions for GAS sync
-3. **Calculations**: Use custom hooks (`useROIMetrics`, etc.) for shared logic
-4. **Styling**: Use Tailwind classes consistently; check `tailwind.config.js` for custom values
-5. **Type Safety**: Define types in `src/types/index.ts`, import where needed
-
-## Troubleshooting
-
-**Environment variables not loading?**
-- Ensure variables are prefixed with `VITE_` in `.env` file
-- Restart the development server after changing `.env`
-- Variables are read at build time, not runtime
-
-**Data not persisting?**
-- Check browser's localStorage (Dev Tools > Application > Storage)
-- Verify `VITE_GAS_URL` is correctly configured in `.env`
-- Check the browser console for sync errors
-
-**Build failing?**
-- Run `npm run build` to check for TypeScript errors
-- Ensure all imports use correct file paths
-- Verify `VITE_GAS_URL` is defined when building for production
-
-**Styles not applying?**
-- Verify class names follow Tailwind syntax
-- Check if dark mode is enabled in `App.tsx`
-
-## License
-
-MIT
+Para una guía más detallada de validaciones y de arquitectura extendida, revisa la configuración en el archivo \`docker-compose.yml\`.
