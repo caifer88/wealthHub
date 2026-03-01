@@ -116,12 +116,12 @@ export default function History() {
           ? {
               id: h.id,
               month: getCurrentMonth(),
-              assetId: entry.assetId,
-              participations: parseFloat(entry.participations) || asset?.participations || 0,
-              liquidNavValue: parseFloat(entry.liquidNavValue) || 0,
-              nav: parseFloat(entry.nav) || 0,
-              contribution: parseFloat(entry.contribution) || 0,
-              meanCost: parseFloat(entry.meanCost) || asset?.meanCost || 0
+              assetId: entry.assetId || '',
+              participations: parseFloat(entry.participations || '0') || asset?.participations || 0,
+              liquidNavValue: parseFloat(entry.liquidNavValue || '0') || 0,
+              nav: parseFloat(entry.nav || '0') || 0,
+              contribution: parseFloat(entry.contribution || '0') || 0,
+              meanCost: parseFloat(entry.meanCost || '0') || asset?.meanCost || 0
             }
           : h
       ))
@@ -132,12 +132,12 @@ export default function History() {
         return {
           id: generateUUID(),
           month: getCurrentMonth(),
-          assetId: entry.assetId,
-          participations: parseFloat(entry.participations) || asset?.participations || 0,
-          liquidNavValue: parseFloat(entry.liquidNavValue) || 0,
-          nav: parseFloat(entry.nav) || 0,
-          contribution: parseFloat(entry.contribution) || 0,
-          meanCost: parseFloat(entry.meanCost) || asset?.meanCost || 0
+          assetId: entry.assetId || '',
+          participations: parseFloat(entry.participations || '0') || asset?.participations || 0,
+          liquidNavValue: parseFloat(entry.liquidNavValue || '0') || 0,
+          nav: parseFloat(entry.nav || '0') || 0,
+          contribution: parseFloat(entry.contribution || '0') || 0,
+          meanCost: parseFloat(entry.meanCost || '0') || asset?.meanCost || 0
         }
       })
       

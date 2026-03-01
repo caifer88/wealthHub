@@ -22,6 +22,7 @@ from utils import (
 )
 from services.price_fetcher import PriceFetcher
 from services.fund_scraper import FundScraper
+from services.gas_service import load_assets_from_gas, persist_prices_to_gas, load_data_from_gas
 
 # Configure logging
 logging.basicConfig(
@@ -106,7 +107,7 @@ async def fetch_month_prices(
         logger.info(f"📅 Last business day: {format_date(last_business_day)}")
         
         # Load assets from GAS (required - no sample fallback)
-        assets = await _load_assets_from_gas()
+        assets = await load_assets_from_gas()
         if not assets:
             logger.error("❌ No assets loaded from GAS - GAS_URL may not be configured")
             return FetchMonthResponse(
@@ -136,7 +137,7 @@ async def fetch_month_prices(
         
         # Build broker_assets from stockTransactions grouped by broker
         # Load full data to get stockTransactions
-        full_data = await _load_data_from_gas()
+        full_data = await load_data_from_gas()
         logger.info(f"📥 Full data keys from GAS: {list(full_data.keys())}")
         
         stock_transactions = full_data.get("stockTransactions", [])
@@ -275,7 +276,7 @@ async def fetch_month_prices(
         
         # Only persist to GAS if we actually fetched prices
         if prices and settings.VITE_GAS_URL:
-            await _persist_prices_to_gas(prices, year, month, last_business_day)
+            await persist_prices_to_gas(prices, year, month, last_business_day)
         
         return FetchMonthResponse(
             success=len(prices) > 0,
@@ -317,7 +318,7 @@ async def update_prices(price_data: List[PriceData]):
         
         # Persist to GAS
         if settings.VITE_GAS_URL:
-            await _persist_prices_to_gas(price_data)
+            await persist_prices_to_gas(price_data)
         
         return {
             "success": True,
@@ -337,7 +338,7 @@ async def update_prices(price_data: List[PriceData]):
 async def get_assets():
     """Get list of all assets from GAS"""
     try:
-        assets = await _load_assets_from_gas()
+        assets = await load_assets_from_gas()
         return {
             "success": True,
             "assets": assets
@@ -348,118 +349,6 @@ async def get_assets():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error loading assets: {str(e)}"
         )
-
-
-# Helper functions
-
-async def _load_assets_from_gas() -> List[dict]:
-    """
-    Load assets from Google Apps Script.
-    No fallback to sample data - requires real assets from GAS.
-    """
-    if not settings.VITE_GAS_URL:
-        logger.error("❌ GAS_URL not configured - cannot load assets")
-        return []
-    
-    try:
-        response = requests.get(settings.VITE_GAS_URL, timeout=settings.TIMEOUT)
-        response.raise_for_status()
-        
-        data = response.json()
-        if data.get("success") and data.get("data"):
-            assets = data["data"].get("assets", [])
-            logger.info(f"✅ Loaded {len(assets)} assets from GAS")
-            return assets
-        else:
-            logger.error("❌ Invalid response from GAS")
-            return []
-            
-    except Exception as e:
-        logger.error(f"❌ Error loading from GAS: {str(e)}")
-        return []
-
-
-async def _persist_prices_to_gas(
-    prices: List[PriceData],
-    year: Optional[int] = None,
-    month: Optional[int] = None,
-    fetch_date: Optional[datetime] = None
-) -> bool:
-    """
-    Persist prices to Google Apps Script in data.json.
-    Updates existing entries or adds new ones.
-    """
-    if not settings.VITE_GAS_URL:
-        logger.warning("⚠️ GAS URL not configured, cannot persist prices")
-        return False
-    
-    try:
-        logger.info(f"📤 Persisting {len(prices)} prices to GAS")
-        
-        # Format prices for persistence
-        month_str = f"{year:04d}-{month:02d}" if year and month else datetime.now().strftime("%Y-%m")
-        
-        history_entries = []
-        for price in prices:
-            entry = {
-                "month": month_str,
-                "assetId": price.assetId,
-                "nav": price.price,
-                "contribution": price.price,  # Will be updated by frontend if needed
-                "source": price.source,
-                "date": price.fetchedAt
-            }
-            history_entries.append(entry)
-        
-        # Load current data from GAS
-        current_data = await _load_data_from_gas()
-        
-        # Merge with existing history
-        if current_data:
-            existing_history = current_data.get("history", [])
-            history_entries = merge_price_updates(existing_history, history_entries)
-        
-        # Prepare payload
-        payload = {
-            "action": "updateHistory",
-            "history": history_entries,
-            "timestamp": format_datetime_iso(datetime.now())
-        }
-        
-        # Send to GAS
-        response = requests.post(
-            settings.VITE_GAS_URL,
-            json=payload,
-            timeout=settings.TIMEOUT
-        )
-        response.raise_for_status()
-        
-        logger.info("✅ Prices persisted to GAS")
-        return True
-        
-    except Exception as e:
-        logger.error(f"❌ Error persisting prices to GAS: {str(e)}")
-        return False
-
-
-async def _load_data_from_gas() -> dict:
-    """Load full data structure from GAS"""
-    if not settings.VITE_GAS_URL:
-        return {}
-    
-    try:
-        response = requests.get(settings.VITE_GAS_URL, timeout=settings.TIMEOUT)
-        response.raise_for_status()
-        data = response.json()
-        return data.get("data", {}) if data.get("success") else {}
-    except Exception as e:
-        logger.error(f"Error loading data from GAS: {str(e)}")
-        return {}
-
-
-def _get_sample_assets() -> List[dict]:
-    """DEPRECATED: This function should not be used. Use real assets from GAS instead."""
-    return []
 
 
 if __name__ == "__main__":

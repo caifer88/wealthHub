@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react'
-import { Trash2, Edit3, Plus, Archive, ArchiveX, RefreshCw, ExternalLink } from 'lucide-react'
+import { Trash2, Edit3, Plus, Archive, ArchiveX, RefreshCw } from 'lucide-react'
 import { useWealth } from '../context/WealthContext'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
@@ -9,14 +9,14 @@ import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { formatCurrency, generateUUID } from '../utils'
 import { config } from '../config'
-import type { Asset, FetchMonthResponse, PriceData } from '../types'
+import type { Asset, FetchMonthResponse } from '../types'
 
 export default function Assets() {
   const { assets, setAssets, history, setHistory, saveDataToGAS } = useWealth()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null)
-  const [sortColumn, setSortColumn] = useState<'name' | 'category' | 'value' | 'percentage'>('name')
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+  const [sortColumn] = useState<'name' | 'category' | 'value' | 'percentage'>('name')
+  const [sortDirection] = useState<'asc' | 'desc'>('asc')
   const [showArchived, setShowArchived] = useState(false)
   const [isFetchingPrices, setIsFetchingPrices] = useState(false)
   const [fetchMessage, setFetchMessage] = useState('')
@@ -443,11 +443,6 @@ export default function Assets() {
           </div>
         ) : (
           sortedAssetValues.map(asset => {
-            const assetHistory = history.filter(h => h.assetId === asset.id).sort((a, b) => 
-              new Date(b.month).getTime() - new Date(a.month).getTime()
-            )
-            const lastEntry = assetHistory[0]
-            
             const participations = asset.participations || 0
             const meanCost = asset.meanCost || 0
             const invested = participations * meanCost

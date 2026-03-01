@@ -6,7 +6,6 @@ import { config } from '../config'
 // Data validation functions
 const sanitizeBitcoinTransactions = (txs: any[]): BitcoinTransaction[] => {
   if (!Array.isArray(txs)) return []
-  console.log(`📊 Procesando ${txs.length} transacciones de Bitcoin`)
   return txs.map((tx: any) => {
     let txType: 'buy' | 'sell' = 'buy'
     if (tx.type === 'Compra' || tx.type === 'buy') {
@@ -243,11 +242,6 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const result = await response.json()
 
         if (result.success && result.data && result.data.assets) {
-          console.log('✅ Datos cargados desde GAS exitosamente')
-          console.log(`📊 Assets: ${result.data.assets?.length || 0}`)
-          console.log(`📊 Historico: ${result.data.history?.length || 0}`)
-          console.log(`📊 Bitcoin Tx: ${result.data.bitcoinTransactions?.length || 0}`)
-          console.log(`📊 Stock Tx: ${result.data.stockTransactions?.length || 0}`)
           
           // Normalizar datos de Bitcoin si es necesario
           let bitcoinTxs = result.data.bitcoinTransactions || []
@@ -269,7 +263,6 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               meanPrice: parseFloat(tx.meanPrice) || 0
             } as BitcoinTransaction
           })
-          console.log(`✅ Bitcoin Tx procesadas: ${bitcoinTxs.length}, con valores válidos: ${bitcoinTxs.filter((t: BitcoinTransaction) => t.amountBTC > 0).length}`)
           
           // Normalizar datos de Stocks si es necesario
           let stockTxs = result.data.stockTransactions || []
@@ -291,7 +284,6 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               totalAmount: parseFloat(tx.totalAmount) || 0
             } as StockTransaction
           })
-          console.log(`✅ Stock Tx procesadas: ${stockTxs.length}`)
           
           setAssets(result.data.assets)
           setHistory(result.data.history || [])
@@ -302,7 +294,6 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       } catch (error) {
         // GAS falló, intentar localStorage
-        console.log('⚠️ GAS no disponible, intentando localStorage:', error)
       }
 
       // Fallback a localStorage
@@ -312,7 +303,6 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const localStocks = JSON.parse(localStorage.getItem('wm_stockTransactions_v4') || '[]')
 
       if (localAssets.length > 0) {
-        console.log('✅ Datos cargados desde localStorage')
         setAssets(localAssets)
         setHistory(localHistory)
         setBitcoinTransactions(sanitizeBitcoinTransactions(localBitcoin))
@@ -322,7 +312,6 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       // Si no hay datos en ningún lado, usar datos de muestra
-      console.log('ℹ️ Usando datos de muestra')
       setAssets(SAMPLE_DATA.assets)
       setHistory(SAMPLE_DATA.history)
       setBitcoinTransactions(SAMPLE_DATA.bitcoinTransactions)
@@ -447,7 +436,6 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         lastUpdated: new Date().toISOString()
       }
 
-      console.log('📤 Sincronizando datos con GAS...')
       await fetch(config.gasUrl, {
         method: 'POST',
         mode: 'no-cors',
@@ -457,7 +445,6 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         body: JSON.stringify(dataToSend)
       })
 
-      console.log('✅ Datos enviados a GAS (sincronización completada)')
       setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }))
     } catch (error) {
       console.error('❌ Error sincronizando con GAS:', error)
