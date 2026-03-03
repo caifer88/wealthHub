@@ -1,13 +1,13 @@
-import { useState } from 'react'
+import { useState, Suspense, lazy } from 'react'
 import { Moon, Sun, Menu, X } from 'lucide-react'
 import { useWealth } from './context/WealthContext'
-import Dashboard from './pages/Dashboard'
-import History from './pages/History'
-import Assets from './pages/Assets'
-import Bitcoin from './pages/Bitcoin'
-import Stocks from './pages/Stocks'
-import Projections from './pages/Projections'
-import Statistics from './pages/Statistics'
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const History = lazy(() => import('./pages/History'))
+const Assets = lazy(() => import('./pages/Assets'))
+const Bitcoin = lazy(() => import('./pages/Bitcoin'))
+const Stocks = lazy(() => import('./pages/Stocks'))
+const Projections = lazy(() => import('./pages/Projections'))
+const Statistics = lazy(() => import('./pages/Statistics'))
 
 type TabType = 'dashboard' | 'history' | 'assets' | 'bitcoin' | 'stocks' | 'proyecciones' | 'estadisticas'
 
@@ -102,7 +102,9 @@ export default function App() {
 
           {/* Main content */}
           <main className="flex-1 p-4 md:p-6 max-w-7xl mx-auto w-full">
-            {renderContent()}
+            <Suspense fallback={<div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>}>
+              {renderContent()}
+            </Suspense>
           </main>
         </div>
       </div>

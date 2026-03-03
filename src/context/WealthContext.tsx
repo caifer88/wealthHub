@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react'
+import useSWR from 'swr'
 import { Asset, HistoryEntry, BitcoinTransaction, StockTransaction, SyncState, Metrics } from '../types'
 import { generateUUID } from '../utils'
 import { config } from '../config'
@@ -26,7 +27,8 @@ const sanitizeBitcoinTransactions = (txs: any[]): BitcoinTransaction[] => {
   })
 }
 
-const sanitizeStockTransactions = (txs: any[]): StockTransaction[] => {
+// // @ts-ignore
+export const sanitizeStockTransactions = (txs: any[]): StockTransaction[] => {
   if (!Array.isArray(txs)) return []
   return txs.map((tx: any) => {
     let txType: 'buy' | 'sell' = 'buy'
@@ -239,6 +241,16 @@ interface WealthContextType {
 
 const WealthContext = createContext<WealthContextType | undefined>(undefined)
 
+
+const gasFetcher = async (url: string) => {
+  const res = await fetch(url)
+  const result = await res.json()
+  if (!result.success || !result.data) {
+    throw new Error('Failed to load data from GAS')
+  }
+  return result.data
+}
+
 export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [assets, setAssets] = useState<Asset[]>([])
   const [history, setHistory] = useState<HistoryEntry[]>([])
@@ -253,99 +265,65 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [metrics, setMetrics] = useState<Metrics | null>(null)
   const isFirstRender = useRef(true)
 
-  // Cargar datos iniciales desde GAS o localStorage
+  // SWR para data fetching automático
+  const { data: gasData, error: gasError, mutate: mutateGasData, isValidating } = useSWR(config.gasUrl, gasFetcher, {
+    revalidateOnFocus: true,
+    revalidateOnReconnect: true,
+    dedupingInterval: 60000, // 1 minute
+  })
+
+  // Sincronizar estado isSyncing de SWR
   useEffect(() => {
-    if(!isFirstRender.current) return
-    isFirstRender.current = false
-    
-    const initializeData = async () => {
-      try {
-        // Intentar cargar desde GAS
-        setSyncState(prev => ({ ...prev, isSyncing: true }))
-        const response = await fetch(config.gasUrl)
-        const result = await response.json()
+    setSyncState(prev => ({ ...prev, isSyncing: isValidating }))
+  }, [isValidating])
 
-        if (result.success && result.data && result.data.assets) {
-          
-          // Normalizar datos de Bitcoin si es necesario
-          let bitcoinTxs = result.data.bitcoinTransactions || []
-          bitcoinTxs = bitcoinTxs.map((tx: any) => {
-            let txType: 'buy' | 'sell' = 'buy'
-            if (tx.type === 'Compra' || tx.type === 'buy') {
-              txType = 'buy'
-            } else if (tx.type === 'Venta' || tx.type === 'sell') {
-              txType = 'sell'
-            }
-            const amountBTC = parseFloat(tx.amountBTC) || 0
-            return {
-              id: tx.id,
-              date: tx.date,
-              type: txType,
-              amount: parseFloat(tx.amount) || parseFloat(tx.totalCost) || 0,
-              amountBTC: amountBTC,
-              totalCost: parseFloat(tx.totalCost) || parseFloat(tx.amount) || 0,
-              meanPrice: parseFloat(tx.meanPrice) || 0
-            } as BitcoinTransaction
-          })
-          
-          // Normalizar datos de Stocks si es necesario
-          let stockTxs = result.data.stockTransactions || []
-          stockTxs = stockTxs.map((tx: any) => {
-            let txType: 'buy' | 'sell' = 'buy'
-            if (tx.type === 'Compra' || tx.type === 'buy') {
-              txType = 'buy'
-            } else if (tx.type === 'Venta' || tx.type === 'sell') {
-              txType = 'sell'
-            }
-            return {
-              id: tx.id,
-              ticker: tx.ticker || '',
-              date: tx.date || new Date().toISOString().split('T')[0],
-              type: txType,
-              shares: parseFloat(tx.shares) || 0,
-              pricePerShare: parseFloat(tx.pricePerShare) || 0,
-              fees: parseFloat(tx.fees) || 0,
-              totalAmount: parseFloat(tx.totalAmount) || 0,
-              broker: tx.broker || undefined
-            } as StockTransaction
-          })
-          
-          setAssets(result.data.assets)
-          setHistory(result.data.history || [])
-          setBitcoinTransactions(bitcoinTxs)
-          setStockTransactions(stockTxs)
-          setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }))
-          return
-        }
-      } catch (error) {
-        // GAS falló, intentar localStorage
-      }
+  // Sincronizar Context con los datos de SWR (cada vez que SWR tenga nuevos datos validados)
+  useEffect(() => {
+    // Si tenemos nueva data de SWR, actualizamos el estado independientemente del primer render
+    if (gasData && gasData.assets) {
+        isFirstRender.current = false // Marcamos que ya pasó el primer render para otros efectos si hace falta
 
-      // Fallback a localStorage
-      const localAssets = JSON.parse(localStorage.getItem('wm_assets_v4') || '[]')
-      const localHistory = JSON.parse(localStorage.getItem('wm_history_v4') || '[]')
-      const localBitcoin = JSON.parse(localStorage.getItem('wm_bitcoinTransactions_v4') || '[]')
-      const localStocks = JSON.parse(localStorage.getItem('wm_stockTransactions_v4') || '[]')
+        // Usamos la misma lógica de normalización / validación que había
+        let bitcoinTxs = gasData.bitcoinTransactions || []
+        bitcoinTxs = sanitizeBitcoinTransactions(bitcoinTxs)
 
-      if (localAssets.length > 0) {
-        setAssets(localAssets)
-        setHistory(localHistory)
-        setBitcoinTransactions(sanitizeBitcoinTransactions(localBitcoin))
-        setStockTransactions(localStocks)
+        let stockTxs = gasData.stockTransactions || []
+        stockTxs = sanitizeStockTransactions(stockTxs)
+
+        setAssets(gasData.assets)
+        setHistory(gasData.history || [])
+        setBitcoinTransactions(bitcoinTxs)
+        setStockTransactions(stockTxs)
         setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }))
         return
-      }
-
-      // Si no hay datos en ningún lado, usar datos de muestra
-      setAssets(SAMPLE_DATA.assets)
-      setHistory(SAMPLE_DATA.history)
-      setBitcoinTransactions(SAMPLE_DATA.bitcoinTransactions)
-      setStockTransactions(SAMPLE_DATA.stockTransactions)
-      setSyncState(prev => ({ ...prev, syncError: 'Usando datos de muestra' }))
     }
 
-    initializeData()
-  }, [])
+    // Solo caer en fallback si hay error y es el primer render para no sobreescribir datos en cache local tras un fallo temporal
+    if (gasError && isFirstRender.current) {
+        isFirstRender.current = false
+        // Fallback a localStorage
+        const localAssets = JSON.parse(localStorage.getItem('wm_assets_v4') || '[]')
+        const localHistory = JSON.parse(localStorage.getItem('wm_history_v4') || '[]')
+        const localBitcoin = JSON.parse(localStorage.getItem('wm_bitcoinTransactions_v4') || '[]')
+        const localStocks = JSON.parse(localStorage.getItem('wm_stockTransactions_v4') || '[]')
+
+        if (localAssets.length > 0) {
+            setAssets(localAssets)
+            setHistory(localHistory)
+            setBitcoinTransactions(sanitizeBitcoinTransactions(localBitcoin))
+            setStockTransactions(sanitizeStockTransactions(localStocks))
+            setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }))
+            return
+        }
+
+        // Si no hay datos en ningún lado, usar datos de muestra
+        setAssets(SAMPLE_DATA.assets)
+        setHistory(SAMPLE_DATA.history)
+        setBitcoinTransactions(SAMPLE_DATA.bitcoinTransactions)
+        setStockTransactions(SAMPLE_DATA.stockTransactions)
+        setSyncState(prev => ({ ...prev, syncError: 'Usando datos de muestra' }))
+    }
+  }, [gasData, gasError])
 
   // Guardar en localStorage y sincronizar con GAS
   useEffect(() => {
@@ -418,29 +396,9 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [assets, history])
 
   const loadDataFromGAS = useCallback(async () => {
-    try {
-      const response = await fetch(config.gasUrl)
-      const result = await response.json()
-
-      if (result.success && result.data) {
-        setAssets(result.data.assets || [])
-        setHistory(result.data.history || [])
-        setBitcoinTransactions(sanitizeBitcoinTransactions(result.data.bitcoinTransactions || []))
-        setStockTransactions(sanitizeStockTransactions(result.data.stockTransactions || []))
-        setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }))
-      }
-    } catch (error) {
-      // Fallback a localStorage
-      const localAssets = JSON.parse(localStorage.getItem('wm_assets_v4') || '[]')
-      if (localAssets.length > 0) {
-        setAssets(localAssets)
-        setHistory(JSON.parse(localStorage.getItem('wm_history_v4') || '[]'))
-        setBitcoinTransactions(sanitizeBitcoinTransactions(JSON.parse(localStorage.getItem('wm_bitcoinTransactions_v4') || '[]')))
-        setStockTransactions(sanitizeStockTransactions(JSON.parse(localStorage.getItem('wm_stockTransactions_v4') || '[]')))
-        setSyncState(prev => ({ ...prev, syncError: 'Usando datos locales' }))
-      }
-    }
-  }, [])
+    // SWR mutate triggers a re-fetch and updates hook state automatically
+    mutateGasData()
+  }, [mutateGasData])
 
   const saveDataToGAS = useCallback(async (
     assetsToSave: Asset[],

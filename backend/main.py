@@ -4,6 +4,7 @@ Main FastAPI application with endpoints for fetching asset prices
 """
 
 import logging
+import asyncio
 from datetime import datetime
 from typing import List, Optional
 from fastapi import FastAPI, Query, HTTPException, status
@@ -204,60 +205,83 @@ async def fetch_month_prices(
         
         logger.info(f"🔍 Found: {len(crypto_assets)} crypto, {len(fund_assets)} funds, {len(broker_assets)} broker assets")
         
-        # Fetch Bitcoin price
-        if crypto_assets:
-            btc_asset = crypto_assets[0]  # Get the first BTC asset
-            btc_data = PriceFetcher.fetch_bitcoin_price(
-                date=last_business_day,
-                asset_id=btc_asset["id"],
-                asset_name=btc_asset["name"]
-            )
-            if btc_data:
-                prices.append(btc_data)
-            else:
-                errors.append("Failed to fetch Bitcoin price")
+        # --- CONCURRENT FETCHING ---
+        tasks = []
         
-        # Fetch fund prices
+        # 1. Bitcoin Task
+        def fetch_btc():
+            if crypto_assets:
+                btc_asset = crypto_assets[0]
+                return ("btc", PriceFetcher.fetch_bitcoin_price(
+                    date=last_business_day,
+                    asset_id=btc_asset["id"],
+                    asset_name=btc_asset["name"]
+                ))
+            return ("btc", None)
+
+        if crypto_assets:
+            tasks.append(asyncio.to_thread(fetch_btc))
+
+        # 2. Fund Tasks
+        def make_fund_fetcher(fund):
+            def fetch():
+                return ("fund", fund, FundScraper.fetch_fund_price(
+                    isin=fund["isin"],
+                    asset_name=fund["name"],
+                    asset_id=fund["id"]
+                ))
+            return fetch
+
         for fund in fund_assets:
             if not fund.get("isin"):
                 logger.warning(f"Fund {fund.get('name')} has no ISIN")
                 continue
-            
-            price_data = FundScraper.fetch_fund_price(
-                isin=fund["isin"],
-                asset_name=fund["name"],
-                asset_id=fund["id"]
-            )
-            
-            if price_data:
-                prices.append(price_data)
-            else:
-                errors.append(f"Failed to fetch price for {fund.get('name')} ({fund.get('isin')})")
+            tasks.append(asyncio.to_thread(make_fund_fetcher(fund)))
 
-        
-        # Fetch broker/composite asset prices (multiple component tickers)
+        # 3. Broker/Stock Tasks
+        def make_broker_fetcher(broker):
+            def fetch():
+                component_tickers = broker.get("componentTickers", [])
+                if not component_tickers:
+                    return ("broker", broker, [])
+
+                logger.info(f"📦 Fetching component tickers for {broker.get('name')}: {component_tickers}")
+                tickers_map = {
+                    ticker: (f"{broker.get('name')} - {ticker}", broker["id"])
+                    for ticker in component_tickers
+                }
+                return ("broker", broker, PriceFetcher.fetch_multiple_stocks(tickers_map, last_business_day))
+            return fetch
+
         for broker in broker_assets:
-            component_tickers = broker.get("componentTickers", [])
-            if not component_tickers:
-                logger.warning(f"Broker {broker.get('name')} has no component tickers")
-                continue
-            
-            logger.info(f"📦 Fetching component tickers for {broker.get('name')}: {component_tickers}")
-            
-            # Create tickers map for broker components
-            tickers_map = {
-                ticker: (f"{broker.get('name')} - {ticker}", broker["id"])
-                for ticker in component_tickers
-            }
-            
-            broker_prices = PriceFetcher.fetch_multiple_stocks(tickers_map, last_business_day)
-            prices.extend(broker_prices)
-            
-            # Log missing component tickers
-            fetched_tickers = {p.ticker for p in broker_prices if p.ticker}
-            missing = set(component_tickers) - fetched_tickers
-            if missing:
-                errors.extend([f"Failed to fetch {broker.get('name')} component {t}" for t in missing])
+            if broker.get("componentTickers"):
+                tasks.append(asyncio.to_thread(make_broker_fetcher(broker)))
+
+        # Run all tasks concurrently
+        results = await asyncio.gather(*tasks)
+
+        # Process results
+        for result in results:
+            type_ = result[0]
+            if type_ == "btc":
+                btc_data = result[1]
+                if btc_data:
+                    prices.append(btc_data)
+                else:
+                    errors.append("Failed to fetch Bitcoin price")
+            elif type_ == "fund":
+                _, fund, price_data = result
+                if price_data:
+                    prices.append(price_data)
+                else:
+                    errors.append(f"Failed to fetch price for {fund.get('name')} ({fund.get('isin')})")
+            elif type_ == "broker":
+                _, broker, broker_prices = result
+                prices.extend(broker_prices)
+                fetched_tickers = {p.ticker for p in broker_prices if p.ticker}
+                missing = set(broker.get("componentTickers", [])) - fetched_tickers
+                if missing:
+                    errors.extend([f"Failed to fetch {broker.get('name')} component {t}" for t in missing])
         
         logger.info(f"✅ Fetched {len(prices)} prices successfully")
         

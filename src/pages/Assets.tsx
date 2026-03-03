@@ -8,8 +8,8 @@ import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { formatCurrency, generateUUID, calculateMeanCost, calculateTotalInvested, getCurrentParticipations, formatCurrencyDecimals } from '../utils'
-import { config } from '../config'
-import type { Asset, FetchMonthResponse } from '../types'
+import { fetchAndUpdatePrices } from '../services/priceUpdater'
+import type { Asset } from '../types'
 
 export default function Assets() {
   const { assets, setAssets, history, setHistory, stockTransactions, saveDataToGAS } = useWealth()
@@ -211,186 +211,20 @@ export default function Assets() {
       setIsFetchingPrices(true)
       setFetchMessage('Obteniendo precios...')
 
-      // Get current month and year
-      const now = new Date()
-      const year = now.getFullYear()
-      const month = now.getMonth() + 1
-
-      console.log(`🔄 Iniciando actualización de NAVs para ${year}-${String(month).padStart(2, '0')}`)
-
-      // Call backend API
-      const response = await fetch(
-        `${config.backendUrl}/fetch-month?year=${year}&month=${month}`
-      )
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error(`Error HTTP ${response.status}:`, errorText)
-        throw new Error(`Error HTTP ${response.status}: ${errorText || 'Sin detalles disponibles'}`)
-      }
-
-      const result: FetchMonthResponse = await response.json()
-      console.log('Respuesta del servidor:', result)
-
+      const result = await fetchAndUpdatePrices(assets, history, stockTransactions)
+      
       if (result.success) {
-        // Convert prices to history entries
-        const monthStr = `${year}-${String(month).padStart(2, '0')}`
-        const priceMap = new Map(result.prices.map((p: any) => [p.assetId, p]))
-        
-        // Procesar todos los activos activos
-        const newHistoryEntries = assets
-          .filter(asset => !asset.archived)
-          .map((asset) => {
-            const price = priceMap.get(asset.id)
-            const participations = asset.participations || 0
-            
-            // Obtener la entrada existente para este mes
-            const existingEntry = history.find(h => h.month === monthStr && h.assetId === asset.id)
-            
-            // Para Cash, obtener la entrada más reciente (cualquier mes)
-            const lastCashEntry = asset.name === 'Cash' 
-              ? history.filter(h => h.assetId === asset.id).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
-              : null
-            
-            // Si tiene precio nuevo del backend, usar ese; si no, usar el anterior
-            let liquidNavValue: number
-            if (price && price.price !== undefined && price.price !== null) {
-              liquidNavValue = price.price
-            } else if (existingEntry) {
-              // Si no hay precio nuevo pero existe entrada anterior en el mismo mes, mantener el liquidNavValue
-              liquidNavValue = existingEntry.liquidNavValue
-            } else if (asset.name === 'Cash' && lastCashEntry) {
-              // Para Cash, mantener el último valor conocido
-              liquidNavValue = lastCashEntry.liquidNavValue
-            } else {
-              // Si no hay ni precio ni entrada anterior, usar 0
-              liquidNavValue = 0
-            }
-            
-            // Para Cash, el nav es directamente el liquidNavValue (no participations * liquidNavValue)
-            const nav = asset.name === 'Cash' ? liquidNavValue : (participations * liquidNavValue)
-            const contribution = existingEntry ? existingEntry.contribution : 0
-            
-            return {
-              id: existingEntry?.id || generateUUID(),
-              month: monthStr,
-              assetId: asset.id,
-              participations: participations,
-              liquidNavValue: liquidNavValue,
-              nav: nav,
-              contribution: contribution,
-              meanCost: asset.meanCost || 0
-            }
-          })
-
-        // Build detailed message with updated assets info
-        const successLines: string[] = []
-        const sourceGroups: { [key: string]: string[] } = {}
-        
-        // Update history (merge with existing)
-        const updatedHistory = [...history]
-        for (const newEntry of newHistoryEntries) {
-          // Find the asset to get its name, ticker, isin
-          const asset = assets.find(a => a.id === newEntry.assetId)
-          
-          // Check if entry for this month/asset already exists to get old value
-          const existingIndex = updatedHistory.findIndex(
-            h => h.month === newEntry.month && h.assetId === newEntry.assetId
-          )
-          
-          let oldValue = existingIndex >= 0 ? updatedHistory[existingIndex].nav : 0
-          let isUpdate = existingIndex >= 0
-          
-          if (existingIndex >= 0) {
-            // Update existing
-            updatedHistory[existingIndex] = newEntry
-          } else {
-            // Add new
-            updatedHistory.push(newEntry)
-          }
-
-          // Build detail string for this asset
-          if (asset) {
-            const identifier = asset.ticker || asset.isin || asset.name
-            const priceData = result.prices.find(p => p.assetId === newEntry.assetId)
-            const source = priceData?.source || 'unknown'
-            const sourceLabel = {
-              'yfinance': '📈 Yahoo Finance',
-              'binance_api': '🔗 Binance API',
-              'ft_markets': '📰 FT Markets',
-              'user_input': '📝 Manual',
-              'fund_scraper': '🔍 Web Scraper',
-              'morningstar': '⭐ Morningstar'
-            }[source] || source
-            
-            const changeInfo = isUpdate 
-              ? `${formatCurrencyDecimals(oldValue, 2)} → ${formatCurrencyDecimals(newEntry.nav, 2)}`
-              : `Nuevo: ${formatCurrencyDecimals(newEntry.nav, 2)}`
-            
-            const line = `${asset.name} (${identifier})\n    Participaciones: ${newEntry.participations}\n    Liquidativo: ${formatCurrencyDecimals(newEntry.liquidNavValue, 2)}\n    NAV: ${formatCurrencyDecimals(newEntry.nav, 2)}\n    Cambio: ${changeInfo}\n    Fuente: ${sourceLabel}`
-            successLines.push(line)
-            
-            // Group by source for summary
-            if (!sourceGroups[sourceLabel]) {
-              sourceGroups[sourceLabel] = []
-            }
-            sourceGroups[sourceLabel].push(asset.name)
-            
-            console.log(`✅ ${asset.name}: ${changeInfo} (${sourceLabel})`)
-          }
-        }
-
-        setHistory(updatedHistory)
-        let message = `✅ ACTUALIZACIÓN COMPLETADA\n`
-        message += `╔════════════════════════════════════════╗\n`
-        message += `║  Fecha: ${result.lastBusinessDay}                     ║\n`
-        message += `║  Activos: ${result.prices.length}                              ║\n`
-        message += `╚════════════════════════════════════════╝\n\n`
-        
-        message += `DETALLES POR ACTIVO:\n`
-        message += `───────────────────────────────────────\n\n`
-        message += successLines.join('\n\n')
-        
-        // Add summary by source
-        message += `\n\n───────────────────────────────────────\n`
-        message += `RESUMEN POR FUENTE:\n\n`
-        Object.entries(sourceGroups).forEach(([source, assetList]) => {
-          message += `${source}: ${assetList.join(', ')}\n`
-        })
-        
-        if (result.errors && result.errors.length > 0) {
-          message += `\n───────────────────────────────────────\n`
-          message += `⚠️ ADVERTENCIAS:\n\n`
-          result.errors.forEach(error => {
-            message += `• ${error}\n`
-          })
-          console.warn('Errores en la actualización:', result.errors)
-        }
-        
-        console.log(`✅ Actualización completada: ${result.prices.length} activos procesados`)
-        setFetchMessage(message)
+        setHistory(result.updatedHistory)
+        setFetchMessage(result.message)
+        console.log(`✅ Actualización completada`)
       } else {
-        // Show what specifically failed
-        let errorMsg = result.message || 'No se obtuvieron precios'
-        if (result.errors && result.errors.length > 0) {
-          errorMsg += `\n\nDETALLES DE ERRORES:\n`
-          result.errors.forEach(e => {
-            errorMsg += `• ${e}\n`
-          })
-          console.error('Errores del servidor:', result.errors)
-        }
-        console.error('Actualización fallida:', errorMsg)
-        setFetchMessage(`❌ ERROR EN LA ACTUALIZACIÓN\n╔════════════════════════════════════════╗\n\n${errorMsg}\n\n╚════════════════════════════════════════╝`)
+        setFetchMessage(`❌ ERROR EN LA ACTUALIZACIÓN\n╔════════════════════════════════════════╗\n\n${result.message}\n\n╚════════════════════════════════════════╝`)
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Error desconocido'
-      console.error('Error fetching prices:', {
-        error: errorMessage,
-        backendUrl: config.backendUrl,
-        timestamp: new Date().toISOString()
-      })
+      console.error('Error fetching prices:', errorMessage)
       setFetchMessage(
-        `❌ ERROR DE CONEXIÓN\n╔════════════════════════════════════════╗\n\nNo se pudo conectar al backend\n\nServidor: ${config.backendUrl}\nError: ${errorMessage}\n\n╚════════════════════════════════════════╝`
+        `❌ ERROR\n╔════════════════════════════════════════╗\n\n${errorMessage}\n\n╚════════════════════════════════════════╝`
       )
     } finally {
       setIsFetchingPrices(false)
