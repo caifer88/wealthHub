@@ -1,6 +1,7 @@
 import { Asset, HistoryEntry, BitcoinTransaction, StockTransaction } from '../types'
 import { jsPDF } from 'jspdf'
 import { config } from '../config'
+export { fetchAndUpdatePrices } from './priceUpdater'
 
 export const gasService = {
   async saveData(

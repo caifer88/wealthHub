@@ -7,11 +7,11 @@ import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { formatCurrency, generateUUID, isCurrentMonth, getCurrentMonth, formatCurrencyDecimals } from '../utils'
-import { config } from '../config'
+import { fetchAndUpdatePrices } from '../services/priceUpdater'
 import type { HistoryEntry } from '../types'
 
 export default function History() {
-  const { assets, history, setHistory } = useWealth()
+  const { assets, history, setHistory, stockTransactions } = useWealth()
   const [selectedYear, setSelectedYear] = useState<string | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingEntry, setEditingEntry] = useState<HistoryEntry | null>(null)
@@ -44,13 +44,40 @@ export default function History() {
   // Obtiene los activos del mes anterior con NAV > 0
   const getPreviousMonthAssets = () => {
     const prevMonth = getPreviousMonth()
-    return history
-      .filter(entry => entry.month === prevMonth && entry.nav > 0)
-      .map(entry => ({
-        assetId: entry.assetId,
-        nav: entry.nav.toString(),
-        contribution: '0'
-      }))
+    return assets
+      .filter(asset => !asset.archived)
+      .map(asset => {
+        // Buscar entrada en el mes anterior
+        const prevEntry = history.find(h => h.month === prevMonth && h.assetId === asset.id)
+        
+        if (prevEntry) {
+          // Validar que los valores sean válidos (no NaN, no null, > 0)
+          const nav = (prevEntry.nav && !isNaN(prevEntry.nav) && prevEntry.nav > 0) ? prevEntry.nav : 0
+          const contribution = (prevEntry.contribution && !isNaN(prevEntry.contribution)) ? prevEntry.contribution : 0
+          const liquidNavValue = (prevEntry.liquidNavValue && !isNaN(prevEntry.liquidNavValue) && prevEntry.liquidNavValue > 0) ? prevEntry.liquidNavValue : 0
+          const participations = (prevEntry.participations && !isNaN(prevEntry.participations)) ? prevEntry.participations : 0
+          
+          return {
+            assetId: asset.id,
+            nav: nav > 0 ? nav.toString() : '0',
+            contribution: contribution.toString(),
+            liquidNavValue: liquidNavValue > 0 ? liquidNavValue.toString() : '',
+            participations: participations > 0 ? participations.toString() : '',
+            meanCost: (prevEntry.meanCost && !isNaN(prevEntry.meanCost)) ? prevEntry.meanCost.toString() : ''
+          }
+        } else {
+          // Si no hay entrada previa, retornar vacío
+          return {
+            assetId: asset.id,
+            nav: '0',
+            contribution: '0',
+            liquidNavValue: '',
+            participations: '',
+            meanCost: ''
+          }
+        }
+      })
+      .filter(entry => entry.nav !== '0') // Solo retornar los que tienen NAV > 0
   }
 
   // Group history by year
@@ -83,13 +110,20 @@ export default function History() {
     
     if (entry) {
       setEditingEntry(entry)
+      // Validar que los valores no sean NaN
+      const nav = (entry.nav && !isNaN(entry.nav)) ? entry.nav : 0
+      const contribution = (entry.contribution && !isNaN(entry.contribution)) ? entry.contribution : 0
+      const participations = (entry.participations && !isNaN(entry.participations)) ? entry.participations : 0
+      const liquidNavValue = (entry.liquidNavValue && !isNaN(entry.liquidNavValue)) ? entry.liquidNavValue : 0
+      const meanCost = (entry.meanCost && !isNaN(entry.meanCost)) ? entry.meanCost : 0
+      
       setEntries([{
         assetId: entry.assetId,
-        nav: entry.nav.toString(),
-        contribution: entry.contribution.toString(),
-        participations: entry.participations?.toString() || '',
-        liquidNavValue: entry.liquidNavValue?.toString() || '',
-        meanCost: entry.meanCost?.toString() || ''
+        nav: nav > 0 ? nav.toString() : '',
+        contribution: contribution > 0 ? contribution.toString() : '',
+        participations: participations > 0 ? participations.toString() : '',
+        liquidNavValue: liquidNavValue > 0 ? liquidNavValue.toString() : '',
+        meanCost: meanCost > 0 ? meanCost.toString() : ''
       }])
     } else {
       setEditingEntry(null)
@@ -110,21 +144,30 @@ export default function History() {
       return
     }
     
+    const currentMonth = getCurrentMonth()
+    
     if (editingEntry) {
       // Editar - solo debe haber una entrada
       const entry = validEntries[0]
       const asset = assets.find(a => a.id === entry.assetId)
+      const nav = parseFloat(entry.nav || '0') || 0
+      const liquidNavValue = parseFloat(entry.liquidNavValue || '0') || 0
+      const participations = parseFloat(entry.participations || '0') || asset?.participations || 0
+      const contribution = parseFloat(entry.contribution || '0') || 0
+      const meanCost = parseFloat(entry.meanCost || '0') || asset?.meanCost || 0
+      
+      // Validar y limpiar valores NaN
       setHistory(history.map(h =>
         h.id === editingEntry.id
           ? {
               id: h.id,
-              month: getCurrentMonth(),
+              month: currentMonth,
               assetId: entry.assetId || '',
-              participations: parseFloat(entry.participations || '0') || asset?.participations || 0,
-              liquidNavValue: parseFloat(entry.liquidNavValue || '0') || 0,
-              nav: parseFloat(entry.nav || '0') || 0,
-              contribution: parseFloat(entry.contribution || '0') || 0,
-              meanCost: parseFloat(entry.meanCost || '0') || asset?.meanCost || 0
+              participations: !isNaN(participations) ? participations : 0,
+              liquidNavValue: !isNaN(liquidNavValue) ? liquidNavValue : 0,
+              nav: !isNaN(nav) ? nav : 0,
+              contribution: !isNaN(contribution) ? contribution : 0,
+              meanCost: !isNaN(meanCost) ? meanCost : 0
             }
           : h
       ))
@@ -132,22 +175,51 @@ export default function History() {
       // Crear nuevas entradas
       const newEntries = validEntries.map(entry => {
         const asset = assets.find(a => a.id === entry.assetId)
+        
+        // Parsear y validar valores
+        const nav = parseFloat(entry.nav || '0') || 0
+        const liquidNavValue = parseFloat(entry.liquidNavValue || '0') || 0
+        const participations = parseFloat(entry.participations || '0') || asset?.participations || 0
+        const contribution = parseFloat(entry.contribution || '0') || 0
+        const meanCost = parseFloat(entry.meanCost || '0') || asset?.meanCost || 0
+        
+        // Si no hay liquidNavValue pero hay una entrada anterior, usar la anterior
+        let finalLiquidNavValue = liquidNavValue
+        if (finalLiquidNavValue === 0 || isNaN(finalLiquidNavValue)) {
+          const lastEntry = history
+            .filter(h => h.assetId === entry.assetId)
+            .sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
+          if (lastEntry && lastEntry.liquidNavValue > 0) {
+            finalLiquidNavValue = lastEntry.liquidNavValue
+          }
+        }
+        
+        // Si no hay nav pero hay liquidNavValue y participations, calcular nav
+        let finalNav = nav
+        if ((finalNav === 0 || isNaN(finalNav)) && finalLiquidNavValue > 0) {
+          if (asset?.name === 'Cash') {
+            finalNav = finalLiquidNavValue
+          } else {
+            finalNav = participations * finalLiquidNavValue
+          }
+        }
+        
         return {
           id: generateUUID(),
-          month: getCurrentMonth(),
+          month: currentMonth,
           assetId: entry.assetId || '',
-          participations: parseFloat(entry.participations || '0') || asset?.participations || 0,
-          liquidNavValue: parseFloat(entry.liquidNavValue || '0') || 0,
-          nav: parseFloat(entry.nav || '0') || 0,
-          contribution: parseFloat(entry.contribution || '0') || 0,
-          meanCost: parseFloat(entry.meanCost || '0') || asset?.meanCost || 0
+          participations: !isNaN(participations) ? participations : 0,
+          liquidNavValue: !isNaN(finalLiquidNavValue) ? finalLiquidNavValue : 0,
+          nav: !isNaN(finalNav) ? finalNav : 0,
+          contribution: !isNaN(contribution) ? contribution : 0,
+          meanCost: !isNaN(meanCost) ? meanCost : 0
         }
       })
       
       // Eliminar entradas previas del mes actual para ese asset
       const otherMonthEntries = history.filter(h => 
-        !getCurrentMonth().match(h.month) || 
-        !newEntries.some(ne => ne.assetId === h.assetId && h.month === getCurrentMonth())
+        !currentMonth.match(h.month) || 
+        !newEntries.some(ne => ne.assetId === h.assetId && h.month === currentMonth)
       )
       
       setHistory([...otherMonthEntries, ...newEntries])
@@ -192,104 +264,25 @@ export default function History() {
       setIsFetchingPrices(true)
       setFetchMessage('Obteniendo precios...')
 
-      // Get current month and year
-      const now = new Date()
-      const year = now.getFullYear()
-      const month = now.getMonth() + 1
-
-      console.log(`🔄 Iniciando actualización de NAVs para ${year}-${String(month).padStart(2, '0')}`)
-
-      // Call backend API
-      const response = await fetch(
-        `${config.backendUrl}/fetch-month?year=${year}&month=${month}`
-      )
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error(`Error HTTP ${response.status}:`, errorText)
-        throw new Error(`Error HTTP ${response.status}: ${errorText || 'Sin detalles disponibles'}`)
-      }
-
-      const result: any = await response.json()
-      console.log('Respuesta del servidor:', result)
-
+      const result = await fetchAndUpdatePrices(assets, history, stockTransactions)
+      
       if (result.success) {
-        // Convert prices to history entries
-        const monthStr = `${year}-${String(month).padStart(2, '0')}`
-        const priceMap = new Map(result.prices.map((p: any) => [p.assetId, p]))
-        
-        // Procesar todos los activos activos
-        const newHistoryEntries = assets
-          .filter(asset => !asset.archived)
-          .map((asset) => {
-            const price = priceMap.get(asset.id) as any
-            const participations = asset.participations || 0
-            
-            // Obtener la entrada existente para este mes
-            const existingEntry = history.find(h => h.month === monthStr && h.assetId === asset.id)
-            
-            // Para Cash, obtener la entrada más reciente (cualquier mes)
-            const lastCashEntry = asset.name === 'Cash' 
-              ? history.filter(h => h.assetId === asset.id).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
-              : null
-            
-            // Si tiene precio nuevo del backend, usar ese; si no, usar el anterior
-            let liquidNavValue: number
-            if (price && price.price !== undefined && price.price !== null) {
-              liquidNavValue = price.price
-            } else if (existingEntry) {
-              // Si no hay precio nuevo pero existe entrada anterior en el mismo mes, mantener el liquidNavValue
-              liquidNavValue = existingEntry.liquidNavValue
-            } else if (asset.name === 'Cash' && lastCashEntry) {
-              // Para Cash, mantener el último valor conocido
-              liquidNavValue = lastCashEntry.liquidNavValue
-            } else {
-              // Si no hay ni precio ni entrada anterior, usar 0
-              liquidNavValue = 0
-            }
-            
-            // Para Cash, el nav es directamente el liquidNavValue (no participations * liquidNavValue)
-            const nav = asset.name === 'Cash' ? liquidNavValue : (participations * liquidNavValue)
-            const contribution = existingEntry ? existingEntry.contribution : 0
-            
-            return {
-              id: existingEntry?.id || generateUUID(),
-              month: monthStr,
-              assetId: asset.id,
-              participations: participations,
-              liquidNavValue: liquidNavValue,
-              nav: nav,
-              contribution: contribution,
-              meanCost: asset.meanCost || 0
-            }
-          })
-
-        // Update history (merge with existing)
-        const updatedHistory = [...history]
-        for (const newEntry of newHistoryEntries) {
-          const existingIndex = updatedHistory.findIndex(
-            h => h.month === newEntry.month && h.assetId === newEntry.assetId
-          )
-          
-          if (existingIndex >= 0) {
-            updatedHistory[existingIndex] = newEntry
-          } else {
-            updatedHistory.push(newEntry)
-          }
-        }
-
-        setHistory(updatedHistory)
-        setFetchMessage(`✅ Actualización completada\n\n${newHistoryEntries.length} activos actualizados`)
-        console.log('✅ NAVs actualizados correctamente')
+        setHistory(result.updatedHistory)
+        setFetchMessage(result.message)
+        console.log(`✅ Actualización completada`)
       } else {
-        throw new Error(result.message || 'Error desconocido')
+        setFetchMessage(`❌ ERROR EN LA ACTUALIZACIÓN\n╔════════════════════════════════════════╗\n\n${result.message}\n\n╚════════════════════════════════════════╝`)
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Error desconocido'
-      setFetchMessage(`❌ Error al actualizar precios:\n${errorMessage}`)
-      console.error('❌ Error:', errorMessage)
+      console.error('Error fetching prices:', errorMessage)
+      setFetchMessage(
+        `❌ ERROR\n╔════════════════════════════════════════╗\n\n${errorMessage}\n\n╚════════════════════════════════════════╝`
+      )
     } finally {
       setIsFetchingPrices(false)
+      // Clear message after 12 seconds
+      setTimeout(() => setFetchMessage(''), 12000)
     }
   }
 
