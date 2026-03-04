@@ -54,9 +54,9 @@ export async function fetchAndUpdatePrices(
 
     // Helper: Obtener el última entrada anterior de un activo
     const getLastEntry = (assetId: string, beforeMonth?: string) => {
-      const entries = history.filter(h => h.assetId === assetId)
+      let entries = history.filter(h => h.assetId === assetId)
       if (beforeMonth) {
-        entries.filter(h => h.month < beforeMonth)
+        entries = entries.filter(h => h.month < beforeMonth)
       }
       if (entries.length === 0) return null
       return entries.sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
@@ -93,7 +93,8 @@ export async function fetchAndUpdatePrices(
             if (fetchedPrice && fetchedPrice.price > 0) {
               tickerValue = data.shares * fetchedPrice.price
             } else {
-              const lastHistory = getLastEntry(tickerAsset.id)
+              // Obtener la última entrada anterior al mes actual
+              const lastHistory = getLastEntry(tickerAsset.id, monthStr)
               if (lastHistory && lastHistory.liquidNavValue > 0) {
                 tickerValue = data.shares * lastHistory.liquidNavValue
               } else {
@@ -128,8 +129,8 @@ export async function fetchAndUpdatePrices(
         // Obtener la entrada existente para este mes
         const existingEntry = history.find(h => h.month === monthStr && h.assetId === asset.id)
 
-        // Obtener la última entrada registrada de meses anteriores
-        const lastEntry = getLastEntry(asset.id)
+        // Obtener la última entrada registrada de meses anteriores (excluyendo el mes actual)
+        const lastEntry = getLastEntry(asset.id, monthStr)
 
         // Helper para validar si un precio es válido (no NaN, no null, no undefined, > 0)
         const isValidPrice = (p: any): boolean => {
