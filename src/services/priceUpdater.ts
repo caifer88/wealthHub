@@ -89,12 +89,17 @@ export async function fetchAndUpdatePrices(
           let tickerValue = 0
           
           if (tickerAsset) {
-            const lastHistory = getLastEntry(tickerAsset.id)
-            if (lastHistory && lastHistory.liquidNavValue > 0) {
-              tickerValue = data.shares * lastHistory.liquidNavValue
+            const fetchedPrice = priceMap.get(tickerAsset.id) as any
+            if (fetchedPrice && fetchedPrice.price > 0) {
+              tickerValue = data.shares * fetchedPrice.price
             } else {
-              // Fallback: usar el precio medio de compra
-              tickerValue = data.shares * (data.totalCost / data.shares)
+              const lastHistory = getLastEntry(tickerAsset.id)
+              if (lastHistory && lastHistory.liquidNavValue > 0) {
+                tickerValue = data.shares * lastHistory.liquidNavValue
+              } else {
+                // Fallback: usar el precio medio de compra
+                tickerValue = data.shares * (data.totalCost / data.shares)
+              }
             }
           } else {
             // Si no existe activo, usar el precio medio de compra
@@ -204,8 +209,6 @@ export async function fetchAndUpdatePrices(
         let contribution: number
         if (existingEntry) {
           contribution = existingEntry.contribution
-        } else if (lastEntry) {
-          contribution = lastEntry.contribution
         } else {
           contribution = 0
         }

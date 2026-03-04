@@ -53,14 +53,13 @@ export default function History() {
         if (prevEntry) {
           // Validar que los valores sean válidos (no NaN, no null, > 0)
           const nav = (prevEntry.nav && !isNaN(prevEntry.nav) && prevEntry.nav > 0) ? prevEntry.nav : 0
-          const contribution = (prevEntry.contribution && !isNaN(prevEntry.contribution)) ? prevEntry.contribution : 0
           const liquidNavValue = (prevEntry.liquidNavValue && !isNaN(prevEntry.liquidNavValue) && prevEntry.liquidNavValue > 0) ? prevEntry.liquidNavValue : 0
           const participations = (prevEntry.participations && !isNaN(prevEntry.participations)) ? prevEntry.participations : 0
           
           return {
             assetId: asset.id,
             nav: nav > 0 ? nav.toString() : '0',
-            contribution: contribution.toString(),
+            contribution: '0',
             liquidNavValue: liquidNavValue > 0 ? liquidNavValue.toString() : '',
             participations: participations > 0 ? participations.toString() : '',
             meanCost: (prevEntry.meanCost && !isNaN(prevEntry.meanCost)) ? prevEntry.meanCost.toString() : ''
