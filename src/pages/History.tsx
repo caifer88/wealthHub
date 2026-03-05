@@ -5,8 +5,7 @@ import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
-import { Select } from '../components/ui/Select'
-import { formatCurrency, generateUUID, isCurrentMonth, getCurrentMonth, formatCurrencyDecimals } from '../utils'
+import { formatCurrency, isCurrentMonth, formatCurrencyDecimals } from '../utils'
 import { fetchAndUpdatePrices } from '../services/priceUpdater'
 import type { HistoryEntry } from '../types'
 
@@ -17,9 +16,13 @@ export default function History() {
   const [editingEntry, setEditingEntry] = useState<HistoryEntry | null>(null)
   const [isFetchingPrices, setIsFetchingPrices] = useState(false)
   const [fetchMessage, setFetchMessage] = useState('')
-  const [entries, setEntries] = useState<Array<{ assetId: string; nav: string; contribution: string; participations?: string; liquidNavValue?: string; meanCost?: string }>>([
-    { assetId: '', nav: '', contribution: '', participations: '', liquidNavValue: '', meanCost: '' }
-  ])
+  const [formData, setFormData] = useState({
+    nav: '',
+    contribution: '',
+    participations: '',
+    liquidNavValue: '',
+    meanCost: ''
+  })
 
   // Función para convertir mes en formato "2024-01" a "Enero 2024"
   const formatMonthDisplay = (monthStr: string): string => {
@@ -27,56 +30,6 @@ export default function History() {
     const [year, month] = monthStr.split('-')
     const monthIndex = parseInt(month) - 1
     return `${months[monthIndex]} ${year}`
-  }
-
-  // Obtiene el mes anterior al mes actual
-  const getPreviousMonth = (): string => {
-    const now = new Date()
-    const year = now.getFullYear()
-    const month = now.getMonth()
-    
-    if (month === 0) {
-      return `${year - 1}-12`
-    }
-    return `${year}-${String(month).padStart(2, '0')}`
-  }
-
-  // Obtiene los activos del mes anterior con NAV > 0
-  const getPreviousMonthAssets = () => {
-    const prevMonth = getPreviousMonth()
-    return assets
-      .filter(asset => !asset.archived)
-      .map(asset => {
-        // Buscar entrada en el mes anterior
-        const prevEntry = history.find(h => h.month === prevMonth && h.assetId === asset.id)
-        
-        if (prevEntry) {
-          // Validar que los valores sean válidos (no NaN, no null, > 0)
-          const nav = (prevEntry.nav && !isNaN(prevEntry.nav) && prevEntry.nav > 0) ? prevEntry.nav : 0
-          const liquidNavValue = (prevEntry.liquidNavValue && !isNaN(prevEntry.liquidNavValue) && prevEntry.liquidNavValue > 0) ? prevEntry.liquidNavValue : 0
-          const participations = (prevEntry.participations && !isNaN(prevEntry.participations)) ? prevEntry.participations : 0
-          
-          return {
-            assetId: asset.id,
-            nav: nav > 0 ? nav.toString() : '0',
-            contribution: '0',
-            liquidNavValue: liquidNavValue > 0 ? liquidNavValue.toString() : '',
-            participations: participations > 0 ? participations.toString() : '',
-            meanCost: (prevEntry.meanCost && !isNaN(prevEntry.meanCost)) ? prevEntry.meanCost.toString() : ''
-          }
-        } else {
-          // Si no hay entrada previa, retornar vacío
-          return {
-            assetId: asset.id,
-            nav: '0',
-            contribution: '0',
-            liquidNavValue: '',
-            participations: '',
-            meanCost: ''
-          }
-        }
-      })
-      .filter(entry => entry.nav !== '0') // Solo retornar los que tienen NAV > 0
   }
 
   // Group history by year
@@ -101,128 +54,55 @@ export default function History() {
   const displayYear = selectedYear || years[0]
   const monthsData = groupedByYear[displayYear] || {}
 
-  const handleOpenModal = (entry?: HistoryEntry) => {
+  const handleOpenModal = (entry: HistoryEntry) => {
     // Solo permitir editar registros del mes actual
-    if (entry && !isCurrentMonth(entry.month)) {
+    if (!isCurrentMonth(entry.month)) {
       return
     }
     
-    if (entry) {
-      setEditingEntry(entry)
-      // Validar que los valores no sean NaN
-      const nav = (entry.nav && !isNaN(entry.nav)) ? entry.nav : 0
-      const contribution = (entry.contribution && !isNaN(entry.contribution)) ? entry.contribution : 0
-      const participations = (entry.participations && !isNaN(entry.participations)) ? entry.participations : 0
-      const liquidNavValue = (entry.liquidNavValue && !isNaN(entry.liquidNavValue)) ? entry.liquidNavValue : 0
-      const meanCost = (entry.meanCost && !isNaN(entry.meanCost)) ? entry.meanCost : 0
-      
-      setEntries([{
-        assetId: entry.assetId,
-        nav: nav > 0 ? nav.toString() : '',
-        contribution: contribution > 0 ? contribution.toString() : '',
-        participations: participations > 0 ? participations.toString() : '',
-        liquidNavValue: liquidNavValue > 0 ? liquidNavValue.toString() : '',
-        meanCost: meanCost > 0 ? meanCost.toString() : ''
-      }])
-    } else {
-      setEditingEntry(null)
-      // Auto-llenar con activos del mes anterior
-      const prevMonthAssets = getPreviousMonthAssets()
-      setEntries(prevMonthAssets.length > 0 ? prevMonthAssets : [{ assetId: '', nav: '', contribution: '', participations: '', liquidNavValue: '', meanCost: '' }])
-    }
+    setEditingEntry(entry)
+    const nav = (entry.nav && !isNaN(entry.nav)) ? entry.nav : 0
+    const contribution = (entry.contribution && !isNaN(entry.contribution)) ? entry.contribution : 0
+    const participations = (entry.participations && !isNaN(entry.participations)) ? entry.participations : 0
+    const liquidNavValue = (entry.liquidNavValue && !isNaN(entry.liquidNavValue)) ? entry.liquidNavValue : 0
+    const meanCost = (entry.meanCost && !isNaN(entry.meanCost)) ? entry.meanCost : 0
+    
+    setFormData({
+      nav: nav > 0 ? nav.toString() : '',
+      contribution: contribution > 0 ? contribution.toString() : '',
+      participations: participations > 0 ? participations.toString() : '',
+      liquidNavValue: liquidNavValue > 0 ? liquidNavValue.toString() : '',
+      meanCost: meanCost > 0 ? meanCost.toString() : ''
+    })
     setIsModalOpen(true)
   }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     
-    // Validar que haya al menos un activo con assetId
-    const validEntries = entries.filter(entry => entry.assetId && entry.nav)
-    if (validEntries.length === 0) {
-      alert('Debe añadir al menos un activo con NAV')
-      return
-    }
+    if (!editingEntry) return
+
+    const nav = parseFloat(formData.nav || '0') || 0
+    const contribution = parseFloat(formData.contribution || '0') || 0
+    const participations = parseFloat(formData.participations || '0') || editingEntry.participations || 0
+    const liquidNavValue = parseFloat(formData.liquidNavValue || '0') || 0
+    const meanCost = parseFloat(formData.meanCost || '0') || editingEntry.meanCost || 0
     
-    const currentMonth = getCurrentMonth()
-    
-    if (editingEntry) {
-      // Editar - solo debe haber una entrada
-      const entry = validEntries[0]
-      const asset = assets.find(a => a.id === entry.assetId)
-      const nav = parseFloat(entry.nav || '0') || 0
-      const liquidNavValue = parseFloat(entry.liquidNavValue || '0') || 0
-      const participations = parseFloat(entry.participations || '0') || asset?.participations || 0
-      const contribution = parseFloat(entry.contribution || '0') || 0
-      const meanCost = parseFloat(entry.meanCost || '0') || asset?.meanCost || 0
-      
-      // Validar y limpiar valores NaN
-      setHistory(history.map(h =>
-        h.id === editingEntry.id
-          ? {
-              id: h.id,
-              month: currentMonth,
-              assetId: entry.assetId || '',
-              participations: !isNaN(participations) ? participations : 0,
-              liquidNavValue: !isNaN(liquidNavValue) ? liquidNavValue : 0,
-              nav: !isNaN(nav) ? nav : 0,
-              contribution: !isNaN(contribution) ? contribution : 0,
-              meanCost: !isNaN(meanCost) ? meanCost : 0
-            }
-          : h
-      ))
-    } else {
-      // Crear nuevas entradas
-      const newEntries = validEntries.map(entry => {
-        const asset = assets.find(a => a.id === entry.assetId)
-        
-        // Parsear y validar valores
-        const nav = parseFloat(entry.nav || '0') || 0
-        const liquidNavValue = parseFloat(entry.liquidNavValue || '0') || 0
-        const participations = parseFloat(entry.participations || '0') || asset?.participations || 0
-        const contribution = parseFloat(entry.contribution || '0') || 0
-        const meanCost = parseFloat(entry.meanCost || '0') || asset?.meanCost || 0
-        
-        // Si no hay liquidNavValue pero hay una entrada anterior, usar la anterior
-        let finalLiquidNavValue = liquidNavValue
-        if (finalLiquidNavValue === 0 || isNaN(finalLiquidNavValue)) {
-          const lastEntry = history
-            .filter(h => h.assetId === entry.assetId)
-            .sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
-          if (lastEntry && lastEntry.liquidNavValue > 0) {
-            finalLiquidNavValue = lastEntry.liquidNavValue
+    // Validar y limpiar valores NaN
+    setHistory(history.map(h =>
+      h.id === editingEntry.id
+        ? {
+            id: h.id,
+            month: editingEntry.month,
+            assetId: editingEntry.assetId,
+            participations: !isNaN(participations) ? participations : 0,
+            liquidNavValue: !isNaN(liquidNavValue) ? liquidNavValue : 0,
+            nav: !isNaN(nav) ? nav : 0,
+            contribution: !isNaN(contribution) ? contribution : 0,
+            meanCost: !isNaN(meanCost) ? meanCost : 0
           }
-        }
-        
-        // Si no hay nav pero hay liquidNavValue y participations, calcular nav
-        let finalNav = nav
-        if ((finalNav === 0 || isNaN(finalNav)) && finalLiquidNavValue > 0) {
-          if (asset?.name === 'Cash') {
-            finalNav = finalLiquidNavValue
-          } else {
-            finalNav = participations * finalLiquidNavValue
-          }
-        }
-        
-        return {
-          id: generateUUID(),
-          month: currentMonth,
-          assetId: entry.assetId || '',
-          participations: !isNaN(participations) ? participations : 0,
-          liquidNavValue: !isNaN(finalLiquidNavValue) ? finalLiquidNavValue : 0,
-          nav: !isNaN(finalNav) ? finalNav : 0,
-          contribution: !isNaN(contribution) ? contribution : 0,
-          meanCost: !isNaN(meanCost) ? meanCost : 0
-        }
-      })
-      
-      // Eliminar entradas previas del mes actual para ese asset
-      const otherMonthEntries = history.filter(h => 
-        !currentMonth.match(h.month) || 
-        !newEntries.some(ne => ne.assetId === h.assetId && h.month === currentMonth)
-      )
-      
-      setHistory([...otherMonthEntries, ...newEntries])
-    }
+        : h
+    ))
 
     setIsModalOpen(false)
     setEditingEntry(null)
@@ -240,22 +120,6 @@ export default function History() {
     if (confirm('¿Está seguro de que desea eliminar este registro?')) {
       setHistory(history.filter(entry => entry.id !== id))
     }
-  }
-
-  const handleAddEntry = () => {
-    setEntries([...entries, { assetId: '', nav: '', contribution: '' }])
-  }
-
-  const handleRemoveEntry = (idx: number) => {
-    if (entries.length > 1) {
-      setEntries(entries.filter((_, i) => i !== idx))
-    }
-  }
-
-  const handleEntryChange = (idx: number, field: string, value: string) => {
-    const newEntries = [...entries]
-    newEntries[idx] = { ...newEntries[idx], [field]: value }
-    setEntries(newEntries)
   }
 
   const handleFetchPrices = async () => {
@@ -304,9 +168,6 @@ export default function History() {
           >
             <RefreshCw size={16} className={`mr-2 ${isFetchingPrices ? 'animate-spin' : ''}`} />
             {isFetchingPrices ? 'Actualizando...' : 'Actualizar NAV'}
-          </Button>
-          <Button variant="primary" onClick={() => handleOpenModal()}>
-            + Nuevo Registro
           </Button>
         </div>
       </header>
@@ -452,43 +313,25 @@ export default function History() {
       )}
 
       {/* Modal de Edición */}
-      <Modal
-        isOpen={isModalOpen}
-        title={editingEntry ? 'Editar Registro' : 'Nuevo Registro'}
-        onClose={() => setIsModalOpen(false)}
-        size="md"
-      >
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-3 max-h-96 overflow-y-auto">
-            {entries.map((entry, idx) => (
-              <div key={idx} className="space-y-2 p-3 bg-slate-50 dark:bg-slate-900 rounded-lg">
-                <div className="flex justify-between items-center mb-2">
-                  <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase">
-                    Activo {idx + 1}
-                  </label>
-                  {entries.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveEntry(idx)}
-                      className="text-xs text-rose-600 hover:text-rose-700 dark:text-rose-400"
-                    >
-                      Eliminar
-                    </button>
-                  )}
-                </div>
-                
-                <Select
-                  label="Selecciona activo"
-                  value={entry.assetId}
-                  onChange={(e) => handleEntryChange(idx, 'assetId', e.target.value)}
-                  options={assets.filter(a => !a.archived).map(a => ({ value: a.id, label: a.name }))}
-                />
-
+      {editingEntry && (
+        <Modal
+          isOpen={isModalOpen}
+          title="Editar Registro"
+          onClose={() => setIsModalOpen(false)}
+          size="md"
+        >
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-lg">
+              <p className="text-sm font-semibold dark:text-white mb-4">
+                {assets.find(a => a.id === editingEntry.assetId)?.name || 'Activo'}
+              </p>
+              
+              <div className="space-y-3">
                 <Input
                   label="NAV (€)"
                   type="number"
-                  value={entry.nav}
-                  onChange={(e) => handleEntryChange(idx, 'nav', e.target.value)}
+                  value={formData.nav}
+                  onChange={(e) => setFormData({ ...formData, nav: e.target.value })}
                   placeholder="0.00"
                   step="0.01"
                 />
@@ -496,36 +339,52 @@ export default function History() {
                 <Input
                   label="Aportación (€)"
                   type="number"
-                  value={entry.contribution}
-                  onChange={(e) => handleEntryChange(idx, 'contribution', e.target.value)}
+                  value={formData.contribution}
+                  onChange={(e) => setFormData({ ...formData, contribution: e.target.value })}
+                  placeholder="0.00"
+                  step="0.01"
+                />
+
+                <Input
+                  label="Participaciones"
+                  type="number"
+                  value={formData.participations}
+                  onChange={(e) => setFormData({ ...formData, participations: e.target.value })}
+                  placeholder="0.00"
+                  step="0.01"
+                />
+
+                <Input
+                  label="Valor NAV Liquidativo (€)"
+                  type="number"
+                  value={formData.liquidNavValue}
+                  onChange={(e) => setFormData({ ...formData, liquidNavValue: e.target.value })}
+                  placeholder="0.00"
+                  step="0.01"
+                />
+
+                <Input
+                  label="Coste Medio"
+                  type="number"
+                  value={formData.meanCost}
+                  onChange={(e) => setFormData({ ...formData, meanCost: e.target.value })}
                   placeholder="0.00"
                   step="0.01"
                 />
               </div>
-            ))}
-          </div>
+            </div>
 
-          {!editingEntry && (
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={handleAddEntry}
-              className="w-full"
-            >
-              + Añadir otro activo
-            </Button>
-          )}
-
-          <div className="flex gap-2 justify-end pt-4 border-t border-slate-200 dark:border-slate-800">
-            <Button variant="secondary" onClick={() => setIsModalOpen(false)}>
-              Cancelar
-            </Button>
-            <Button variant="primary" type="submit">
-              {editingEntry ? 'Actualizar' : 'Crear'}
-            </Button>
-          </div>
-        </form>
-      </Modal>
+            <div className="flex gap-2 justify-end pt-4 border-t border-slate-200 dark:border-slate-800">
+              <Button variant="secondary" onClick={() => setIsModalOpen(false)}>
+                Cancelar
+              </Button>
+              <Button variant="primary" type="submit">
+                Actualizar
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </div>
   )
 }
