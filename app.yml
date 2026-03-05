@@ -2,14 +2,14 @@
 version: 1
 
 metadata:
-  category: finance
+  id: wealthhub
   name: WealthHub
-  description: Modern portfolio management application to track your wealth
   version: 2.0.0
-  icon: umbrel/icon.svg
-  website: https://github.com/marpemad/wealthHub
+  category: finance
+  description: Modern portfolio management application to track your wealth
+  icon: icon.svg
   repository: https://github.com/marpemad/wealthHub
-  support: https://github.com/marpemad/wealthHub/issues
+  port: 8787
 
 containers:
   main:

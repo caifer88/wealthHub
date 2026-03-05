@@ -4,52 +4,42 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: wealthhub-backend
-    ports:
-      - "8000:8000"
+    restart: always
     environment:
-      - FRONTEND_URL=http://localhost:3000,http://frontend:5173
+      - FRONTEND_URL=http://localhost:3000,http://main:5173
       - VITE_GAS_URL=${VITE_GAS_URL:-}
-      - DEBUG=True
     volumes:
       - ./backend:/app
-    command: >
-      bash -c "pip install -r requirements.txt && 
-               uvicorn main:app --reload --host 0.0.0.0 --port 8000"
     networks:
-      - wealthhub-network
+      - umbrel_main_network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 120s
+      interval: 30s
+      retries: 3
 
-  frontend:
+  main:  # <--- Antes era 'frontend', ahora coincide con app.yml
     build:
       context: .
       dockerfile: Dockerfile.frontend
     container_name: wealthhub-frontend
+    restart: always
     ports:
-      - "3000:5173"
+      - "8787:5173"  # Mapeo directo al puerto que quieres usar
     environment:
-      - VITE_BACKEND_URL=http://localhost:8000
+      - VITE_BACKEND_URL=http://backend:8000
       - VITE_GAS_URL=${VITE_GAS_URL:-}
     volumes:
       - ./src:/app/src
       - ./public:/app/public
       - ./index.html:/app/index.html
       - ./vite.config.ts:/app/vite.config.ts
-      - ./vite.config.js:/app/vite.config.js
       - ./tsconfig.json:/app/tsconfig.json
       - /app/node_modules
-    command: npm run dev -- --host 0.0.0.0 --no-open
     networks:
-      - wealthhub-network
+      - umbrel_main_network
     depends_on:
-      backend:
-        condition: service_started
+      - backend
 
 networks:
-  wealthhub-network:
-    driver: bridge
-
+  umbrel_main_network:
+    external: true
