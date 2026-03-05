@@ -44,4 +44,4 @@ services:
 
 networks:
   umbrel_main_network:
-    external: true
+    driver: bridge
