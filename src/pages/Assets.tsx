@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react'
-import { Trash2, Edit3, Plus, Archive, ArchiveX, RefreshCw } from 'lucide-react'
+import { Trash2, Edit3, Plus, Archive, ArchiveX } from 'lucide-react'
 import { useWealth } from '../context/WealthContext'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
@@ -8,18 +8,15 @@ import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { formatCurrency, generateUUID, calculateMeanCost, calculateTotalInvested, getCurrentParticipations, formatCurrencyDecimals } from '../utils'
-import { fetchAndUpdatePrices } from '../services/priceUpdater'
 import type { Asset } from '../types'
 
 export default function Assets() {
-  const { assets, setAssets, history, setHistory, stockTransactions, saveDataToGAS } = useWealth()
+  const { assets, setAssets, history, stockTransactions, saveDataToGAS } = useWealth()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null)
   const [sortColumn] = useState<'name' | 'category' | 'value' | 'percentage'>('name')
   const [sortDirection] = useState<'asc' | 'desc'>('asc')
   const [showArchived, setShowArchived] = useState(false)
-  const [isFetchingPrices, setIsFetchingPrices] = useState(false)
-  const [fetchMessage, setFetchMessage] = useState('')
   const [formData, setFormData] = useState({
     name: '',
     category: 'Fund',
@@ -41,6 +38,13 @@ export default function Assets() {
   // Show active assets if showArchived is false, otherwise show all
   const displayedAssets = showArchived ? assets : assets.filter(a => !a.archived)
   
+  // Get the latest month from history
+  const getLatestMonth = (): string | null => {
+    if (history.length === 0) return null
+    const months = [...new Set(history.map(h => h.month))].sort().reverse()
+    return months[0] || null
+  }
+
   // Calculate current NAV from latest history entry for each asset
   const getAssetNAV = (assetId: string): number => {
     const assetHistory = history.filter(h => h.assetId === assetId)
@@ -48,6 +52,20 @@ export default function Assets() {
     // Get the last entry by date
     const sorted = [...assetHistory].sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())
     return sorted[0].nav || 0
+  }
+
+  // Get NAV from the latest month, fallback to most recent if not available
+  const getAssetNAVFromLatestMonth = (assetId: string): number => {
+    const latestMonth = getLatestMonth()
+    if (!latestMonth) return 0
+    
+    const entryInLatestMonth = history.find(h => h.assetId === assetId && h.month === latestMonth)
+    if (entryInLatestMonth) {
+      return entryInLatestMonth.nav || 0
+    }
+    
+    // Fallback to most recent if not in latest month
+    return getAssetNAV(assetId)
   }
 
   const getSortedAssets = useCallback((assets: (Asset & { currentNAV: number })[], column: 'name' | 'category' | 'value' | 'percentage', direction: 'asc' | 'desc', totalNav: number) => {
@@ -72,7 +90,7 @@ export default function Assets() {
     }
   }, [])
 
-  // Función para calcular el NAV correcto de un activo considerando componentes
+  // Función para calcular el NAV correcto de un activo considerando componentes, usando el último mes
   const getAssetValueWithComponents = (asset: Asset): number => {
     const componentAssets = assets.filter(a => 
       a.name && asset.name && a.name.length < asset.name.length && asset.name.includes(a.name) && a.id !== asset.id
@@ -80,11 +98,11 @@ export default function Assets() {
     
     if (componentAssets.length > 0) {
       // Si tiene componentes, retornar la suma
-      return componentAssets.reduce((sum, comp) => sum + getAssetNAV(comp.id), 0)
+      return componentAssets.reduce((sum, comp) => sum + getAssetNAVFromLatestMonth(comp.id), 0)
     }
     
-    // Si no tiene componentes, retornar su NAV directo
-    return getAssetNAV(asset.id)
+    // Si no tiene componentes, retornar su NAV directo del último mes
+    return getAssetNAVFromLatestMonth(asset.id)
   }
 
   const assetValues = assets.map(a => ({
@@ -206,33 +224,6 @@ export default function Assets() {
     return assets.filter(a => a.archived).length
   }
 
-  const handleFetchPrices = async () => {
-    try {
-      setIsFetchingPrices(true)
-      setFetchMessage('Obteniendo precios...')
-
-      const result = await fetchAndUpdatePrices(assets, history, stockTransactions)
-      
-      if (result.success) {
-        setHistory(result.updatedHistory)
-        setFetchMessage(result.message)
-        console.log(`✅ Actualización completada`)
-      } else {
-        setFetchMessage(`❌ ERROR EN LA ACTUALIZACIÓN\n╔════════════════════════════════════════╗\n\n${result.message}\n\n╚════════════════════════════════════════╝`)
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Error desconocido'
-      console.error('Error fetching prices:', errorMessage)
-      setFetchMessage(
-        `❌ ERROR\n╔════════════════════════════════════════╗\n\n${errorMessage}\n\n╚════════════════════════════════════════╝`
-      )
-    } finally {
-      setIsFetchingPrices(false)
-      // Clear message after 12 seconds
-      setTimeout(() => setFetchMessage(''), 12000)
-    }
-  }
-
   return (
     <div className="space-y-6">
       <header className="flex justify-between items-start">
@@ -245,10 +236,6 @@ export default function Assets() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={handleFetchPrices} disabled={isFetchingPrices}>
-            <RefreshCw size={20} className={`inline mr-2 ${isFetchingPrices ? 'animate-spin' : ''}`} />
-            {isFetchingPrices ? 'Obteniendo...' : 'Obtener NAV Actual'}
-          </Button>
           <Button variant="primary" onClick={() => handleOpenModal()}>
             <Plus size={20} className="inline mr-2" />
             Nuevo Activo
@@ -269,19 +256,6 @@ export default function Assets() {
           subtitle="Número de activos"
         />
       </div>
-
-      {/* Mensaje de estado del fetch */}
-      {fetchMessage && (
-        <Card className={`${
-          fetchMessage.includes('✅') ? 'border-l-4 border-green-600 bg-green-50 dark:bg-slate-900 dark:border-green-400' : 'border-l-4 border-red-600 bg-red-50 dark:bg-slate-900 dark:border-red-400'
-        } p-4`}>
-          <div className={`${
-            fetchMessage.includes('✅') ? 'text-green-900 dark:text-green-100' : 'text-red-900 dark:text-red-100'
-          } whitespace-pre-wrap font-mono text-xs sm:text-sm leading-relaxed`}>
-            {fetchMessage}
-          </div>
-        </Card>
-      )}
 
       {/* Botón para mostrar/ocultar archivados */}
       {getArchivedCount() > 0 && (

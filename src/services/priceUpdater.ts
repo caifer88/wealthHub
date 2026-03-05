@@ -54,9 +54,9 @@ export async function fetchAndUpdatePrices(
 
     // Helper: Obtener el última entrada anterior de un activo
     const getLastEntry = (assetId: string, beforeMonth?: string) => {
-      const entries = history.filter(h => h.assetId === assetId)
+      let entries = history.filter(h => h.assetId === assetId)
       if (beforeMonth) {
-        entries.filter(h => h.month < beforeMonth)
+        entries = entries.filter(h => h.month < beforeMonth)
       }
       if (entries.length === 0) return null
       return entries.sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
@@ -89,12 +89,18 @@ export async function fetchAndUpdatePrices(
           let tickerValue = 0
           
           if (tickerAsset) {
-            const lastHistory = getLastEntry(tickerAsset.id)
-            if (lastHistory && lastHistory.liquidNavValue > 0) {
-              tickerValue = data.shares * lastHistory.liquidNavValue
+            const fetchedPrice = priceMap.get(tickerAsset.id) as any
+            if (fetchedPrice && fetchedPrice.price > 0) {
+              tickerValue = data.shares * fetchedPrice.price
             } else {
-              // Fallback: usar el precio medio de compra
-              tickerValue = data.shares * (data.totalCost / data.shares)
+              // Obtener la última entrada anterior al mes actual
+              const lastHistory = getLastEntry(tickerAsset.id, monthStr)
+              if (lastHistory && lastHistory.liquidNavValue > 0) {
+                tickerValue = data.shares * lastHistory.liquidNavValue
+              } else {
+                // Fallback: usar el precio medio de compra
+                tickerValue = data.shares * (data.totalCost / data.shares)
+              }
             }
           } else {
             // Si no existe activo, usar el precio medio de compra
@@ -123,8 +129,8 @@ export async function fetchAndUpdatePrices(
         // Obtener la entrada existente para este mes
         const existingEntry = history.find(h => h.month === monthStr && h.assetId === asset.id)
 
-        // Obtener la última entrada registrada de meses anteriores
-        const lastEntry = getLastEntry(asset.id)
+        // Obtener la última entrada registrada de meses anteriores (excluyendo el mes actual)
+        const lastEntry = getLastEntry(asset.id, monthStr)
 
         // Helper para validar si un precio es válido (no NaN, no null, no undefined, > 0)
         const isValidPrice = (p: any): boolean => {
@@ -135,77 +141,84 @@ export async function fetchAndUpdatePrices(
                  p.price > 0
         }
 
-        // Lógica para determinar liquidNavValue
+        // Lógica para determinar liquidNavValue y NAV
         let liquidNavValue: number = 0
+        let nav: number = 0
 
         if (asset.name === 'Interactive Brokers') {
           // Para Interactive Brokers: calcular desde transacciones de acciones abiertas
           const ibCalc = calculateInteractiveBrokersValue()
-          liquidNavValue = ibCalc.value > 0 ? 1 : 0
+          nav = ibCalc.value
+          liquidNavValue = nav > 0 ? 1 : 0
           // Si no hay valor, mantener el anterior
-          if (liquidNavValue === 0 && lastEntry && lastEntry.liquidNavValue > 0) {
-            liquidNavValue = lastEntry.liquidNavValue
+          if (nav === 0) {
+            if (existingEntry && existingEntry.nav > 0) {
+              nav = existingEntry.nav
+              liquidNavValue = existingEntry.liquidNavValue
+            } else if (lastEntry && lastEntry.nav > 0) {
+              nav = lastEntry.nav
+              liquidNavValue = lastEntry.liquidNavValue
+            }
           }
         } else if (asset.name === 'Cash') {
-          // Para Cash: siempre usar el último valor conocido
-          if (lastEntry && lastEntry.liquidNavValue > 0) {
-            liquidNavValue = lastEntry.liquidNavValue
-          } else if (existingEntry && existingEntry.liquidNavValue > 0) {
-            liquidNavValue = existingEntry.liquidNavValue
+          // Para Cash: mantener el último NAV válido
+          // Si hay un precio nuevo válido, usarlo (aunque poco probable para Cash)
+          if (isValidPrice(price)) {
+            liquidNavValue = price.price
+            nav = liquidNavValue
+          } else {
+            // Si no hay precio nuevo válido, usar el NAV anterior
+            if (existingEntry && existingEntry.nav > 0) {
+              // Si existe entrada para este mes, mantener el nav actual
+              nav = existingEntry.nav
+              liquidNavValue = existingEntry.liquidNavValue
+            } else if (lastEntry && lastEntry.nav > 0) {
+              // Si no hay entrada para este mes, usar el del mes anterior
+              nav = lastEntry.nav
+              liquidNavValue = lastEntry.liquidNavValue
+            } else {
+              // Si no hay nada, usar 0
+              nav = 0
+              liquidNavValue = 0
+            }
           }
         } else if (isValidPrice(price)) {
           // Si hay precio nuevo válido del backend, usar ese
           liquidNavValue = price.price
-        } else if (existingEntry && existingEntry.liquidNavValue > 0) {
-          // Si no hay precio nuevo válido pero existe entrada anterior en el mismo mes, mantener el liquidNavValue
-          liquidNavValue = existingEntry.liquidNavValue
-        } else if (lastEntry && lastEntry.liquidNavValue > 0) {
-          // Si no hay nada válido anterior, mantener el último valor conocido de cualquier mes
-          liquidNavValue = lastEntry.liquidNavValue
-        } else {
-          // Si no hay ni precio ni entrada anterior, usar 0
-          liquidNavValue = 0
-        }
-
-        // Validación final: asegurar que liquidNavValue no sea NaN
-        if (isNaN(liquidNavValue)) {
-          liquidNavValue = lastEntry ? lastEntry.liquidNavValue : 0
-        }
-
-        // Calcular NAV según el tipo de activo
-        let nav: number
-        if (asset.name === 'Interactive Brokers') {
-          const ibCalc = calculateInteractiveBrokersValue()
-          nav = ibCalc.value
-          // Si Interactive Brokers no tiene valor, usa el anterior
-          if (nav === 0 && lastEntry && lastEntry.nav > 0) {
-            nav = lastEntry.nav
-          }
-        } else if (asset.name === 'Cash') {
-          nav = liquidNavValue
-        } else {
           nav = participations * liquidNavValue
+        } else {
+          // Si el precio no es válido, mantener el NAV anterior
+          if (existingEntry && existingEntry.nav > 0) {
+            // Si existe entrada para este mes, mantener el nav actual
+            nav = existingEntry.nav
+            liquidNavValue = existingEntry.liquidNavValue
+          } else if (lastEntry && lastEntry.nav > 0) {
+            // Si no hay entrada para este mes, usar el del mes anterior
+            nav = lastEntry.nav
+            liquidNavValue = lastEntry.liquidNavValue
+          } else {
+            // Si no hay nada, usar 0
+            nav = 0
+            liquidNavValue = 0
+          }
         }
 
-        // Validación final de NAV: no permitir NaN
-        if (isNaN(nav)) {
-          // Si el NAV calculado es NaN, usar el anterior
-          nav = existingEntry ? existingEntry.nav : (lastEntry ? lastEntry.nav : 0)
+        // Validación final: asegurar que no sean NaN
+        if (isNaN(liquidNavValue)) {
+          liquidNavValue = (existingEntry && existingEntry.liquidNavValue > 0) 
+            ? existingEntry.liquidNavValue 
+            : ((lastEntry && lastEntry.liquidNavValue > 0) ? lastEntry.liquidNavValue : 0)
         }
-        
-        // Doble validación: si liquidNavValue es NaN después de todo, usar el anterior
-        if (isNaN(liquidNavValue) && lastEntry) {
-          liquidNavValue = lastEntry.liquidNavValue > 0 ? lastEntry.liquidNavValue : 0
-        } else if (isNaN(liquidNavValue)) {
-          liquidNavValue = 0
+        if (isNaN(nav)) {
+          nav = (existingEntry && existingEntry.nav > 0) 
+            ? existingEntry.nav 
+            : ((lastEntry && lastEntry.nav > 0) ? lastEntry.nav : 0)
         }
 
         // Mantener aportación anterior
         let contribution: number
         if (existingEntry) {
           contribution = existingEntry.contribution
-        } else if (lastEntry) {
-          contribution = lastEntry.contribution
         } else {
           contribution = 0
         }

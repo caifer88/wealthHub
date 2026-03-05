@@ -354,7 +354,20 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const activeAssets = assets.filter(a => !a.archived)
     const cashAsset = activeAssets.find(a => a.name === 'Cash')
-    const cash = cashAsset?.baseAmount || 0
+    
+    // Obtener el valor de Cash del último mes del historial
+    let cash = 0
+    if (cashAsset) {
+      const cashHistory = history
+        .filter(h => h.assetId === cashAsset.id)
+        .sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())
+      if (cashHistory.length > 0) {
+        cash = cashHistory[0].nav || 0
+      } else {
+        // Fallback a baseAmount si no hay histórico
+        cash = cashAsset.baseAmount || 0
+      }
+    }
 
     // Calcular NAV total y ROI (excluyendo Cash para ganancia/pérdida)
     let totalNAV = 0
