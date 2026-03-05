@@ -57,7 +57,6 @@ const SAMPLE_DATA = {
       name: 'Basalto',
       category: 'Fund' as const,
       color: '#6366f1',
-      baseAmount: 37931.26,
       archived: false,
       targetAllocation: 25,
       riskLevel: 'Medio' as const,
@@ -70,7 +69,6 @@ const SAMPLE_DATA = {
       name: 'Vanguard U.S. 500 Stock Index Fund EUR Acc',
       category: 'Fund' as const,
       color: '#10b981',
-      baseAmount: 12022.38,
       archived: false,
       targetAllocation: 35,
       riskLevel: 'Medio' as const,
@@ -83,7 +81,6 @@ const SAMPLE_DATA = {
       name: 'Renta 4 Multigestión Numantia Patrimonio Global',
       category: 'Fund' as const,
       color: '#f59e0b',
-      baseAmount: 15647.22,
       archived: false,
       targetAllocation: 20,
       riskLevel: 'Medio' as const,
@@ -96,7 +93,6 @@ const SAMPLE_DATA = {
       name: 'Numantia Pensiones PP',
       category: 'Fund' as const,
       color: '#8b5cf6',
-      baseAmount: 26718.44,
       archived: false,
       targetAllocation: 20,
       riskLevel: 'Medio' as const,
@@ -109,7 +105,6 @@ const SAMPLE_DATA = {
       name: 'Cash',
       category: 'Cash' as const,
       color: '#22C55E',
-      baseAmount: 0,
       archived: false,
       targetAllocation: 0,
       riskLevel: 'Bajo' as const,
@@ -364,8 +359,7 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (cashHistory.length > 0) {
         cash = cashHistory[0].nav || 0
       } else {
-        // Fallback a baseAmount si no hay histórico
-        cash = cashAsset.baseAmount || 0
+        cash = 0
       }
     }
 
@@ -389,10 +383,6 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const lastEntry = assetHistory[assetHistory.length - 1]
         totalNAV += lastEntry.nav
         totalInvested += assetHistory.reduce((sum, h) => sum + h.contribution, 0)
-      } else {
-        // Si no hay histórico, usar baseAmount
-        totalNAV += asset.baseAmount
-        totalInvested += asset.baseAmount
       }
     })
 

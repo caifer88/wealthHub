@@ -64,6 +64,7 @@ export const exportService = {
 
   exportPDF(
     assets: Asset[],
+    history: HistoryEntry[],
     bitcoinTransactions: BitcoinTransaction[]
   ) {
     const pdf = new jsPDF()
@@ -88,7 +89,12 @@ export const exportService = {
         pdf.addPage()
         yPos = 20
       }
-      pdf.text(`${asset.name}: €${asset.baseAmount.toLocaleString('es-ES')}`, 25, yPos)
+      // Obtener NAV del mes actual del historial
+      const assetHistory = history.filter(h => h.assetId === asset.id)
+      const nav = assetHistory.length > 0 
+        ? assetHistory[assetHistory.length - 1].nav 
+        : 0
+      pdf.text(`${asset.name}: €${nav.toLocaleString('es-ES')}`, 25, yPos)
       yPos += 7
     })
 
