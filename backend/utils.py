@@ -2,6 +2,10 @@
 Utility functions for WealthHub Backend
 """
 
+import functools
+import time
+import asyncio
+from typing import Callable, Any, Dict, Tuple
 from datetime import datetime, timedelta
 import calendar
 import logging
@@ -153,3 +157,49 @@ def extract_isin_from_string(text: str) -> list:
     pattern = r"\b[A-Z]{2}[A-Z0-9]{9}[0-9]\b"
     isins = re.findall(pattern, text)
     return list(set(isins))  # Remove duplicates
+
+
+def async_ttl_cache(maxsize: int = 128, ttl: int = 3600):
+    """
+    A simple thread-safe, async-compatible TTL cache decorator.
+
+    Args:
+        maxsize: Maximum number of entries in the cache
+        ttl: Time to live in seconds
+    """
+    def decorator(func: Callable):
+        cache: Dict[str, Tuple[float, Any]] = {}
+        # Lazy initialization of the lock to ensure it's created within the running event loop
+        _lock: asyncio.Lock | None = None
+
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            nonlocal _lock
+            if _lock is None:
+                _lock = asyncio.Lock()
+
+            # Create a simple hashable key from args and kwargs
+            # (Note: this is a basic implementation and might not handle all complex types)
+            key = str(args) + str(kwargs)
+
+            async with _lock:
+                if key in cache:
+                    timestamp, result = cache[key]
+                    if time.time() - timestamp < ttl:
+                        return result
+                    else:
+                        del cache[key]
+
+            # If not in cache or expired, call the function
+            result = await func(*args, **kwargs)
+
+            async with _lock:
+                # Evict oldest if full
+                if len(cache) >= maxsize:
+                    oldest_key = min(cache.keys(), key=lambda k: cache[k][0])
+                    del cache[oldest_key]
+                cache[key] = (time.time(), result)
+
+            return result
+        return wrapper
+    return decorator

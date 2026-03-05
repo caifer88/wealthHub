@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 from typing import List, Optional
-import requests
+import httpx
 
 from config import settings
 from models import PriceData
@@ -19,10 +19,11 @@ async def load_assets_from_gas() -> List[dict]:
         return []
 
     try:
-        response = requests.get(settings.VITE_GAS_URL, timeout=settings.TIMEOUT)
-        response.raise_for_status()
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            response = await client.get(settings.VITE_GAS_URL, timeout=settings.TIMEOUT)
+            response.raise_for_status()
 
-        data = response.json()
+            data = response.json()
         if data.get("success") and data.get("data"):
             assets = data["data"].get("assets", [])
             logger.info(f"✅ Loaded {len(assets)} assets from GAS")
@@ -84,12 +85,13 @@ async def persist_prices_to_gas(
         }
 
         # Send to GAS
-        response = requests.post(
-            settings.VITE_GAS_URL,
-            json=payload,
-            timeout=settings.TIMEOUT
-        )
-        response.raise_for_status()
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            response = await client.post(
+                settings.VITE_GAS_URL,
+                json=payload,
+                timeout=settings.TIMEOUT
+            )
+            response.raise_for_status()
 
         logger.info("✅ Prices persisted to GAS")
         return True
@@ -104,10 +106,11 @@ async def load_data_from_gas() -> dict:
         return {}
 
     try:
-        response = requests.get(settings.VITE_GAS_URL, timeout=settings.TIMEOUT)
-        response.raise_for_status()
-        data = response.json()
-        return data.get("data", {}) if data.get("success") else {}
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            response = await client.get(settings.VITE_GAS_URL, timeout=settings.TIMEOUT)
+            response.raise_for_status()
+            data = response.json()
+            return data.get("data", {}) if data.get("success") else {}
     except Exception as e:
         logger.error(f"Error loading data from GAS: {str(e)}")
         return {}

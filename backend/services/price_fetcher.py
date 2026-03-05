@@ -1,12 +1,12 @@
 import yfinance as yf
 import pandas as pd
-import requests
+import httpx
 from typing import Optional, Dict, List, Tuple
 from datetime import datetime, timedelta
 import logging
 from models import PriceData
 from cachetools import cached, TTLCache
-from utils import format_datetime_iso
+from utils import format_datetime_iso, async_ttl_cache
 
 logger = logging.getLogger(__name__)
 
@@ -18,20 +18,25 @@ class PriceFetcher:
 
 
     @staticmethod
-    @cached(cache=TTLCache(maxsize=10, ttl=3600))  # 1 hour cache
-    def fetch_bitcoin_price(date: datetime, asset_id: str = None, asset_name: str = "Bitcoin") -> Optional[PriceData]:
+    @async_ttl_cache(maxsize=10, ttl=3600)  # 1 hour cache
+    async def fetch_bitcoin_price(date: datetime, asset_id: str = None, asset_name: str = "Bitcoin") -> Optional[PriceData]:
+        import asyncio
         # Intento 1: Yahoo Finance
         try:
             # En nuevas versiones de yfinance, no se debe inyectar session manualmente
             # yfinance usa curl_cffi internamente para evitar bloqueos
-            btc_ticker = yf.Ticker("BTC-USD")
-            ticker = yf.Ticker("BTC-EUR")
-            hist = ticker.history(period="5d") # Pedimos 5 días para asegurar
-            btc_hist = btc_ticker.history(period="5d")
+            def fetch_yf():
+                btc_ticker = yf.Ticker("BTC-USD")
+                ticker = yf.Ticker("BTC-EUR")
+                hist = ticker.history(period="5d") # Pedimos 5 días para asegurar
+                btc_hist = btc_ticker.history(period="5d")
 
-            logger.info(f"📈 Historial de BTC-EUR: {hist.tail(2)}")
-            logger.info(f"📈 Historial de BTC-USD: {btc_hist.tail(2)}")
-            
+                logger.info(f"📈 Historial de BTC-EUR: {hist.tail(2)}")
+                logger.info(f"📈 Historial de BTC-USD: {btc_hist.tail(2)}")
+                return hist
+
+            hist = await asyncio.to_thread(fetch_yf)
+
             if not hist.empty:
                 close_price = float(hist['Close'].iloc[-1])
                 return PriceData(
@@ -48,8 +53,9 @@ class PriceFetcher:
 
         # Intento 2: Fallback Binance API (Pública y sin bloqueos)
         try:
-            res = requests.get("https://api.binance.com/api/v3/ticker/price?symbol=BTCEUR", timeout=10)
-            data = res.json()
+            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+                res = await client.get("https://api.binance.com/api/v3/ticker/price?symbol=BTCEUR")
+                data = res.json()
             return PriceData(
                 assetId=asset_id or "btc",
                 assetName=asset_name,

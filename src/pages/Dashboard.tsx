@@ -42,15 +42,17 @@ export default function Dashboard() {
   }
 
   // Distribution data for pie chart
-  const distributionData = activeAssets
-    .filter(a => a.name !== 'Cash')
-    .filter(a => distributionFilter.length === 0 || distributionFilter.includes(a.id))
-    .map(asset => ({
-      name: asset.name,
-      value: roiMetrics.find(m => m.asset.id === asset.id)?.nav || 0,
-      color: asset.color
-    }))
-    .filter(d => d.value > 0)
+  const distributionData = useMemo(() => {
+    return activeAssets
+      .filter(a => a.name !== 'Cash')
+      .filter(a => distributionFilter.length === 0 || distributionFilter.includes(a.id))
+      .map(asset => ({
+        name: asset.name,
+        value: roiMetrics.find(m => m.asset.id === asset.id)?.nav || 0,
+        color: asset.color
+      }))
+      .filter(d => d.value > 0)
+  }, [activeAssets, distributionFilter, roiMetrics])
 
 
 

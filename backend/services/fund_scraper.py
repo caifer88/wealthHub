@@ -1,12 +1,11 @@
-import requests
+import httpx
 from bs4 import BeautifulSoup
 from typing import Optional
 from datetime import datetime
 import logging
 import re
 from models import PriceData
-from cachetools import cached, TTLCache
-from utils import format_datetime_iso
+from utils import format_datetime_iso, async_ttl_cache
 
 logger = logging.getLogger(__name__)
 
@@ -18,38 +17,39 @@ class FundScraper:
 
     # Cache valid for 4 hours (14400 seconds)
     @staticmethod
-    @cached(cache=TTLCache(maxsize=100, ttl=14400))
-    def fetch_fund_price(isin: str, asset_name: str, asset_id: str) -> Optional[PriceData]:
+    @async_ttl_cache(maxsize=100, ttl=14400)
+    async def fetch_fund_price(isin: str, asset_name: str, asset_id: str) -> Optional[PriceData]:
         """Try multiple strategies to fetch fund price"""
         
-        # Estrategia 1: FT Markets
-        price_data = FundScraper._fetch_from_ft(isin, asset_name, asset_id)
-        if price_data:
-            logger.info(f"✅ {asset_name}: {price_data.price} EUR (FT Markets)")
-            return price_data
-        
-        # Estrategia 2: Morningstar
-        price_data = FundScraper._fetch_from_morningstar(isin, asset_name, asset_id)
-        if price_data:
-            logger.info(f"✅ {asset_name}: {price_data.price} EUR (Morningstar)")
-            return price_data
-        
-        # Estrategia 3: Fondos.net (Spanish funds database)
-        price_data = FundScraper._fetch_from_fondosnet(isin, asset_name, asset_id)
-        if price_data:
-            logger.info(f"✅ {asset_name}: {price_data.price} EUR (Fondos.net)")
-            return price_data
+        async with httpx.AsyncClient(headers=FundScraper.HEADERS, timeout=15.0, follow_redirects=True) as client:
+            # Estrategia 1: FT Markets
+            price_data = await FundScraper._fetch_from_ft(client, isin, asset_name, asset_id)
+            if price_data:
+                logger.info(f"✅ {asset_name}: {price_data.price} EUR (FT Markets)")
+                return price_data
+
+            # Estrategia 2: Morningstar
+            price_data = await FundScraper._fetch_from_morningstar(client, isin, asset_name, asset_id)
+            if price_data:
+                logger.info(f"✅ {asset_name}: {price_data.price} EUR (Morningstar)")
+                return price_data
+
+            # Estrategia 3: Fondos.net (Spanish funds database)
+            price_data = await FundScraper._fetch_from_fondosnet(client, isin, asset_name, asset_id)
+            if price_data:
+                logger.info(f"✅ {asset_name}: {price_data.price} EUR (Fondos.net)")
+                return price_data
         
         logger.error(f"❌ No se encontró precio para {asset_name} ({isin}) en ninguna fuente")
         return None
 
     @staticmethod
-    def _fetch_from_ft(isin: str, asset_name: str, asset_id: str) -> Optional[PriceData]:
+    async def _fetch_from_ft(client: httpx.AsyncClient, isin: str, asset_name: str, asset_id: str) -> Optional[PriceData]:
         """Fetch from Financial Times Markets"""
         try:
             logger.info(f"🔄 Intentando FT Markets para {asset_name} ({isin})")
             url = f"https://markets.ft.com/data/funds/tearsheet/summary?s={isin}:EUR"
-            response = requests.get(url, headers=FundScraper.HEADERS, timeout=15)
+            response = await client.get(url)
             
             if response.status_code != 200:
                 logger.debug(f"FT retornó status {response.status_code}")
@@ -90,13 +90,13 @@ class FundScraper:
             return None
 
     @staticmethod
-    def _fetch_from_morningstar(isin: str, asset_name: str, asset_id: str) -> Optional[PriceData]:
+    async def _fetch_from_morningstar(client: httpx.AsyncClient, isin: str, asset_name: str, asset_id: str) -> Optional[PriceData]:
         """Fetch from Morningstar"""
         try:
             logger.info(f"🔄 Intentando Morningstar para {asset_name} ({isin})")
             # Convertir ISIN a formato esperado por Morningstar (ej: ES0165151004 -> LU0165151004)
             url = f"https://www.morningstar.es/es/funds/{isin}/quote.html"
-            response = requests.get(url, headers=FundScraper.HEADERS, timeout=15)
+            response = await client.get(url)
             
             if response.status_code != 200:
                 logger.debug(f"Morningstar retornó status {response.status_code}")
@@ -130,12 +130,12 @@ class FundScraper:
             return None
 
     @staticmethod
-    def _fetch_from_fondosnet(isin: str, asset_name: str, asset_id: str) -> Optional[PriceData]:
+    async def _fetch_from_fondosnet(client: httpx.AsyncClient, isin: str, asset_name: str, asset_id: str) -> Optional[PriceData]:
         """Fetch from Fondos.net (Spanish funds database)"""
         try:
             logger.info(f"🔄 Intentando Fondos.net para {asset_name} ({isin})")
             url = f"https://www.fondos.net/fondo/{isin.lower()}"
-            response = requests.get(url, headers=FundScraper.HEADERS, timeout=15)
+            response = await client.get(url)
             
             if response.status_code != 200:
                 logger.debug(f"Fondos.net retornó status {response.status_code}")

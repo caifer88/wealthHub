@@ -10,7 +10,7 @@ from typing import List, Optional
 from fastapi import FastAPI, Query, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-import requests
+import httpx
 
 from config import settings
 from models import (
@@ -209,53 +209,54 @@ async def fetch_month_prices(
         tasks = []
         
         # 1. Bitcoin Task
-        def fetch_btc():
+        async def fetch_btc():
             if crypto_assets:
                 btc_asset = crypto_assets[0]
-                return ("btc", PriceFetcher.fetch_bitcoin_price(
+                price_data = await PriceFetcher.fetch_bitcoin_price(
                     date=last_business_day,
                     asset_id=btc_asset["id"],
                     asset_name=btc_asset["name"]
-                ))
+                )
+                return ("btc", price_data)
             return ("btc", None)
 
         if crypto_assets:
-            tasks.append(asyncio.to_thread(fetch_btc))
+            tasks.append(asyncio.create_task(fetch_btc()))
 
         # 2. Fund Tasks
-        def make_fund_fetcher(fund):
-            def fetch():
-                return ("fund", fund, FundScraper.fetch_fund_price(
-                    isin=fund["isin"],
-                    asset_name=fund["name"],
-                    asset_id=fund["id"]
-                ))
-            return fetch
+        async def fetch_fund(fund_data):
+            price_data = await FundScraper.fetch_fund_price(
+                isin=fund_data["isin"],
+                asset_name=fund_data["name"],
+                asset_id=fund_data["id"]
+            )
+            return ("fund", fund_data, price_data)
 
         for fund in fund_assets:
             if not fund.get("isin"):
                 logger.warning(f"Fund {fund.get('name')} has no ISIN")
                 continue
-            tasks.append(asyncio.to_thread(make_fund_fetcher(fund)))
+            tasks.append(asyncio.create_task(fetch_fund(fund)))
 
         # 3. Broker/Stock Tasks
-        def make_broker_fetcher(broker):
-            def fetch():
-                component_tickers = broker.get("componentTickers", [])
-                if not component_tickers:
-                    return ("broker", broker, [])
+        async def fetch_broker(broker_data):
+            component_tickers = broker_data.get("componentTickers", [])
+            if not component_tickers:
+                return ("broker", broker_data, [])
 
-                logger.info(f"📦 Fetching component tickers for {broker.get('name')}: {component_tickers}")
-                tickers_map = {
-                    ticker: (f"{broker.get('name')} - {ticker}", broker["id"])
-                    for ticker in component_tickers
-                }
-                return ("broker", broker, PriceFetcher.fetch_multiple_stocks(tickers_map, last_business_day))
-            return fetch
+            logger.info(f"📦 Fetching component tickers for {broker_data.get('name')}: {component_tickers}")
+            tickers_map = {
+                ticker: (f"{broker_data.get('name')} - {ticker}", broker_data["id"])
+                for ticker in component_tickers
+            }
+            # yfinance fetch_multiple_stocks is still sync as it relies on pandas/yfinance
+            # keep it in a thread
+            prices = await asyncio.to_thread(PriceFetcher.fetch_multiple_stocks, tickers_map, last_business_day)
+            return ("broker", broker_data, prices)
 
         for broker in broker_assets:
             if broker.get("componentTickers"):
-                tasks.append(asyncio.to_thread(make_broker_fetcher(broker)))
+                tasks.append(asyncio.create_task(fetch_broker(broker)))
 
         # Run all tasks concurrently
         results = await asyncio.gather(*tasks)

@@ -35,13 +35,24 @@ export default function Bitcoin() {
   const validTransactions = bitcoinTransactions
   
   // Portfolio calculations
-  const totalInvested = validTransactions.reduce((sum, t) => sum + (t.totalCost || 0), 0)
-  const totalBTC = validTransactions.reduce((sum, t) => 
-    t.type === 'buy' ? sum + (t.amountBTC || 0) : sum - (t.amountBTC || 0), 0)
-  const meanPrice = totalBTC > 0 ? totalInvested / totalBTC : 0
-  const lastPrice = validTransactions[validTransactions.length - 1]?.meanPrice || 0
-  const currentBTCValue = totalBTC * lastPrice
-  const unrealizedGain = currentBTCValue - totalInvested
+  const { totalInvested, totalBTC, meanPrice, lastPrice, currentBTCValue, unrealizedGain } = useMemo(() => {
+    const totalInv = validTransactions.reduce((sum, t) => sum + (t.totalCost || 0), 0)
+    const btc = validTransactions.reduce((sum, t) =>
+      t.type === 'buy' ? sum + (t.amountBTC || 0) : sum - (t.amountBTC || 0), 0)
+    const mPrice = btc > 0 ? totalInv / btc : 0
+    const lPrice = validTransactions[validTransactions.length - 1]?.meanPrice || 0
+    const currentVal = btc * lPrice
+    const gain = currentVal - totalInv
+
+    return {
+      totalInvested: totalInv,
+      totalBTC: btc,
+      meanPrice: mPrice,
+      lastPrice: lPrice,
+      currentBTCValue: currentVal,
+      unrealizedGain: gain
+    }
+  }, [validTransactions])
 
   // Función para ordenar transacciones
   const getSortedTransactions = useCallback((txs: BitcoinTransaction[], column: 'date' | 'type' | 'amount' | 'cost' | 'meanPrice', direction: 'asc' | 'desc') => {

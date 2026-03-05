@@ -294,7 +294,9 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     // Solo caer en fallback si hay error y es el primer render para no sobreescribir datos en cache local tras un fallo temporal
-    if (gasError && isFirstRender.current) {
+    // Update: If gasUrl is not configured, SWR might not throw an error immediately but rather hang or return undefined.
+    // We should fallback if gasError OR if we don't have gasData and it's not validating anymore and it's the first render.
+    if ((gasError || (!gasData && !isValidating)) && isFirstRender.current) {
         isFirstRender.current = false
         // Fallback a localStorage
         const localAssets = JSON.parse(localStorage.getItem('wm_assets_v4') || '[]')
@@ -318,7 +320,7 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setStockTransactions(SAMPLE_DATA.stockTransactions)
         setSyncState(prev => ({ ...prev, syncError: 'Usando datos de muestra' }))
     }
-  }, [gasData, gasError])
+  }, [gasData, gasError, isValidating])
 
   // Guardar en localStorage y sincronizar con GAS
   useEffect(() => {
@@ -342,8 +344,18 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Calcular métricas
   useEffect(() => {
+    // We should not set metrics to null if it's already computed,
+    // otherwise if the SWR is failing or we have mock data with 0 assets temporarily, it shows Cargando...
     if (assets.length === 0) {
-      setMetrics(null)
+      if (!isFirstRender.current) {
+        setMetrics({
+          totalNAV: 0,
+          totalInv: 0,
+          totalProfit: 0,
+          roi: 0,
+          cash: 0
+        })
+      }
       return
     }
 
