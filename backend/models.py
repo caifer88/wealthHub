@@ -31,7 +31,6 @@ class Asset(BaseModel):
     name: str
     category: str
     color: str
-    baseAmount: Decimal
     archived: bool = False
     targetAllocation: Optional[Decimal] = None
     riskLevel: Optional[str] = None
@@ -48,7 +47,6 @@ class Asset(BaseModel):
                 "name": "Numantia Patrimonio Global",
                 "category": "Fund",
                 "color": "#6366f1",
-                "baseAmount": 10000,
                 "archived": False,
                 "targetAllocation": 30,
                 "riskLevel": "Medio",

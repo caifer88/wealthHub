@@ -28,8 +28,8 @@ export const useROIMetrics = (assets: Asset[], history: HistoryEntry[]) => {
       if (assetHistory.length === 0) {
         return {
           asset,
-          nav: asset.baseAmount,
-          totalInvested: asset.baseAmount,
+          nav: 0,
+          totalInvested: 0,
           totalProfit: 0,
           roi: 0,
           percentage: 0

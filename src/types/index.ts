@@ -4,7 +4,6 @@ export interface Asset {
   name: string;
   category: string;
   color: string;
-  baseAmount: number;
   archived: boolean;
   targetAllocation?: number;
   riskLevel?: string;
@@ -44,7 +43,7 @@ export interface StockTransaction {
   pricePerShare: number;
   fees: number;
   totalAmount: number;
-  broker?: string;  // Broker identifier (e.g., "IB" for Interactive Brokers)
+  broker?: string;  // Broker identifier (e.g."Interactive Brokers")
 }
 
 export interface SyncState {

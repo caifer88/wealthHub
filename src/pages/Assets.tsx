@@ -21,7 +21,6 @@ export default function Assets() {
     name: '',
     category: 'Fund',
     color: '#6366f1',
-    baseAmount: 0,
     targetAllocation: 0,
     riskLevel: 'Medio',
     archived: false,
@@ -118,13 +117,10 @@ export default function Assets() {
   const handleOpenModal = (asset?: Asset) => {
     if (asset) {
       setEditingAsset(asset)
-      // Usar el NAV del último mes registrado como baseAmount por defecto, o 0 si no existe o está archived
-      const defaultBaseAmount = asset.archived ? 0 : getAssetNAV(asset.id)
       setFormData({
         name: asset.name,
         category: asset.category,
         color: asset.color,
-        baseAmount: defaultBaseAmount,
         targetAllocation: asset.targetAllocation || 0,
         riskLevel: asset.riskLevel || 'Medio',
         archived: asset.archived || false,
@@ -139,7 +135,6 @@ export default function Assets() {
         name: '',
         category: 'Fund',
         color: '#6366f1',
-        baseAmount: 0,
         targetAllocation: 0,
         riskLevel: 'Medio',
         archived: false,
@@ -165,7 +160,6 @@ export default function Assets() {
               name: formData.name,
               category: formData.category,
               color: formData.color,
-              baseAmount: formData.baseAmount,
               targetAllocation: formData.targetAllocation,
               riskLevel: formData.riskLevel,
               archived: formData.archived,
@@ -188,7 +182,6 @@ export default function Assets() {
         name: formData.name,
         category: formData.category,
         color: formData.color,
-        baseAmount: formData.baseAmount,
         targetAllocation: formData.targetAllocation,
         riskLevel: formData.riskLevel,
         archived: false,
@@ -549,17 +542,6 @@ export default function Assets() {
               ))}
             </div>
           </div>
-
-          <Input
-            label="Valor Base (€) - NAV del último mes"
-            type="number"
-            value={formData.baseAmount}
-            onChange={(e) => setFormData({ ...formData, baseAmount: parseFloat(e.target.value) || 0})}
-            step="0.01"
-            min="0"
-            required
-            placeholder="Coloca 0 si la posición está cerrada"
-          />
 
           <Select
             label="Nivel de Riesgo"
