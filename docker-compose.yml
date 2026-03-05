@@ -5,6 +5,8 @@ services:
       dockerfile: Dockerfile
     container_name: wealthhub-backend
     restart: always
+    ports:
+      - "8000:8000"
     environment:
       - FRONTEND_URL=http://localhost:3000,http://main:5173
       - VITE_GAS_URL=${VITE_GAS_URL:-}
@@ -17,14 +19,14 @@ services:
       interval: 30s
       retries: 3
 
-  main:  # <--- Antes era 'frontend', ahora coincide con app.yml
+  main:
     build:
       context: .
       dockerfile: Dockerfile.frontend
     container_name: wealthhub-frontend
     restart: always
     ports:
-      - "8787:5173"  # Mapeo directo al puerto que quieres usar
+      - "8787:5173"
     environment:
       - VITE_BACKEND_URL=http://backend:8000
       - VITE_GAS_URL=${VITE_GAS_URL:-}
