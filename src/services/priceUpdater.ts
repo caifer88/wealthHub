@@ -146,18 +146,24 @@ export async function fetchAndUpdatePrices(
         let nav: number = 0
 
         if (asset.name === 'Interactive Brokers') {
-          // Para Interactive Brokers: calcular desde transacciones de acciones abiertas
-          const ibCalc = calculateInteractiveBrokersValue()
-          nav = ibCalc.value
-          liquidNavValue = nav > 0 ? 1 : 0
-          // Si no hay valor, mantener el anterior
-          if (nav === 0) {
-            if (existingEntry && existingEntry.nav > 0) {
-              nav = existingEntry.nav
-              liquidNavValue = existingEntry.liquidNavValue
-            } else if (lastEntry && lastEntry.nav > 0) {
-              nav = lastEntry.nav
-              liquidNavValue = lastEntry.liquidNavValue
+          // Si el backend nos envía el precio consolidado (válido), lo usamos directamente
+          if (isValidPrice(price)) {
+            nav = Number(price.price) // <-- AQUÍ ESTÁ LA CLAVE: Forzamos que sea numérico
+            liquidNavValue = nav > 0 ? 1 : 0
+          } else {
+            // Fallback: calcular desde transacciones de acciones abiertas si el backend falla
+            const ibCalc = calculateInteractiveBrokersValue()
+            nav = ibCalc.value
+            liquidNavValue = nav > 0 ? 1 : 0
+            
+            if (nav === 0) {
+              if (existingEntry && existingEntry.nav > 0) {
+                nav = existingEntry.nav
+                liquidNavValue = existingEntry.liquidNavValue
+              } else if (lastEntry && lastEntry.nav > 0) {
+                nav = lastEntry.nav
+                liquidNavValue = lastEntry.liquidNavValue
+              }
             }
           }
         } else if (asset.name === 'Cash') {

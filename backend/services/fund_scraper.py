@@ -91,37 +91,69 @@ class FundScraper:
 
     @staticmethod
     def _fetch_from_morningstar(isin: str, asset_name: str, asset_id: str) -> Optional[PriceData]:
-        """Fetch from Morningstar"""
+        """Fetch from Morningstar via API and Next.js State"""
+        import json # Asegúrate de importarlo en la cabecera de fund_scraper.py
+        
         try:
-            logger.info(f"🔄 Intentando Morningstar para {asset_name} ({isin})")
-            # Convertir ISIN a formato esperado por Morningstar (ej: ES0165151004 -> LU0165151004)
+            logger.info(f"🔄 Intentando Morningstar API para {asset_name} ({isin})")
+            
+            # INTENTO 1: API interna de Morningstar (Excelente para SecIds como 0P0001NBRZ)
+            # Probamos con y sin el sufijo común de planes de pensiones españoles
+            for suffix in ["", "]2]0]FOESP$$ALL"]:
+                api_url = f"https://tools.morningstar.es/api/rest.svc/timeseries_price/t92wz0sj7c?id={isin}{suffix}&currencyId=EUR&idtype=Morningstar&frequency=daily&outputType=JSON"
+                response_api = requests.get(api_url, headers=FundScraper.HEADERS, timeout=10)
+                
+                if response_api.status_code == 200 and "TimeSeries" in response_api.text:
+                    try:
+                        data = response_api.json()
+                        history = data.get('TimeSeries', {}).get('Security', [{}])[0].get('HistoryDetail', [])
+                        if history:
+                            # Tomamos el último precio registrado en la serie histórica
+                            last_price = history[-1].get('Value')
+                            if last_price:
+                                return FundScraper._create_price_data(asset_id, asset_name, isin, str(last_price))
+                    except Exception as e:
+                        logger.debug(f"Error en API de Morningstar con sufijo '{suffix}': {e}")
+
+            # INTENTO 2: Morningstar Web (Nueva interfaz Next.js)
+            logger.info(f"🔄 Intentando Morningstar Web (Next.js) para {asset_name} ({isin})")
             url = f"https://www.morningstar.es/es/funds/{isin}/quote.html"
             response = requests.get(url, headers=FundScraper.HEADERS, timeout=15)
             
-            if response.status_code != 200:
-                logger.debug(f"Morningstar retornó status {response.status_code}")
-                return None
-            
-            soup = BeautifulSoup(response.text, "html.parser")
-            
-            # Buscar el precio en Morningstar
-            price_selectors = [
-                {"name": "span", "class": "label-value"},
-                {"name": "td", "class": "text-right"},
-            ]
-            
-            for selector in price_selectors:
-                try:
-                    elements = soup.find_all(selector.pop("name"), **selector)
-                    for element in elements:
-                        price_text = element.text.strip()
-                        price_match = re.search(r'[\d,]+\.?\d*', price_text.replace(",", "").replace("€", "").strip())
-                        if price_match:
-                            price_val = price_match.group()
-                            return FundScraper._create_price_data(asset_id, asset_name, isin, price_val)
-                except:
-                    continue
-            
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, "html.parser")
+                
+                # Extraemos el JSON gigante que Next.js inyecta en el HTML para renderizar la página
+                next_data = soup.find("script", id="__NEXT_DATA__")
+                if next_data and next_data.string:
+                    # Usamos expresiones regulares para capturar el valor exacto (nav, closePrice o price)
+                    price_match = re.search(r'"nav"\s*:\s*\{\s*"value"\s*:\s*([\d\.]+)', next_data.string)
+                    if not price_match:
+                        price_match = re.search(r'"closePrice"\s*:\s*\{\s*"value"\s*:\s*([\d\.]+)', next_data.string)
+                    if not price_match:
+                        price_match = re.search(r'"price"\s*:\s*\{\s*"value"\s*:\s*([\d\.]+)', next_data.string)
+                        
+                    if price_match:
+                        return FundScraper._create_price_data(asset_id, asset_name, isin, price_match.group(1))
+
+                # INTENTO 3: Selectores HTML clásicos como último recurso
+                price_selectors = [
+                    {"name": "span", "class": "label-value"},
+                    {"name": "td", "class": "text-right"},
+                    {"name": "div", "class": "price-value"} # Clase frecuente en nuevas UI
+                ]
+                
+                for selector in price_selectors:
+                    try:
+                        elements = soup.find_all(selector.pop("name"), **selector)
+                        for element in elements:
+                            price_text = element.text.strip()
+                            price_match = re.search(r'[\d,]+\.?\d*', price_text.replace(",", "").replace("€", "").strip())
+                            if price_match:
+                                return FundScraper._create_price_data(asset_id, asset_name, isin, price_match.group())
+                    except:
+                        continue
+
             logger.debug(f"No se encontró precio en Morningstar para {isin}")
             return None
             

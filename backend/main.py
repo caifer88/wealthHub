@@ -152,28 +152,48 @@ async def fetch_month_prices(
             logger.info(f"📊 StockTransactions have broker field: {has_broker_field}")
             
             if has_broker_field:
-                # Strategy 1: Group by broker field (preferred)
-                broker_tickers = {}
+                # Strategy 1: Group by broker field and calculate holdings
+                broker_holdings = {}
                 for tx in stock_transactions:
                     broker = tx.get("broker")
                     ticker = tx.get("ticker")
+                    
+                    # Extraer el número de acciones. 
+                    # IMPORTANTE: Revisa si en tu base de datos (GAS) lo llamas 'shares', 'participations' o 'quantity'
+                    shares = float(tx.get("shares", tx.get("participations", tx.get("quantity", 0))))
+                    
+                    # Restar las acciones si es una venta
+                    tx_type = tx.get("type", "BUY").upper()
+                    if tx_type == "SELL":
+                        shares = -shares
+                        
                     if broker and ticker:
-                        if broker not in broker_tickers:
-                            broker_tickers[broker] = set()
-                        broker_tickers[broker].add(ticker)
+                        if broker not in broker_holdings:
+                            broker_holdings[broker] = {}
+                        if ticker not in broker_holdings[broker]:
+                            broker_holdings[broker][ticker] = 0.0
+                        broker_holdings[broker][ticker] += shares
                 
-                # Create broker_assets from grouped tickers
-                for broker_name, tickers in broker_tickers.items():
-                    broker_assets_dict[broker_name] = {
-                        "name": broker_name,
-                        "id": f"broker-{broker_name.lower()}",
-                        "category": "Broker",
-                        "componentTickers": list(tickers)
-                    }
+                # Create broker_assets from grouped holdings
+                for broker_name, holdings in broker_holdings.items():
+                    # Filtrar acciones que actualmente posees (cantidad mayor que 0)
+                    active_tickers = {t: s for t, s in holdings.items() if s > 0.0001}
+                    
+                    if active_tickers:
+                        # --- NUEVO: Buscar el ID real del activo en la base de datos ---
+                        # Buscamos en los activos activos uno que se llame exactamente igual que el broker
+                        matching_assets = [a for a in active_assets if a.get("name") == broker_name]
+                        real_asset_id = matching_assets[0].get("id") if matching_assets else f"broker-{broker_name.lower()}"
+                        
+                        broker_assets_dict[broker_name] = {
+                            "name": broker_name,
+                            "id": real_asset_id,  # <-- Usamos el ID real que conectará con el frontend
+                            "category": "Broker",
+                            "componentTickers": list(active_tickers.keys()),
+                            "holdings": active_tickers  # Guardamos el recuento de acciones aquí
+                        }
                 
-                logger.info(f"📊 Found brokers from stockTransactions: {list(broker_assets_dict.keys())}")
-                for broker, tickers in broker_tickers.items():
-                    logger.info(f"  - {broker}: {tickers}")
+                logger.info(f"📊 Brokers consolidados: {list(broker_assets_dict.keys())}")
             else:
                 # Strategy 2: Fallback - assign all tickers to existing Stocks assets
                 logger.warning("⚠️ StockTransactions missing 'broker' field - using fallback strategy")
@@ -242,6 +262,8 @@ async def fetch_month_prices(
         def make_broker_fetcher(broker):
             def fetch():
                 component_tickers = broker.get("componentTickers", [])
+                holdings = broker.get("holdings", {}) # Recuperamos las acciones que calculamos arriba
+                
                 if not component_tickers:
                     return ("broker", broker, [])
 
@@ -250,7 +272,33 @@ async def fetch_month_prices(
                     ticker: (f"{broker.get('name')} - {ticker}", broker["id"])
                     for ticker in component_tickers
                 }
-                return ("broker", broker, PriceFetcher.fetch_multiple_stocks(tickers_map, last_business_day))
+                
+                # Obtenemos los precios unitarios (ej. precio de AMD, precio de MSTR)
+                individual_prices = PriceFetcher.fetch_multiple_stocks(tickers_map, last_business_day)
+                
+                total_broker_value = 0.0
+                
+                # Multiplicamos el precio por el número de acciones y lo sumamos al total del broker
+                for p in individual_prices:
+                    shares = holdings.get(p.ticker, 0.0)
+                    total_broker_value += float(p.price) * shares
+                    logger.info(f"  - {p.ticker}: {shares} acciones x {p.price} EUR = {shares * float(p.price)} EUR")
+                
+                # Si el broker tiene un valor total, devolvemos un ÚNICO objeto PriceData para todo el broker
+                if total_broker_value > 0:
+                    logger.info(f"💰 Valor total calculado para {broker.get('name')}: {total_broker_value} EUR")
+                    aggregated_price = PriceData(
+                        assetId=broker["id"],
+                        assetName=broker["name"],
+                        ticker=None,  # Como es un conjunto, quitamos el ticker individual
+                        price=round(total_broker_value, 2),
+                        currency="EUR",
+                        fetchedAt=format_datetime_iso(datetime.now()),
+                        source="yfinance_aggregated"
+                    )
+                    return ("broker", broker, [aggregated_price])
+                    
+                return ("broker", broker, [])
             return fetch
 
         for broker in broker_assets:
@@ -278,6 +326,11 @@ async def fetch_month_prices(
             elif type_ == "broker":
                 _, broker, broker_prices = result
                 prices.extend(broker_prices)
+                
+                # Si hemos devuelto un precio consolidado del broker (ticker=None), saltamos la comprobación de errores
+                if broker_prices and any(p.ticker is None for p in broker_prices):
+                    continue
+                    
                 fetched_tickers = {p.ticker for p in broker_prices if p.ticker}
                 missing = set(broker.get("componentTickers", [])) - fetched_tickers
                 if missing:
