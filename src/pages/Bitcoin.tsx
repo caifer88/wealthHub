@@ -35,7 +35,7 @@ export default function Bitcoin() {
   const validTransactions = bitcoinTransactions
   
   // Portfolio calculations
-  const { totalInvested, totalBTC, meanPrice, lastPrice, currentBTCValue, unrealizedGain } = useMemo(() => {
+  const { totalInvested, totalBTC, meanPrice, unrealizedGain } = useMemo(() => {
     const totalInv = validTransactions.reduce((sum, t) => sum + (t.totalCost || 0), 0)
     const btc = validTransactions.reduce((sum, t) =>
       t.type === 'buy' ? sum + (t.amountBTC || 0) : sum - (t.amountBTC || 0), 0)
@@ -48,8 +48,6 @@ export default function Bitcoin() {
       totalInvested: totalInv,
       totalBTC: btc,
       meanPrice: mPrice,
-      lastPrice: lPrice,
-      currentBTCValue: currentVal,
       unrealizedGain: gain
     }
   }, [validTransactions])

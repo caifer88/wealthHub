@@ -8,8 +8,9 @@ const Bitcoin = lazy(() => import('./pages/Bitcoin'))
 const Stocks = lazy(() => import('./pages/Stocks'))
 const Projections = lazy(() => import('./pages/Projections'))
 const Statistics = lazy(() => import('./pages/Statistics'))
+const AdvancedMetrics = lazy(() => import('./pages/AdvancedMetrics'))
 
-type TabType = 'dashboard' | 'history' | 'assets' | 'bitcoin' | 'stocks' | 'proyecciones' | 'estadisticas'
+type TabType = 'dashboard' | 'history' | 'assets' | 'bitcoin' | 'stocks' | 'proyecciones' | 'estadisticas' | 'advanced_metrics'
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard')
@@ -20,6 +21,7 @@ export default function App() {
     { id: 'dashboard' as TabType, label: '📊 Dashboard', icon: '📊' },
     { id: 'history' as TabType, label: '📈 Historial', icon: '📈' },
     { id: 'estadisticas' as TabType, label: '📉 Estadísticas', icon: '📉' },
+    { id: 'advanced_metrics' as TabType, label: '⚡ Métricas Avanzadas', icon: '⚡' },
     { id: 'assets' as TabType, label: '💼 Activos', icon: '💼' },
     { id: 'bitcoin' as TabType, label: '₿ Bitcoin', icon: '₿' },
     { id: 'stocks' as TabType, label: '📈 Acciones', icon: '📈' },
@@ -34,6 +36,8 @@ export default function App() {
         return <History />
       case 'estadisticas':
         return <Statistics />
+      case 'advanced_metrics':
+        return <AdvancedMetrics />
       case 'assets':
         return <Assets />
       case 'bitcoin':
