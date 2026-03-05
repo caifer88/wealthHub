@@ -25,7 +25,7 @@ const INITIAL_FORM_DATA: FormData = {
 }
 
 export default function Bitcoin() {
-  const { bitcoinTransactions, setBitcoinTransactions } = useWealth()
+  const { bitcoinTransactions, setBitcoinTransactions, assets, history } = useWealth()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingTransaction, setEditingTransaction] = useState<BitcoinTransaction | null>(null)
   const [sortColumn, setSortColumn] = useState<'date' | 'type' | 'amount' | 'cost' | 'meanPrice'>('date')
@@ -33,14 +33,34 @@ export default function Bitcoin() {
   const [formData, setFormData] = useState<FormData>(INITIAL_FORM_DATA)
 
   const validTransactions = bitcoinTransactions
+
+  // Encontrar el activo de Bitcoin para obtener su NAV del historial
+  const btcAsset = useMemo(() => {
+    return assets.find(a => a.name.toLowerCase().includes('bitcoin') || a.category === 'Crypto')
+  }, [assets])
+  
+  // Obtener el último NAV para el activo de Bitcoin
+  const assetLatestNAV = useMemo(() => {
+    if (!btcAsset || !history) return 0
+    const assetHistory = history.filter(h => h.assetId === btcAsset.id)
+    if (assetHistory.length === 0) return 0
+    // Ordenar por mes (descendente) y obtener el último
+    const sorted = [...assetHistory].sort((a, b) => b.month.localeCompare(a.month))
+    return sorted[0].nav || 0
+  }, [btcAsset, history])
   
   // Portfolio calculations
   const totalInvested = validTransactions.reduce((sum, t) => sum + (t.totalCost || 0), 0)
   const totalBTC = validTransactions.reduce((sum, t) => 
     t.type === 'buy' ? sum + (t.amountBTC || 0) : sum - (t.amountBTC || 0), 0)
   const meanPrice = totalBTC > 0 ? totalInvested / totalBTC : 0
-  const lastPrice = validTransactions[validTransactions.length - 1]?.meanPrice || 0
-  const currentBTCValue = totalBTC * lastPrice
+  
+  // Si tenemos NAV del historial, ese es el valor real actual.
+  // Como fallback, usamos el último precio de la transacción multiplicado por los BTC totales.
+  const currentBTCValue = assetLatestNAV > 0 
+    ? assetLatestNAV 
+    : (totalBTC * (validTransactions[validTransactions.length - 1]?.meanPrice || 0))
+    
   const unrealizedGain = currentBTCValue - totalInvested
 
   // Función para ordenar transacciones
