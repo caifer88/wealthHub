@@ -27,9 +27,13 @@ export default function Stocks() {
     totalAmount: 0
   })
   
-  // Find the Stocks/Acciones asset to get its NAV from history
+  // Find the Stocks/Acciones or Interactive Brokers asset to get its NAV from history
   const stocksAsset = useMemo(() => {
-    return assets.find(a => a.category === 'Stocks' || a.name.toLowerCase().includes('acciones'))
+    return assets.find(a => 
+      a.name === 'Interactive Brokers' || 
+      a.category === 'Stocks' || 
+      a.name.toLowerCase().includes('acciones')
+    )
   }, [assets])
   
   // Get the latest NAV for the stocks asset
