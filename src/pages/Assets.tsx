@@ -351,20 +351,25 @@ export default function Assets() {
               
               for (const [ticker, data] of tickerMap.entries()) {
                 if (data.shares > 0) {
-                  // Búsqueda robusta ignorando mayúsculas y espacios
                   const searchTicker = ticker.trim().toUpperCase()
                   const tickerAsset = assets.find(a => 
                     (a.ticker && a.ticker.trim().toUpperCase() === searchTicker) || 
                     (a.name && a.name.trim().toUpperCase() === searchTicker)
                   )
                   
-                  const lastHistory = tickerAsset ? 
-                    history.filter(h => h.assetId === tickerAsset.id).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0] 
-                    : null
+                  // BUSCAR PRIMERO EN EL ACTIVO, SI NO, EN EL TICKER VIRTUAL (fakeAssetId)
+                  let lastHistory = null
+                  if (tickerAsset) {
+                    lastHistory = history.filter(h => h.assetId === tickerAsset.id).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
+                  }
+                  if (!lastHistory) {
+                    const fakeAssetId = `ticker-${searchTicker}`
+                    lastHistory = history.filter(h => h.assetId === fakeAssetId).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
+                  }
                   
+                  // --- AQUÍ FALTABA ESTO: CALCULAR EL PRECIO ACTUAL ---
                   let currentPrice = data.totalCost / data.shares
                   
-                  // Intentar obtener el precio real de 3 formas distintas
                   if (lastHistory) {
                     if (lastHistory.liquidNavValue > 0) {
                       currentPrice = lastHistory.liquidNavValue
@@ -374,6 +379,7 @@ export default function Assets() {
                       currentPrice = lastHistory.nav / data.shares
                     }
                   }
+                  // ---------------------------------------------------
                   
                   const nav = data.shares * currentPrice
                   const avgPrice = data.totalCost / data.shares

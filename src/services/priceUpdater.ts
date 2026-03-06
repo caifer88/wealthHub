@@ -103,8 +103,19 @@ export async function fetchAndUpdatePrices(
               }
             }
           } else {
-            // Si no existe activo, usar el precio medio de compra
-            tickerValue = data.shares * (data.totalCost / data.shares)
+            // Si no existe activo, intentar usar el precio del ticker desde priceMap o historial
+            const fakeAssetId = `ticker-${ticker.trim().toUpperCase()}`
+            const fetchedPrice = priceMap.get(fakeAssetId) as any
+            if (fetchedPrice && fetchedPrice.price > 0) {
+              tickerValue = data.shares * fetchedPrice.price
+            } else {
+              const lastHistory = getLastEntry(fakeAssetId, monthStr)
+              if (lastHistory && lastHistory.liquidNavValue > 0) {
+                tickerValue = data.shares * lastHistory.liquidNavValue
+              } else {
+                tickerValue = data.shares * (data.totalCost / data.shares)
+              }
+            }
           }
           
           totalValue += tickerValue
@@ -244,6 +255,29 @@ export async function fetchAndUpdatePrices(
         }
       })
 
+    // Añadir entradas al historial para los tickers individuales
+    result.prices.forEach((p: any) => {
+      if (p.assetId && p.assetId.startsWith('ticker-')) {
+        const existingEntry = history.find(h => h.month === monthStr && h.assetId === p.assetId)
+        const lastEntry = history.filter(h => h.assetId === p.assetId && h.month < monthStr)
+                                 .sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
+                                 
+        const alreadyAdded = newHistoryEntries.some(e => e.assetId === p.assetId && e.month === monthStr)
+        if (!alreadyAdded) {
+            newHistoryEntries.push({
+              id: existingEntry?.id || generateUUID(),
+              month: monthStr,
+              assetId: p.assetId,
+              participations: 1,
+              liquidNavValue: p.price,
+              nav: p.price,
+              contribution: 0,
+              meanCost: existingEntry?.meanCost || lastEntry?.meanCost || p.price
+            })
+        }
+      }
+    })
+    
     // Build detailed message with updated assets info
     const successLines: string[] = []
     const sourceGroups: { [key: string]: string[] } = {}

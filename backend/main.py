@@ -283,6 +283,10 @@ async def fetch_month_prices(
                     shares = holdings.get(p.ticker, 0.0)
                     total_broker_value += float(p.price) * shares
                     logger.info(f"  - {p.ticker}: {shares} acciones x {p.price} EUR = {shares * float(p.price)} EUR")
+                    
+                    # ASIGNAR UN ID ÚNICO PARA QUE EL FRONTEND PUEDA GUARDAR EL HISTORIAL INDIVIDUAL
+                    p.assetId = f"ticker-{p.ticker}"
+                    p.assetName = f"Stock {p.ticker}"
                 
                 # Si el broker tiene un valor total, devolvemos un ÚNICO objeto PriceData para todo el broker
                 if total_broker_value > 0:
@@ -296,9 +300,10 @@ async def fetch_month_prices(
                         fetchedAt=format_datetime_iso(datetime.now()),
                         source="yfinance_aggregated"
                     )
-                    return ("broker", broker, [aggregated_price])
+                    # DEVOLVEMOS EL AGREGADO + LOS INDIVIDUALES
+                    return ("broker", broker, [aggregated_price] + individual_prices)
                     
-                return ("broker", broker, [])
+                return ("broker", broker, individual_prices)
             return fetch
 
         for broker in broker_assets:

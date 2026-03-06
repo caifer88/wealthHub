@@ -73,8 +73,17 @@ export default function Stocks() {
          (a.name && a.name.trim().toUpperCase() === searchTicker)
        )
        
-       const lastHistory = tickerAsset ? history.filter(h => h.assetId === tickerAsset.id).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0] : null
+       // BUSCAR HISTORIAL INDIVIDUAL
+       let lastHistory = null
+       if (tickerAsset) {
+         lastHistory = history.filter(h => h.assetId === tickerAsset.id).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
+       }
+       if (!lastHistory) {
+         const fakeAssetId = `ticker-${searchTicker}`
+         lastHistory = history.filter(h => h.assetId === fakeAssetId).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
+       }
        
+       // --- AQUÍ FALTABA ESTO: CALCULAR EL PRECIO ACTUAL ---
        let currentPrice = data.avgPrice;
        if (lastHistory) {
          if (lastHistory.liquidNavValue > 0) {
@@ -85,6 +94,7 @@ export default function Stocks() {
            currentPrice = lastHistory.nav / data.shares;
          }
        }
+       // ---------------------------------------------------
        
        const currentValue = data.shares * currentPrice
        const unrealizedGain = currentValue - data.cost
@@ -93,11 +103,12 @@ export default function Stocks() {
        return [ticker, { ...data, lastPrice: currentPrice, currentValue, unrealizedGain, unrealizedGainPercent }] as const
     })
 
-    // Calcular totales usando los valores reales actuales
+    // Calcular totales usando los valores reales actuales (suma de todas las acciones por su precio actual)
     const totalValue = tickers.reduce((sum, [_, data]) => sum + data.currentValue, 0)
     const totalInvestment = tickers.reduce((sum, [_, data]) => sum + data.cost, 0)
     
-    const finalTotalValue = assetLatestNAV > 0 ? assetLatestNAV : totalValue
+    // USAR DIRECTAMENTE EL TOTAL VALUE DE LAS ACCIONES PARA ESTA PESTAÑA
+    const finalTotalValue = totalValue > 0 ? totalValue : (assetLatestNAV > 0 ? assetLatestNAV : 0)
     const unrealizedGains = finalTotalValue - totalInvestment
 
     return { tickers, tickerMap, totalValue: finalTotalValue, totalInvestment, unrealizedGains }
