@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     # Google Apps Script
     VITE_GAS_URL: Optional[str] = None
     
+    # Database Settings
+    USE_DB: bool = False
+    DATABASE_URL: str = "sqlite:///./wealthhub.db"
+
     # Price Fetcher Settings
     TIMEOUT: int = 30
     RETRIES: int = 3

@@ -24,6 +24,7 @@ from utils import (
 from services.price_fetcher import PriceFetcher
 from services.fund_scraper import FundScraper
 from services.gas_service import load_assets_from_gas, persist_prices_to_gas, load_data_from_gas
+from services.db_service import load_assets_from_db, persist_prices_to_db, load_data_from_db, init_db
 
 # Configure logging
 logging.basicConfig(
@@ -54,6 +55,14 @@ app.add_middleware(
 )
 
 logger.info(f"🔧 CORS configured for: {', '.join(frontend_urls)}")
+
+@app.on_event("startup")
+async def startup_event():
+    if settings.USE_DB:
+        logger.info("🔌 Using Database for storage (Feature Toggle Enabled)")
+        init_db()
+    else:
+        logger.info("☁️ Using Google Apps Script for storage (Feature Toggle Disabled)")
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -107,13 +116,17 @@ async def fetch_month_prices(
         last_business_day = get_last_business_day(year, month)
         logger.info(f"📅 Last business day: {format_date(last_business_day)}")
         
-        # Load assets from GAS (required - no sample fallback)
-        assets = await load_assets_from_gas()
+        # Load assets
+        if settings.USE_DB:
+            assets = await load_assets_from_db()
+        else:
+            assets = await load_assets_from_gas()
+
         if not assets:
-            logger.error("❌ No assets loaded from GAS - GAS_URL may not be configured")
+            logger.error("❌ No assets loaded")
             return FetchMonthResponse(
                 success=False,
-                message="Could not load assets. Ensure GAS_URL is configured and accessible.",
+                message="Could not load assets.",
                 year=year,
                 month=month,
                 lastBusinessDay=format_date(last_business_day),
@@ -138,8 +151,12 @@ async def fetch_month_prices(
         
         # Build broker_assets from stockTransactions grouped by broker
         # Load full data to get stockTransactions
-        full_data = await load_data_from_gas()
-        logger.info(f"📥 Full data keys from GAS: {list(full_data.keys())}")
+        if settings.USE_DB:
+            full_data = await load_data_from_db()
+        else:
+            full_data = await load_data_from_gas()
+
+        logger.info(f"📥 Full data keys: {list(full_data.keys())}")
         
         stock_transactions = full_data.get("stockTransactions", [])
         logger.info(f"📋 Found {len(stock_transactions)} stockTransactions")
@@ -356,9 +373,12 @@ async def fetch_month_prices(
                 errors=errors if errors else ["No assets with ticker/ISIN found or all fetch attempts failed"]
             )
         
-        # Only persist to GAS if we actually fetched prices
-        if prices and settings.VITE_GAS_URL:
-            await persist_prices_to_gas(prices, year, month, last_business_day)
+        # Only persist if we actually fetched prices
+        if prices:
+            if settings.USE_DB:
+                await persist_prices_to_db(prices, year, month, last_business_day)
+            elif settings.VITE_GAS_URL:
+                await persist_prices_to_gas(prices, year, month, last_business_day)
         
         return FetchMonthResponse(
             success=len(prices) > 0,
@@ -398,8 +418,10 @@ async def update_prices(price_data: List[PriceData]):
     try:
         logger.info(f"📝 Updating {len(price_data)} prices")
         
-        # Persist to GAS
-        if settings.VITE_GAS_URL:
+        # Persist
+        if settings.USE_DB:
+            await persist_prices_to_db(price_data)
+        elif settings.VITE_GAS_URL:
             await persist_prices_to_gas(price_data)
         
         return {
@@ -418,9 +440,13 @@ async def update_prices(price_data: List[PriceData]):
 
 @app.get("/assets")
 async def get_assets():
-    """Get list of all assets from GAS"""
+    """Get list of all assets"""
     try:
-        assets = await load_assets_from_gas()
+        if settings.USE_DB:
+            assets = await load_assets_from_db()
+        else:
+            assets = await load_assets_from_gas()
+
         return {
             "success": True,
             "assets": assets

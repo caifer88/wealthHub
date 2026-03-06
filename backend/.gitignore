@@ -52,3 +52,4 @@ logs/
 # Environment
 .env.local
 .env.*.local
+wealthhub.db
