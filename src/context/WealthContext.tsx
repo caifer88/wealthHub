@@ -58,7 +58,6 @@ const SAMPLE_DATA = {
       category: 'Fund' as const,
       color: '#6366f1',
       archived: false,
-      targetAllocation: 25,
       riskLevel: 'Medio' as const,
       isin: 'ES0164691083',
       participations: 3786.90437,
@@ -70,7 +69,6 @@ const SAMPLE_DATA = {
       category: 'Fund' as const,
       color: '#10b981',
       archived: false,
-      targetAllocation: 35,
       riskLevel: 'Medio' as const,
       isin: 'IE0032126645',
       participations: 181.47,
@@ -82,7 +80,6 @@ const SAMPLE_DATA = {
       category: 'Fund' as const,
       color: '#f59e0b',
       archived: false,
-      targetAllocation: 20,
       riskLevel: 'Medio' as const,
       isin: 'ES0173311103',
       participations: 603.156901,
@@ -94,7 +91,6 @@ const SAMPLE_DATA = {
       category: 'Fund' as const,
       color: '#8b5cf6',
       archived: false,
-      targetAllocation: 20,
       riskLevel: 'Medio' as const,
       isin: 'N5430',
       participations: 2056.8217,
@@ -106,7 +102,6 @@ const SAMPLE_DATA = {
       category: 'Cash' as const,
       color: '#22C55E',
       archived: false,
-      targetAllocation: 0,
       riskLevel: 'Bajo' as const,
       participations: 0,
       meanCost: 0
@@ -370,8 +365,19 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     activeAssets.forEach(asset => {
       // Excluir Cash del cálculo de ganancia/pérdida
-      if (asset.name === 'Cash') {
-        return
+      if (asset.name === 'Cash') return
+
+      // EVITAR DOBLE CONTABILIDAD: Excluir acciones si ya tenemos el contenedor 'Interactive Brokers'
+      const isIBActive = activeAssets.some(a => a.name === 'Interactive Brokers')
+      const isStockInIB = isIBActive && asset.ticker && stockTransactions.some(tx => tx.broker === 'Interactive Brokers' && tx.ticker === asset.ticker)
+      
+      // Excluir activos que son sub-componentes de otros (ej: Basalto dentro de Fondo Basalto)
+      const isComponent = activeAssets.some(parent => 
+        parent.name && asset.name && parent.name.length > asset.name.length && parent.name.includes(asset.name) && parent.id !== asset.id
+      )
+
+      if (isStockInIB || isComponent) {
+        return // Saltamos este activo para no sumarlo dos veces al total
       }
 
       const assetHistory = history.filter(h => h.assetId === asset.id).sort((a, b) => 
@@ -379,10 +385,11 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       )
       
       if (assetHistory.length > 0) {
-        // Usar el último valor del histórico
+        // Usar el último valor del histórico para el NAV
         const lastEntry = assetHistory[assetHistory.length - 1]
         totalNAV += lastEntry.nav
-        totalInvested += assetHistory.reduce((sum, h) => sum + h.contribution, 0)
+        // Sumamos TODO el histórico de aportaciones para el Total Invertido
+        totalInvested += assetHistory.reduce((sum, h) => sum + (h.contribution || 0), 0)
       }
     })
 

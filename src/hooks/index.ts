@@ -1,15 +1,11 @@
 import { useMemo } from 'react'
 import { Asset, HistoryEntry } from '../types'
 
-// Constants
 const EXCLUDED_ASSETS = ['Cash']
 
-// Helper functions
 const groupHistoryByMonth = (history: HistoryEntry[]): Record<string, HistoryEntry[]> => {
   return history.reduce((grouped, entry) => {
-    if (!grouped[entry.month]) {
-      grouped[entry.month] = []
-    }
+    if (!grouped[entry.month]) grouped[entry.month] = []
     grouped[entry.month].push(entry)
     return grouped
   }, {} as Record<string, HistoryEntry[]>)
@@ -23,32 +19,21 @@ export const useROIMetrics = (assets: Asset[], history: HistoryEntry[]) => {
   return useMemo(() => {
     const activeAssets = getActiveAssets(assets)
     return activeAssets.map(asset => {
-      const assetHistory = history.filter(h => h.assetId === asset.id)
+      const assetHistory = history
+        .filter(h => h.assetId === asset.id)
+        .sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime())
       
       if (assetHistory.length === 0) {
-        return {
-          asset,
-          nav: 0,
-          totalInvested: 0,
-          totalProfit: 0,
-          roi: 0,
-          percentage: 0
-        }
+        return { asset, nav: 0, totalInvested: 0, totalProfit: 0, roi: 0, percentage: 0 }
       }
 
       const latestEntry = assetHistory[assetHistory.length - 1]
+      // Sumamos el historial completo de aportaciones
       const totalInvested = assetHistory.reduce((sum, h) => sum + (h.contribution || 0), 0)
       const totalProfit = latestEntry.nav - totalInvested
       const roi = totalInvested > 0 ? ((totalProfit) / totalInvested) * 100 : 0
 
-      return {
-        asset,
-        nav: latestEntry.nav,
-        totalInvested,
-        totalProfit,
-        roi,
-        percentage: 0
-      }
+      return { asset, nav: latestEntry.nav, totalInvested, totalProfit, roi, percentage: 0 }
     })
   }, [assets, history])
 }
@@ -57,10 +42,11 @@ export const useCumulativeReturn = (history: HistoryEntry[], assets: Asset[]) =>
   return useMemo(() => {
     const grouped = groupHistoryByMonth(history)
     const activeAssets = getActiveAssets(assets)
+    const sortedMonths = Object.keys(grouped).sort()
 
-    return Object.entries(grouped).map(([month, entries]) => {
+    return sortedMonths.map(month => {
+      const entries = grouped[month]
       const monthData: Record<string, number | string> = { month }
-      let totalROI = 0
       let totalNav = 0
       let totalInvested = 0
 
@@ -69,6 +55,7 @@ export const useCumulativeReturn = (history: HistoryEntry[], assets: Asset[]) =>
         if (entry) {
           const allEntries = history.filter(h => h.assetId === asset.id && h.month <= month)
           const navValue = entry.nav
+          // Sumamos lo aportado hasta este mes específico
           const invested = allEntries.reduce((sum, h) => sum + (h.contribution || 0), 0)
           const roi = invested > 0 ? ((navValue - invested) / invested) * 100 : 0
 
@@ -78,9 +65,7 @@ export const useCumulativeReturn = (history: HistoryEntry[], assets: Asset[]) =>
         }
       })
 
-      totalROI = totalInvested > 0 ? ((totalNav - totalInvested) / totalInvested) * 100 : 0
-      monthData.totalROI = totalROI
-
+      monthData.totalROI = totalInvested > 0 ? ((totalNav - totalInvested) / totalInvested) * 100 : 0
       return monthData
     })
   }, [history, assets])
@@ -91,20 +76,16 @@ export const useEvolutionData = (history: HistoryEntry[], assets: Asset[]) => {
     const grouped = groupHistoryByMonth(history)
     const activeAssets = getActiveAssets(assets)
     const sortedMonths = Object.keys(grouped).sort()
-    const cumulativeInvested: Record<string, number> = {}
 
     return sortedMonths.map(month => {
       const entries = grouped[month]
       const monthData: Record<string, number | string> = { month }
       let totalNav = 0
-
-      // Calculate cumulative investment up to this month
       let monthCumulativeInvested = 0
+
       activeAssets.forEach(asset => {
         const allEntriesUpToMonth = history.filter(h => h.assetId === asset.id && h.month <= month)
-        const assetCumulativeInvested = allEntriesUpToMonth.reduce((sum, h) => sum + (h.contribution || 0), 0)
-        cumulativeInvested[`${asset.id}_${month}`] = assetCumulativeInvested
-        monthCumulativeInvested += assetCumulativeInvested
+        monthCumulativeInvested += allEntriesUpToMonth.reduce((sum, h) => sum + (h.contribution || 0), 0)
       })
 
       activeAssets.forEach(asset => {

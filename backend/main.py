@@ -133,7 +133,7 @@ async def fetch_month_prices(
             logger.debug(f"  - {asset.get('name')}: category={asset.get('category')}, ticker={asset.get('ticker')}, isin={asset.get('isin')}, componentTickers={asset.get('componentTickers')}")
         
         # Organize assets by type
-        crypto_assets = [a for a in active_assets if a.get("category") == "Crypto" and "BTC" in str(a.get("ticker", "")).upper()]
+        crypto_assets = [a for a in active_assets if a.get("category") == "Crypto" and "Bitcoin" in str(a.get("ticker", "")).upper()]
         fund_assets = [a for a in active_assets if a.get("category") == "Fund"]
         
         # Build broker_assets from stockTransactions grouped by broker

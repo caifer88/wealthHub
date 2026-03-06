@@ -32,7 +32,6 @@ class Asset(BaseModel):
     category: str
     color: str
     archived: bool = False
-    targetAllocation: Optional[Decimal] = None
     riskLevel: Optional[str] = None
     isin: Optional[str] = None  # ISIN for funds and some assets
     ticker: Optional[str] = None  # Ticker for stocks and crypto
@@ -48,7 +47,6 @@ class Asset(BaseModel):
                 "category": "Fund",
                 "color": "#6366f1",
                 "archived": False,
-                "targetAllocation": 30,
                 "riskLevel": "Medio",
                 "isin": "ES0165151004",
                 "ticker": None,

@@ -21,7 +21,6 @@ export default function Assets() {
     name: '',
     category: 'Fund',
     color: '#6366f1',
-    targetAllocation: 0,
     riskLevel: 'Medio',
     archived: false,
     isin: '',
@@ -109,7 +108,14 @@ export default function Assets() {
     currentNAV: getAssetValueWithComponents(a)
   }))
 
-  const totalNAV = assetValues.filter(a => !a.archived).reduce((sum, a) => sum + a.currentNAV, 0)
+  const totalNAV = assetValues.filter(a => !a.archived).reduce((sum, a) => {
+    const isIBActive = assets.some(parent => parent.name === 'Interactive Brokers')
+    const isStockInIB = isIBActive && a.ticker && stockTransactions.some(tx => tx.broker === 'Interactive Brokers' && tx.ticker === a.ticker)
+    const isComponent = assets.some(parent => parent.name && a.name && parent.name.length > a.name.length && parent.name.includes(a.name) && parent.id !== a.id)
+    
+    if (isStockInIB || isComponent) return sum
+    return sum + a.currentNAV
+  }, 0)
   
   const displayedAssetValues = assetValues.filter(showArchived ? () => true : a => !a.archived)
   const sortedAssetValues = getSortedAssets(displayedAssetValues, sortColumn, sortDirection, totalNAV)
@@ -121,7 +127,6 @@ export default function Assets() {
         name: asset.name,
         category: asset.category,
         color: asset.color,
-        targetAllocation: asset.targetAllocation || 0,
         riskLevel: asset.riskLevel || 'Medio',
         archived: asset.archived || false,
         isin: asset.isin || '',
@@ -135,7 +140,6 @@ export default function Assets() {
         name: '',
         category: 'Fund',
         color: '#6366f1',
-        targetAllocation: 0,
         riskLevel: 'Medio',
         archived: false,
         isin: '',
@@ -160,7 +164,6 @@ export default function Assets() {
               name: formData.name,
               category: formData.category,
               color: formData.color,
-              targetAllocation: formData.targetAllocation,
               riskLevel: formData.riskLevel,
               archived: formData.archived,
               isin: formData.isin || undefined,
@@ -182,7 +185,6 @@ export default function Assets() {
         name: formData.name,
         category: formData.category,
         color: formData.color,
-        targetAllocation: formData.targetAllocation,
         riskLevel: formData.riskLevel,
         archived: false,
         isin: formData.isin || undefined,
@@ -368,8 +370,8 @@ export default function Assets() {
             const hasPositions = positionsData.length > 0
             const componentValue = positionsData.reduce((sum, p) => sum + p.nav, 0)
             
-            // Si hay componentes, usar su suma como el valor del activo contenedor
-            const valueToDisplay = hasPositions ? componentValue : currentValue
+            // Usamos el currentValue (que viene directamente del Historial actualizado) 
+            const valueToDisplay = currentValue
             const gainToDisplay = valueToDisplay - invested
             const gainPercentDisplay = invested > 0 ? (gainToDisplay / invested) * 100 : 0
             
@@ -551,9 +553,6 @@ export default function Assets() {
           />
 
           <div className="border-t pt-4 space-y-4">
-            <h3 className="font-semibold text-slate-700 dark:text-slate-300">
-              Participaciones y Coste Medio
-            </h3>
 
             <Input
               label="Número de Participaciones"
@@ -577,9 +576,6 @@ export default function Assets() {
           </div>
 
           <div className="border-t pt-4 space-y-4">
-            <h3 className="font-semibold text-slate-700 dark:text-slate-300">
-              Identificadores (opcional para obtención automática de precios)
-            </h3>
 
             <Input
               label="ISIN (para fondos)"
@@ -605,7 +601,7 @@ export default function Assets() {
                 className="w-4 h-4 rounded cursor-pointer"
               />
               <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                Marcar como archivado (posición cerrada)
+                Archivar (posición cerrada)
               </span>
             </label>
           </div>

@@ -124,13 +124,16 @@ export async function fetchAndUpdatePrices(
       .filter(asset => !asset.archived)
       .map((asset) => {
         const price = priceMap.get(asset.id) as any
-        const participations = asset.participations || 0
 
         // Obtener la entrada existente para este mes
         const existingEntry = history.find(h => h.month === monthStr && h.assetId === asset.id)
 
         // Obtener la última entrada registrada de meses anteriores (excluyendo el mes actual)
         const lastEntry = getLastEntry(asset.id, monthStr)
+
+        // 🟢 FIX 1: Priorizar las participaciones y coste medio del último historial
+        const participations = existingEntry?.participations ?? lastEntry?.participations ?? asset.participations ?? 0;
+        const meanCost = existingEntry?.meanCost ?? lastEntry?.meanCost ?? asset.meanCost ?? 0;
 
         // Helper para validar si un precio es válido (no NaN, no null, no undefined, > 0)
         const isValidPrice = (p: any): boolean => {
@@ -221,7 +224,7 @@ export async function fetchAndUpdatePrices(
             : ((lastEntry && lastEntry.nav > 0) ? lastEntry.nav : 0)
         }
 
-        // Mantener aportación anterior
+        // Como la aportación es MENSUAL (incremental), un mes nuevo arranca en 0 aportaciones
         let contribution: number
         if (existingEntry) {
           contribution = existingEntry.contribution
@@ -237,7 +240,7 @@ export async function fetchAndUpdatePrices(
           liquidNavValue: liquidNavValue,
           nav: nav,
           contribution: contribution,
-          meanCost: asset.meanCost || 0
+          meanCost: meanCost
         }
       })
 

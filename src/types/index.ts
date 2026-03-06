@@ -5,7 +5,6 @@ export interface Asset {
   category: string;
   color: string;
   archived: boolean;
-  targetAllocation?: number;
   riskLevel?: string;
   isin?: string;  // ISIN for mutual funds
   ticker?: string;  // Ticker for stocks and crypto

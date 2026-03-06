@@ -29,8 +29,8 @@ class PriceFetcher:
             hist = ticker.history(period="5d") # Pedimos 5 días para asegurar
             btc_hist = btc_ticker.history(period="5d")
 
-            logger.info(f"📈 Historial de BTC-EUR: {hist.tail(2)}")
-            logger.info(f"📈 Historial de BTC-USD: {btc_hist.tail(2)}")
+            logger.info(f"📈 Historial de BTC-EUR: {hist.tail(1)}")
+            logger.info(f"📈 Historial de BTC-USD: {btc_hist.tail(1)}")
             
             if not hist.empty:
                 close_price = float(hist['Close'].iloc[-1])
@@ -44,14 +44,14 @@ class PriceFetcher:
                     source="yfinance"
                 )
         except Exception as e:
-            logger.warning(f"⚠️ Yahoo falló para BTC: {e}. Intentando Binance...")
+            logger.warning(f"⚠️ Yahoo falló para Bitcoin: {e}. Intentando Binance...")
 
         # Intento 2: Fallback Binance API (Pública y sin bloqueos)
         try:
             res = requests.get("https://api.binance.com/api/v3/ticker/price?symbol=BTCEUR", timeout=10)
             data = res.json()
             return PriceData(
-                assetId=asset_id or "btc",
+                assetId=asset_id or "Bitcoin",
                 assetName=asset_name,
                 ticker="BTC-EUR",
                 price=round(float(data['price']), 2),
@@ -60,7 +60,7 @@ class PriceFetcher:
                 source="binance_api"
             )
         except Exception as e:
-            logger.error(f"❌ Fallo total en BTC: {e}")
+            logger.error(f"❌ Fallo total en Bitcoin: {e}")
             return None
 
 
