@@ -11,7 +11,7 @@ import { formatCurrency, generateUUID, calculateMeanCost, calculateTotalInvested
 import type { Asset } from '../types'
 
 export default function Assets() {
-  const { assets, setAssets, history, stockTransactions, saveDataToGAS } = useWealth()
+  const { assets, setAssets, history, stockTransactions, bitcoinTransactions, saveDataToGAS } = useWealth()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null)
   const [sortColumn] = useState<'name' | 'category' | 'value' | 'percentage'>('name')
@@ -290,19 +290,37 @@ export default function Assets() {
           </div>
         ) : (
           sortedAssetValues.map(asset => {
-            const participations = getCurrentParticipations(asset.id, history)
-            const meanCost = calculateMeanCost(asset.id, history)
-            const invested = calculateTotalInvested(asset.id, history)
+            let participations = getCurrentParticipations(asset.id, history)
+            let meanCost = calculateMeanCost(asset.id, history)
+            let invested = calculateTotalInvested(asset.id, history)
+            
+            // 🟢 FIX 1: Si es Bitcoin/Crypto, sobreescribir con los datos de sus transacciones reales
+            if (asset.category === 'Crypto' || asset.name.toLowerCase().includes('bitcoin')) {
+              let btcShares = 0
+              let btcCost = 0
+              bitcoinTransactions.forEach(tx => {
+                if (tx.type === 'buy') {
+                  btcShares += (tx.amountBTC || 0)
+                  btcCost += (tx.totalCost || 0)
+                } else {
+                  const avg = btcShares > 0 ? btcCost / btcShares : 0
+                  btcShares -= (tx.amountBTC || 0)
+                  btcCost -= ((tx.amountBTC || 0) * avg)
+                }
+              })
+              participations = btcShares
+              invested = btcCost
+              meanCost = btcShares > 0 ? btcCost / btcShares : 0
+            }
+
             const currentValue = asset.currentNAV
             const liquidNavValue = participations > 0 ? currentValue / participations : 0
             
             // Activo especial: Cash - mostrar solo valor
             if (asset.name === 'Cash') {
+              // ... (mantenlo igual)
               return (
-                <Card 
-                  key={asset.id}
-                  className="overflow-hidden transition-all hover:shadow-lg flex flex-col justify-center items-center py-8 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20"
-                >
+                <Card key={asset.id} className="overflow-hidden transition-all hover:shadow-lg flex flex-col justify-center items-center py-8 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20">
                   <div className="text-center">
                     <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-2">Efectivo Disponible</p>
                     <p className="text-4xl font-black dark:text-white">{formatCurrency(Math.round(currentValue))}</p>
@@ -311,47 +329,56 @@ export default function Assets() {
               )
             }
             
-            // Para Interactive Brokers: obtener posiciones abiertas de stockTransactions
-            // Para otros activos: buscar componentes por nombre
             let positionsData: Array<{ticker: string; nav: number; shares: number; avgPrice: number}> = []
             
             if (asset.name === 'Interactive Brokers') {
-              // Agrupar transacciones por ticker para IB
               const ibTransactions = stockTransactions.filter(tx => tx.broker === 'Interactive Brokers')
-              const tickerMap = new Map<string, {shares: number; totalCost: number; txCount: number}>()
+              const tickerMap = new Map<string, {shares: number; totalCost: number}>()
               
               for (const tx of ibTransactions) {
-                const existing = tickerMap.get(tx.ticker) || {shares: 0, totalCost: 0, txCount: 0}
+                const existing = tickerMap.get(tx.ticker) || {shares: 0, totalCost: 0}
                 if (tx.type === 'buy') {
                   existing.shares += tx.shares
                   existing.totalCost += tx.totalAmount
                 } else {
+                  // 🟢 FIX 2: Restar ventas basándose en el precio medio para no corromper la inversión real
+                  const avgPrice = existing.shares > 0 ? existing.totalCost / existing.shares : 0
                   existing.shares -= tx.shares
-                  existing.totalCost -= tx.totalAmount
+                  existing.totalCost -= (tx.shares * avgPrice)
                 }
-                existing.txCount++
                 tickerMap.set(tx.ticker, existing)
               }
               
-              // Convertir a datos de posición (usando el último liquidNavValue del histórico)
               for (const [ticker, data] of tickerMap.entries()) {
                 if (data.shares > 0) {
-                  // Buscar el activo correspondiente para obtener el precio actual
-                  const tickerAsset = assets.find(a => a.ticker === ticker)
+                  // Búsqueda robusta ignorando mayúsculas y espacios
+                  const searchTicker = ticker.trim().toUpperCase()
+                  const tickerAsset = assets.find(a => 
+                    (a.ticker && a.ticker.trim().toUpperCase() === searchTicker) || 
+                    (a.name && a.name.trim().toUpperCase() === searchTicker)
+                  )
+                  
                   const lastHistory = tickerAsset ? 
                     history.filter(h => h.assetId === tickerAsset.id).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0] 
                     : null
                   
-                  const currentPrice = lastHistory ? lastHistory.liquidNavValue : (data.totalCost / data.shares)
+                  let currentPrice = data.totalCost / data.shares
+                  
+                  // Intentar obtener el precio real de 3 formas distintas
+                  if (lastHistory) {
+                    if (lastHistory.liquidNavValue > 0) {
+                      currentPrice = lastHistory.liquidNavValue
+                    } else if (lastHistory.nav > 0 && lastHistory.participations > 0) {
+                      currentPrice = lastHistory.nav / lastHistory.participations
+                    } else if (lastHistory.nav > 0) {
+                      currentPrice = lastHistory.nav / data.shares
+                    }
+                  }
+                  
                   const nav = data.shares * currentPrice
                   const avgPrice = data.totalCost / data.shares
                   
-                  positionsData.push({
-                    ticker,
-                    nav,
-                    shares: data.shares,
-                    avgPrice
-                  })
+                  positionsData.push({ ticker, nav, shares: data.shares, avgPrice })
                 }
               }
             } else {

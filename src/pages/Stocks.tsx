@@ -46,62 +46,62 @@ export default function Stocks() {
     return sorted[0].nav || 0
   }, [stocksAsset, history])
 
-  // Calcular métricas de cartera
+  // Calcular métricas de cartera reales (uniendo Stocks y el NAV actual del Historial)
   const portfolioMetrics = useMemo(() => {
-    const tickerMap: Record<string, { shares: number; cost: number; avgPrice: number; lastPrice: number }> = {}
+    const tickerMap: Record<string, { shares: number; cost: number; avgPrice: number; lastPrice: number; currentValue: number; unrealizedGain: number; unrealizedGainPercent: number }> = {}
 
-    // Calculate positions from transactions
     stockTransactions.forEach(tx => {
       if (!tickerMap[tx.ticker]) {
-        tickerMap[tx.ticker] = { shares: 0, cost: 0, avgPrice: 0, lastPrice: 0 }
+        tickerMap[tx.ticker] = { shares: 0, cost: 0, avgPrice: 0, lastPrice: 0, currentValue: 0, unrealizedGain: 0, unrealizedGainPercent: 0 }
       }
-      tickerMap[tx.ticker].lastPrice = tx.pricePerShare
 
       if (tx.type === 'buy') {
         tickerMap[tx.ticker].shares += tx.shares
-        tickerMap[tx.ticker].cost += tx.totalAmount + tx.fees
+        tickerMap[tx.ticker].cost += tx.totalAmount
       } else {
+        const avgPrice = tickerMap[tx.ticker].shares > 0 ? tickerMap[tx.ticker].cost / tickerMap[tx.ticker].shares : 0
         tickerMap[tx.ticker].shares -= tx.shares
-        tickerMap[tx.ticker].cost -= (tx.shares * tickerMap[tx.ticker].avgPrice) + tx.fees
+        tickerMap[tx.ticker].cost -= (tx.shares * avgPrice)
       }
-
-      tickerMap[tx.ticker].avgPrice =
-        tickerMap[tx.ticker].shares > 0
-          ? tickerMap[tx.ticker].cost / tickerMap[tx.ticker].shares
-          : 0
+      tickerMap[tx.ticker].avgPrice = tickerMap[tx.ticker].shares > 0 ? tickerMap[tx.ticker].cost / tickerMap[tx.ticker].shares : 0
     })
 
-    const tickers = Object.entries(tickerMap).filter(([_, data]) => data.shares > 0)
-    
-    // Use asset NAV as total value if available, otherwise calculate from transaction prices
-    const totalValue = assetLatestNAV > 0 
-      ? assetLatestNAV 
-      : tickers.reduce((sum, [_, data]) => sum + (data.shares * data.lastPrice), 0)
-    
-    // Calculate net investment
-    let totalBuyCost = 0
-    let totalSellProceeds = 0
-    
-    stockTransactions.forEach(tx => {
-      if (tx.type === 'buy') {
-        totalBuyCost += tx.totalAmount + tx.fees
-      } else {
-        totalSellProceeds += tx.totalAmount - tx.fees
-      }
+    const tickers = Object.entries(tickerMap).filter(([_, data]) => data.shares > 0).map(([ticker, data]) => {
+       const searchTicker = ticker.trim().toUpperCase()
+       const tickerAsset = assets.find(a => 
+         (a.ticker && a.ticker.trim().toUpperCase() === searchTicker) || 
+         (a.name && a.name.trim().toUpperCase() === searchTicker)
+       )
+       
+       const lastHistory = tickerAsset ? history.filter(h => h.assetId === tickerAsset.id).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0] : null
+       
+       let currentPrice = data.avgPrice;
+       if (lastHistory) {
+         if (lastHistory.liquidNavValue > 0) {
+           currentPrice = lastHistory.liquidNavValue;
+         } else if (lastHistory.nav > 0 && lastHistory.participations > 0) {
+           currentPrice = lastHistory.nav / lastHistory.participations;
+         } else if (lastHistory.nav > 0) {
+           currentPrice = lastHistory.nav / data.shares;
+         }
+       }
+       
+       const currentValue = data.shares * currentPrice
+       const unrealizedGain = currentValue - data.cost
+       const unrealizedGainPercent = data.cost > 0 ? (unrealizedGain / data.cost) * 100 : 0
+       
+       return [ticker, { ...data, lastPrice: currentPrice, currentValue, unrealizedGain, unrealizedGainPercent }] as const
     })
-    const totalInvestment = Math.max(0, totalBuyCost - totalSellProceeds)
-    
-    // Unrealized gains: current value - net invested
-    const unrealizedGains = totalValue - totalInvestment
 
-    return {
-      tickers,
-      tickerMap,
-      totalValue,
-      totalInvestment,
-      unrealizedGains
-    }
-  }, [stockTransactions, assetLatestNAV])
+    // Calcular totales usando los valores reales actuales
+    const totalValue = tickers.reduce((sum, [_, data]) => sum + data.currentValue, 0)
+    const totalInvestment = tickers.reduce((sum, [_, data]) => sum + data.cost, 0)
+    
+    const finalTotalValue = assetLatestNAV > 0 ? assetLatestNAV : totalValue
+    const unrealizedGains = finalTotalValue - totalInvestment
+
+    return { tickers, tickerMap, totalValue: finalTotalValue, totalInvestment, unrealizedGains }
+  }, [stockTransactions, assets, history, assetLatestNAV])
 
   const getSortedTransactions = useCallback((txs: StockTransaction[], column: 'date' | 'ticker' | 'type' | 'shares' | 'price' | 'fees' | 'total', direction: 'asc' | 'desc') => {
     const sorted = [...txs]
@@ -312,11 +312,18 @@ export default function Stocks() {
                 <div key={ticker} className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
                   <div className="flex justify-between items-center mb-1">
                     <span className="font-bold dark:text-white">{ticker}</span>
-                    <span className="text-sm text-slate-600 dark:text-slate-400">{data.shares} acciones</span>
+                    <span className="text-sm text-slate-600 dark:text-slate-400">{data.shares.toLocaleString('es-ES', { maximumFractionDigits: 4 })} acciones</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-600 dark:text-slate-400">Precio Medio: {formatCurrency(Math.round(data.avgPrice))}</span>
+                    <span className="text-slate-600 dark:text-slate-400">Precio Medio: {formatCurrency(data.avgPrice)}</span>
                     <span className="font-bold dark:text-white">Inversión: {formatCurrency(Math.round(data.cost))}</span>
+                  </div>
+                  {/* 🟢 FIX 2.1: Mostrar la ganancia individual */}
+                  <div className="flex justify-between items-center text-sm mt-1 border-t border-slate-200 dark:border-slate-700 pt-1">
+                    <span className="text-slate-600 dark:text-slate-400">P&L Actual:</span>
+                    <span className={`font-bold ${data.unrealizedGain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                       {data.unrealizedGain >= 0 ? '↑' : '↓'} {formatCurrency(Math.abs(data.unrealizedGain))} ({data.unrealizedGainPercent.toFixed(1)}%)
+                    </span>
                   </div>
                 </div>
               ))

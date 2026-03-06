@@ -49,14 +49,25 @@ export default function Bitcoin() {
     return sorted[0].nav || 0
   }, [btcAsset, history])
   
-  // Portfolio calculations
-  const totalInvested = validTransactions.reduce((sum, t) => sum + (t.totalCost || 0), 0)
-  const totalBTC = validTransactions.reduce((sum, t) => 
-    t.type === 'buy' ? sum + (t.amountBTC || 0) : sum - (t.amountBTC || 0), 0)
+  // Portfolio calculations con coste base real
+  let currentBtcShares = 0
+  let currentBtcCost = 0
+  
+  validTransactions.forEach(tx => {
+     if (tx.type === 'buy') {
+        currentBtcShares += (tx.amountBTC || 0)
+        currentBtcCost += (tx.totalCost || 0)
+     } else {
+        const avg = currentBtcShares > 0 ? currentBtcCost / currentBtcShares : 0
+        currentBtcShares -= (tx.amountBTC || 0)
+        currentBtcCost -= ((tx.amountBTC || 0) * avg)
+     }
+  })
+  
+  const totalBTC = currentBtcShares
+  const totalInvested = currentBtcCost
   const meanPrice = totalBTC > 0 ? totalInvested / totalBTC : 0
   
-  // Si tenemos NAV del historial, ese es el valor real actual.
-  // Como fallback, usamos el último precio de la transacción multiplicado por los BTC totales.
   const currentBTCValue = assetLatestNAV > 0 
     ? assetLatestNAV 
     : (totalBTC * (validTransactions[validTransactions.length - 1]?.meanPrice || 0))
