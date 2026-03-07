@@ -17,8 +17,8 @@ class Settings(BaseSettings):
     # CORS Settings - supports multiple URLs comma-separated
     FRONTEND_URL: str = "http://localhost:3000,http://frontend:5173"
     
-    # Google Apps Script
-    VITE_GAS_URL: Optional[str] = None
+    # Database configuration
+    DATABASE_URL: str = "postgresql://wealthhub:wealthhub_password@localhost:5432/wealthhub"
     
     # Price Fetcher Settings
     TIMEOUT: int = 30
