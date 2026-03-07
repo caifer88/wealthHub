@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     VITE_GAS_URL: Optional[str] = None
     
     # Database Settings
-    USE_DB: bool = False
+    USE_DB: bool = True
     DATABASE_URL: str = "sqlite:///./wealthhub.db"
 
     # Price Fetcher Settings

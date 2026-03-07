@@ -1,19 +1,45 @@
 services:
+  db:
+    image: postgres:15
+    container_name: wealthhub-db
+    restart: always
+    environment:
+      POSTGRES_USER: wealthhub
+      POSTGRES_PASSWORD: wealthhub
+      POSTGRES_DB: wealthhub
+    ports:
+      - "5432:5432" # Añadido para que puedas acceder desde fuera de Docker
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - umbrel_main_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wealthhub -d wealthhub"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: wealthhub-backend
     restart: always
+    env_file: 
+      - .env.docker # Añadido para cargar las variables de tu archivo
     ports:
       - "8000:8000"
     environment:
       - FRONTEND_URL=http://localhost:3000,http://main:5173
-      - VITE_GAS_URL=${VITE_GAS_URL:-}
+      - DATABASE_URL=postgresql://wealthhub:wealthhub@db:5432/wealthhub
+      - USE_DB=true
     volumes:
       - ./backend:/app
     networks:
       - umbrel_main_network
+    depends_on:
+      db:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -25,11 +51,12 @@ services:
       dockerfile: Dockerfile.frontend
     container_name: wealthhub-frontend
     restart: always
+    env_file: 
+      - .env.docker # Añadido para cargar las variables
     ports:
       - "8787:5173"
     environment:
       - VITE_BACKEND_URL=http://backend:8000
-      - VITE_GAS_URL=${VITE_GAS_URL:-}
     volumes:
       - ./src:/app/src
       - ./public:/app/public
@@ -41,6 +68,9 @@ services:
       - umbrel_main_network
     depends_on:
       - backend
+
+volumes:
+  postgres_data:
 
 networks:
   umbrel_main_network:
