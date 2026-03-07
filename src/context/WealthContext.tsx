@@ -256,7 +256,8 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const isFirstRender = useRef(true)
 
   // SWR para data fetching automático
-  const { data: gasData, error: gasError, mutate: mutateGasData, isValidating } = useSWR(config.gasUrl, gasFetcher, {
+  const dataUrl = `${config.backendUrl}/data`;
+  const { data: gasData, error: gasError, mutate: mutateGasData, isValidating } = useSWR(dataUrl, gasFetcher, {
     revalidateOnFocus: true,
     revalidateOnReconnect: true,
     dedupingInterval: 60000, // 1 minute
@@ -429,18 +430,17 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         lastUpdated: new Date().toISOString()
       }
 
-      await fetch(config.gasUrl, {
+      await fetch(`${config.backendUrl}/data`, {
         method: 'POST',
-        mode: 'no-cors',
         headers: {
-          'Content-Type': 'text/plain'
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(dataToSend)
       })
 
       setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }))
     } catch (error) {
-      console.error('❌ Error sincronizando con GAS:', error)
+      console.error('❌ Error sincronizando con el servidor:', error)
       setSyncState(prev => ({
         ...prev,
         syncError: error instanceof Error ? error.message : 'Error de sincronización'

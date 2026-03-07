@@ -7,10 +7,11 @@ import logging
 import asyncio
 from datetime import datetime
 from typing import List, Optional
-from fastapi import FastAPI, Query, HTTPException, status
+from fastapi import FastAPI, Query, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import requests
+from sqlmodel import Session
 
 from config import settings
 from models import (
@@ -23,7 +24,7 @@ from utils import (
 )
 from services.price_fetcher import PriceFetcher
 from services.fund_scraper import FundScraper
-from services.gas_service import load_assets_from_gas, persist_prices_to_gas, load_data_from_gas
+from services.db_service import load_assets_from_db, persist_prices_to_db, load_data_from_db, save_data_to_db, create_db_and_tables, get_session
 
 # Configure logging
 logging.basicConfig(
@@ -56,6 +57,12 @@ app.add_middleware(
 logger.info(f"🔧 CORS configured for: {', '.join(frontend_urls)}")
 
 
+@app.on_event("startup")
+def on_startup():
+    """Create database tables on startup"""
+    create_db_and_tables()
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint"""
@@ -69,7 +76,8 @@ async def health_check():
 @app.get("/fetch-month", response_model=FetchMonthResponse)
 async def fetch_month_prices(
     year: int = Query(..., ge=2020, le=2099, description="Year (e.g., 2024)"),
-    month: int = Query(..., ge=1, le=12, description="Month (1-12)")
+    month: int = Query(..., ge=1, le=12, description="Month (1-12)"),
+    session: Session = Depends(get_session)
 ):
     """
     Fetch prices for all assets for the given month.
@@ -107,13 +115,13 @@ async def fetch_month_prices(
         last_business_day = get_last_business_day(year, month)
         logger.info(f"📅 Last business day: {format_date(last_business_day)}")
         
-        # Load assets from GAS (required - no sample fallback)
-        assets = await load_assets_from_gas()
+        # Load assets from DB
+        assets = await load_assets_from_db(session)
         if not assets:
-            logger.error("❌ No assets loaded from GAS - GAS_URL may not be configured")
+            logger.error("❌ No assets loaded from DB")
             return FetchMonthResponse(
                 success=False,
-                message="Could not load assets. Ensure GAS_URL is configured and accessible.",
+                message="Could not load assets from DB.",
                 year=year,
                 month=month,
                 lastBusinessDay=format_date(last_business_day),
@@ -138,8 +146,8 @@ async def fetch_month_prices(
         
         # Build broker_assets from stockTransactions grouped by broker
         # Load full data to get stockTransactions
-        full_data = await load_data_from_gas()
-        logger.info(f"📥 Full data keys from GAS: {list(full_data.keys())}")
+        full_data = await load_data_from_db(session)
+        logger.info(f"📥 Full data keys from DB: {list(full_data.keys())}")
         
         stock_transactions = full_data.get("stockTransactions", [])
         logger.info(f"📋 Found {len(stock_transactions)} stockTransactions")
@@ -219,7 +227,7 @@ async def fetch_month_prices(
                     }
                     logger.info(f"  ✅ Assigned {len(all_tickers)} tickers to {broker_asset.get('name')}: {all_tickers}")
         else:
-            logger.warning("⚠️ No stockTransactions found in GAS data")
+            logger.warning("⚠️ No stockTransactions found in DB data")
         
         broker_assets = list(broker_assets_dict.values())
         
@@ -356,9 +364,9 @@ async def fetch_month_prices(
                 errors=errors if errors else ["No assets with ticker/ISIN found or all fetch attempts failed"]
             )
         
-        # Only persist to GAS if we actually fetched prices
-        if prices and settings.VITE_GAS_URL:
-            await persist_prices_to_gas(prices, year, month, last_business_day)
+        # Persist to DB
+        if prices:
+            await persist_prices_to_db(session, prices, year, month, last_business_day)
         
         return FetchMonthResponse(
             success=len(prices) > 0,
@@ -383,7 +391,7 @@ async def fetch_month_prices(
 
 
 @app.post("/update-prices")
-async def update_prices(price_data: List[PriceData]):
+async def update_prices(price_data: List[PriceData], session: Session = Depends(get_session)):
     """
     Manually update prices in the history.
     Used when prices are fetched directly from frontend.
@@ -398,9 +406,8 @@ async def update_prices(price_data: List[PriceData]):
     try:
         logger.info(f"📝 Updating {len(price_data)} prices")
         
-        # Persist to GAS
-        if settings.VITE_GAS_URL:
-            await persist_prices_to_gas(price_data)
+        # Persist to DB
+        await persist_prices_to_db(session, price_data)
         
         return {
             "success": True,
@@ -417,10 +424,10 @@ async def update_prices(price_data: List[PriceData]):
 
 
 @app.get("/assets")
-async def get_assets():
-    """Get list of all assets from GAS"""
+async def get_assets(session: Session = Depends(get_session)):
+    """Get list of all assets from DB"""
     try:
-        assets = await load_assets_from_gas()
+        assets = await load_assets_from_db(session)
         return {
             "success": True,
             "assets": assets
@@ -430,6 +437,40 @@ async def get_assets():
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error loading assets: {str(e)}"
+        )
+
+
+@app.get("/data")
+async def get_data(session: Session = Depends(get_session)):
+    """Get full data (assets, history, transactions) from DB for frontend"""
+    try:
+        data = await load_data_from_db(session)
+        return {
+            "success": True,
+            "data": data
+        }
+    except Exception as e:
+        logger.error(f"❌ Error loading full data: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error loading full data: {str(e)}"
+        )
+
+
+@app.post("/data")
+async def post_data(data: dict, session: Session = Depends(get_session)):
+    """Save full data directly from frontend (assets, history, transactions)"""
+    try:
+        success = await save_data_to_db(session, data)
+        return {
+            "success": success,
+            "message": "Data saved to DB successfully" if success else "Failed to save data"
+        }
+    except Exception as e:
+        logger.error(f"❌ Error saving full data: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error saving full data: {str(e)}"
         )
 
 

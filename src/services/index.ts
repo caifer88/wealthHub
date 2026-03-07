@@ -3,7 +3,7 @@ import { jsPDF } from 'jspdf'
 import { config } from '../config'
 export { fetchAndUpdatePrices } from './priceUpdater'
 
-export const gasService = {
+export const apiService = {
   async saveData(
     assets: Asset[],
     history: HistoryEntry[],
@@ -19,18 +19,20 @@ export const gasService = {
       lastUpdated: new Date().toISOString()
     }
 
-    return fetch(config.gasUrl, {
+    const apiUrl = `${config.backendUrl}/data`
+
+    return fetch(apiUrl, {
       method: 'POST',
-      mode: 'no-cors',
       headers: {
-        'Content-Type': 'text/plain'
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify(dataToSend)
     })
   },
 
   async fetchData() {
-    const response = await fetch(config.gasUrl)
+    const apiUrl = `${config.backendUrl}/data`
+    const response = await fetch(apiUrl)
     return response.json()
   }
 }

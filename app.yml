@@ -12,10 +12,20 @@ metadata:
   port: 8787
 
 containers:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: wealthhub
+      POSTGRES_USER: umbrel
+      POSTGRES_PASSWORD: money-password
+    volumes:
+      - ${APP_DATA_DIR}/data/db:/var/lib/postgresql/data
+
   main:
     image: wealthhub:latest
     environment:
       VITE_GAS_URL: ${VITE_GAS_URL}
+      DATABASE_URL: postgresql://umbrel:money-password@db:5432/wealthhub
     ports:
       - "8787:3000"
     volumes:

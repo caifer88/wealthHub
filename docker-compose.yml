@@ -1,4 +1,22 @@
 services:
+  db:
+    image: postgres:15
+    container_name: wealthhub-db
+    restart: always
+    environment:
+      POSTGRES_USER: wealthhub
+      POSTGRES_PASSWORD: wealthhub
+      POSTGRES_DB: wealthhub
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - umbrel_main_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wealthhub -d wealthhub"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build:
       context: ./backend
@@ -10,10 +28,14 @@ services:
     environment:
       - FRONTEND_URL=http://localhost:3000,http://main:5173
       - VITE_GAS_URL=${VITE_GAS_URL:-}
+      - DATABASE_URL=postgresql://wealthhub:wealthhub@db:5432/wealthhub
     volumes:
       - ./backend:/app
     networks:
       - umbrel_main_network
+    depends_on:
+      db:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -41,6 +63,9 @@ services:
       - umbrel_main_network
     depends_on:
       - backend
+
+volumes:
+  postgres_data:
 
 networks:
   umbrel_main_network:

@@ -401,7 +401,6 @@ export default function Assets() {
             }
             
             const hasPositions = positionsData.length > 0
-            const componentValue = positionsData.reduce((sum, p) => sum + p.nav, 0)
             
             // Usamos el currentValue (que viene directamente del Historial actualizado) 
             const valueToDisplay = currentValue
