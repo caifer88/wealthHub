@@ -224,19 +224,19 @@ interface WealthContextType {
   setDarkMode: (mode: boolean) => void
 
   // Sync
-  loadDataFromGAS: () => Promise<void>
-  saveDataToGAS: (assets: Asset[], history: HistoryEntry[], bitcoinTxs: BitcoinTransaction[], stockTxs: StockTransaction[]) => Promise<void>
+  loadDataFromDB: () => Promise<void>
+  saveDataToDB: (assets: Asset[], history: HistoryEntry[], bitcoinTxs: BitcoinTransaction[], stockTxs: StockTransaction[]) => Promise<void>
   downloadBackup: (assets: Asset[], history: HistoryEntry[], bitcoinTxs: BitcoinTransaction[], stockTxs: StockTransaction[]) => void
 }
 
 const WealthContext = createContext<WealthContextType | undefined>(undefined)
 
 
-const gasFetcher = async (url: string) => {
+const fetcher = async (url: string) => {
   const res = await fetch(url)
   const result = await res.json()
   if (!result.success || !result.data) {
-    throw new Error('Failed to load data from GAS')
+    throw new Error('Failed to load data from DB')
   }
   return result.data
 }
@@ -256,7 +256,7 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const isFirstRender = useRef(true)
 
   // SWR para data fetching automático
-  const { data: gasData, error: gasError, mutate: mutateGasData, isValidating } = useSWR(config.gasUrl, gasFetcher, {
+  const { data: dbData, error: dbError, mutate: mutateDbData, isValidating } = useSWR(`${config.backendUrl}/data`, fetcher, {
     revalidateOnFocus: true,
     revalidateOnReconnect: true,
     dedupingInterval: 60000, // 1 minute
@@ -270,18 +270,18 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Sincronizar Context con los datos de SWR (cada vez que SWR tenga nuevos datos validados)
   useEffect(() => {
     // Si tenemos nueva data de SWR, actualizamos el estado independientemente del primer render
-    if (gasData && gasData.assets) {
+    if (dbData && dbData.assets) {
         isFirstRender.current = false // Marcamos que ya pasó el primer render para otros efectos si hace falta
 
         // Usamos la misma lógica de normalización / validación que había
-        let bitcoinTxs = gasData.bitcoinTransactions || []
+        let bitcoinTxs = dbData.bitcoinTransactions || []
         bitcoinTxs = sanitizeBitcoinTransactions(bitcoinTxs)
 
-        let stockTxs = gasData.stockTransactions || []
+        let stockTxs = dbData.stockTransactions || []
         stockTxs = sanitizeStockTransactions(stockTxs)
 
-        setAssets(gasData.assets)
-        setHistory(gasData.history || [])
+        setAssets(dbData.assets)
+        setHistory(dbData.history || [])
         setBitcoinTransactions(bitcoinTxs)
         setStockTransactions(stockTxs)
         setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }))
@@ -289,7 +289,7 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     // Solo caer en fallback si hay error y es el primer render para no sobreescribir datos en cache local tras un fallo temporal
-    if (gasError && isFirstRender.current) {
+    if (dbError && isFirstRender.current) {
         isFirstRender.current = false
         // Fallback a localStorage
         const localAssets = JSON.parse(localStorage.getItem('wm_assets_v4') || '[]')
@@ -313,7 +313,7 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setStockTransactions(SAMPLE_DATA.stockTransactions)
         setSyncState(prev => ({ ...prev, syncError: 'Usando datos de muestra' }))
     }
-  }, [gasData, gasError])
+  }, [dbData, dbError])
 
   // Guardar en localStorage y sincronizar con GAS
   useEffect(() => {
@@ -331,7 +331,7 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     localStorage.setItem('wm_theme', darkMode ? 'dark' : 'light')
 
     if (assets.length > 0) {
-      saveDataToGAS(assets, history, bitcoinTransactions, stockTransactions)
+      saveDataToDB(assets, history, bitcoinTransactions, stockTransactions)
     }
   }, [assets, history, bitcoinTransactions, stockTransactions, darkMode])
 
@@ -405,12 +405,12 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     })
   }, [assets, history])
 
-  const loadDataFromGAS = useCallback(async () => {
+  const loadDataFromDB = useCallback(async () => {
     // SWR mutate triggers a re-fetch and updates hook state automatically
-    mutateGasData()
-  }, [mutateGasData])
+    mutateDbData()
+  }, [mutateDbData])
 
-  const saveDataToGAS = useCallback(async (
+  const saveDataToDB = useCallback(async (
     assetsToSave: Asset[],
     historyToSave: HistoryEntry[],
     bitcoinTxsToSave: BitcoinTransaction[],
@@ -429,18 +429,21 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         lastUpdated: new Date().toISOString()
       }
 
-      await fetch(config.gasUrl, {
+      const res = await fetch(`${config.backendUrl}/data`, {
         method: 'POST',
-        mode: 'no-cors',
         headers: {
-          'Content-Type': 'text/plain'
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(dataToSend)
       })
 
+      if (!res.ok) {
+        throw new Error('Network response was not ok')
+      }
+
       setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }))
     } catch (error) {
-      console.error('❌ Error sincronizando con GAS:', error)
+      console.error('❌ Error sincronizando con DB:', error)
       setSyncState(prev => ({
         ...prev,
         syncError: error instanceof Error ? error.message : 'Error de sincronización'
@@ -489,8 +492,8 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setBitcoinTransactions,
     setStockTransactions,
     setDarkMode,
-    loadDataFromGAS,
-    saveDataToGAS,
+    loadDataFromDB,
+    saveDataToDB,
     downloadBackup
   }
 

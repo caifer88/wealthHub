@@ -1,19 +1,18 @@
 # WealthHub
 
-Una aplicación web de gestión y visualización de activos financieros (Fondos, Criptomonedas, Acciones, Cash) con capacidades de sincronización automática a Google Apps Script (GAS) y Docker.
+Una aplicación web de gestión y visualización de activos financieros (Fondos, Criptomonedas, Acciones, Cash) con backend propio y despliegue usando Docker.
 
 ## Características
 
 - 📊 **Gestión Multiactivos**: Soporte para criptomonedas, fondos de inversión, acciones y otros.
 - ⚙️ **Cálculo de Proyecciones**: Interés compuesto y métricas financieras (`Decimal` backend integration para precisión extrema).
-- ☁️ **Sincronización Cloud**: Respaldo automático utilizando Google Apps Script (GAS).
+- 🗄️ **Base de datos propia**: Estado y registros almacenados localmente utilizando SQLite/PostgreSQL vía SQLModel.
 - 🐳 **Docker & Umbrel**: Listo para despliegues auto-alojados.
 
 ## Stack Tecnológico
 
 - **Frontend:** React 18, Vite, TypeScript, Tailwind CSS, Recharts.
-- **Backend:** Python 3.12, FastAPI, Pydantic (Validación tipada con soporte Decimal).
-- **Herramientas de Sincronización:** Google Apps Script (GAS).
+- **Backend:** Python 3.12, FastAPI, Pydantic (Validación tipada con soporte Decimal), SQLModel (DB ORM).
 
 ## Arquitectura
 
@@ -23,7 +22,8 @@ Una aplicación web de gestión y visualización de activos financieros (Fondos,
     - `src/utils/`: Funciones de formateo (DRY formatters).
 - `backend/`: API Backend en FastAPI.
     - `models.py`: Modelos Pydantic.
-    - `services/gas_service.py`: Lógica de sincronización delegada con Google Apps Script.
+    - `db_models.py`: Modelos ORM para la base de datos SQLModel.
+    - `services/db_service.py`: Lógica principal de sincronización y lectura hacia la BD.
     - `main.py`: Rutas principales de la aplicación.
 
 ## Instalación y Desarrollo
@@ -31,7 +31,6 @@ Una aplicación web de gestión y visualización de activos financieros (Fondos,
 ### Prerrequisitos
 - Node.js o Bun (para el Frontend).
 - Python 3.12 (para el Backend).
-- URL de Google Apps Script configurado.
 
 ### Backend
 
@@ -40,7 +39,6 @@ cd backend
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env  # Configurar GAS_URL
 uvicorn main:app --reload
 \`\`\`
 
