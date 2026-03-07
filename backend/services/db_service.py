@@ -141,9 +141,19 @@ async def save_data_to_db(session: Session, data: dict) -> bool:
 async def persist_prices_to_db(
     session: Session, prices: List[PriceData], year: Optional[int] = None, month: Optional[int] = None, fetch_date: Optional[datetime] = None
 ) -> bool:
+    """
+    Persist prices to DB.
+    Updates existing entries calculating participations and NAV correctly.
+    """
     try:
         logger.info(f"📤 Persisting {len(prices)} prices to DB")
         month_str = f"{year:04d}-{month:02d}" if year and month else datetime.now().strftime("%Y-%m")
+
+        # 1. Cargamos todos los datos ANTES para poder hacer los cálculos
+        current_data = await load_data_from_db(session)
+        assets_list = current_data.get("assets", [])
+        btc_txs = current_data.get("bitcoinTransactions", [])
+        existing_history = current_data.get("history", [])
 
         history_entries = []
         stock_entries = []
@@ -159,25 +169,58 @@ async def persist_prices_to_db(
                     "currency": price.currency or "EUR"
                 })
             else:
-                # Datos principales de activos (incluyendo el total del broker)
-                history_entries.append({
+                # 2. Identificar el tipo de activo
+                asset_info = next((a for a in assets_list if a.get("id") == price.assetId), {})
+                category = asset_info.get("category", "")
+
+                # 3. Buscar historial actual o el último conocido para no perder datos
+                existing_entry = next((h for h in existing_history if h.get("assetId") == price.assetId and h.get("month") == month_str), None)
+                if not existing_entry:
+                    past_entries = [h for h in existing_history if h.get("assetId") == price.assetId and h.get("month", "") < month_str]
+                    last_entry = sorted(past_entries, key=lambda x: x.get("month", ""))[-1] if past_entries else {}
+                else:
+                    last_entry = existing_entry
+
+                participations = float(last_entry.get("participations", 0.0))
+
+                # 4. CÁLCULO EXACTO PARA BITCOIN: Sumar transacciones hasta la fecha
+                if category == "Crypto":
+                    participations = 0.0
+                    for tx in btc_txs:
+                        if tx.get("date", "")[:7] <= month_str:
+                            amount = float(tx.get("amount", tx.get("quantity", 0)))
+                            if str(tx.get("type", "")).upper() == "SELL":
+                                participations -= amount
+                            else:
+                                participations += amount
+
+                # 5. Calcular NAV total vs Valor Liquidativo Unitario
+                if category == "Broker":
+                    # El broker ya viene con el NAV total calculado en main.py
+                    liquid_nav = 1.0 
+                    nav = float(price.price)
+                else:
+                    # Bitcoin y Fondos traen el precio unitario (Liquidativo)
+                    liquid_nav = float(price.price)
+                    nav = liquid_nav * participations
+
+                # 6. Añadimos el registro corregido
+                entry = {
                     "month": month_str,
                     "assetId": price.assetId,
-                    "nav": float(price.price),
-                    # ¡LÍNEA ELIMINADA! Ya NO sobreescribimos la aportación
+                    "liquidNavValue": liquid_nav,
+                    "nav": nav,
+                    "participations": participations,
                     "source": price.source,
                     "date": price.fetchedAt
-                })
+                }
+                history_entries.append(entry)
 
-        current_data = await load_data_from_db(session)
-
+        # 7. Fusionar y guardar historial principal
         if current_data:
-            existing_history = current_data.get("history", [])
             merged_history = merge_price_updates(existing_history, history_entries)
 
-            # Update history in DB
             for entry in merged_history:
-                # check if exists
                 stmt = select(DBHistoryEntry).where(
                     DBHistoryEntry.assetId == entry.get("assetId"),
                     DBHistoryEntry.month == entry.get("month")
@@ -185,16 +228,11 @@ async def persist_prices_to_db(
                 existing = session.exec(stmt).first()
 
                 if existing:
-                    # update
                     if "nav" in entry: existing.nav = float(entry["nav"])
-                    if "contribution" in entry: existing.contribution = float(entry["contribution"])
-                    # add other fields as necessary based on what merge_price_updates outputs
-                    if "participations" in entry: existing.participations = float(entry["participations"])
                     if "liquidNavValue" in entry: existing.liquidNavValue = float(entry["liquidNavValue"])
-                    if "meanCost" in entry: existing.meanCost = float(entry["meanCost"])
+                    if "participations" in entry: existing.participations = float(entry["participations"])
                     session.add(existing)
                 else:
-                    # insert
                     new_entry = DBHistoryEntry(
                         id=entry.get("id", f"{entry.get('assetId')}-{entry.get('month')}"),
                         month=entry.get("month"),
@@ -207,6 +245,7 @@ async def persist_prices_to_db(
                     )
                     session.add(new_entry)
 
+        # 8. Guardar valores históricos de las acciones
         for new_stock in stock_entries:
             stmt = select(DBStockHistory).where(
                 DBStockHistory.ticker == new_stock["ticker"],

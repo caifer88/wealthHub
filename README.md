@@ -62,3 +62,11 @@ docker-compose up -d --build
 Esto expondrá la aplicación Frontend en el puerto definido y el Backend localmente para que la app se conecte.
 
 Para una guía más detallada de validaciones y de arquitectura extendida, revisa la configuración en el archivo \`docker-compose.yml\`.
+
+
+
+## Backup dababase
+docker exec -t wealthhub-db pg_dump -U wealthhub -c --if-exists wealthhub > wealthhub_backup.sql
+
+## Restore database
+cat wealthhub_backup.sql | docker exec -i wealthhub-db psql -U wealthhub -d wealthhub
