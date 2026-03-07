@@ -64,3 +64,13 @@ class DBStockTransaction(SQLModel, table=True):
     fees: float
     totalAmount: float
     broker: Optional[str] = None
+
+class DBStockHistory(SQLModel, table=True):
+    """Database model for historical stock prices"""
+    __tablename__ = "stock_history"
+
+    id: str = Field(primary_key=True)
+    month: str  # Format: YYYY-MM
+    ticker: str
+    price: float
+    currency: str = Field(default="EUR")

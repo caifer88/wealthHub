@@ -162,9 +162,18 @@ async def fetch_month_prices(
             if has_broker_field:
                 # Strategy 1: Group by broker field and calculate holdings
                 broker_holdings = {}
+                target_date_str = last_business_day.strftime("%Y-%m-%d") # Fecha del mes consultado
+
                 for tx in stock_transactions:
+                    tx_date = tx.get("date", "")
+
+                    # FILTRO DE COHERENCIA: Ignorar acciones compradas DESPUÉS del mes consultado
+                    if tx_date and tx_date[:10] > target_date_str:
+                        continue
+
                     broker = tx.get("broker")
                     ticker = tx.get("ticker")
+                    # ... sigue el código igual con
                     
                     # Extraer el número de acciones. 
                     # IMPORTANTE: Revisa si en tu base de datos (GAS) lo llamas 'shares', 'participations' o 'quantity'
@@ -364,17 +373,20 @@ async def fetch_month_prices(
                 errors=errors if errors else ["No assets with ticker/ISIN found or all fetch attempts failed"]
             )
         
-        # Persist to DB
+        # Persist to DB (db_service ya se encarga de separar las acciones del historial normal)
         if prices:
             await persist_prices_to_db(session, prices, year, month, last_business_day)
         
+        # Filtramos los precios individuales para que el frontend no cree activos "N/A"
+        frontend_prices = [p for p in prices if not (p.assetId and p.assetId.startswith("ticker-"))]
+        
         return FetchMonthResponse(
-            success=len(prices) > 0,
-            message=f"Successfully fetched {len(prices)} prices" if len(prices) > 0 else "No prices were fetched",
+            success=len(frontend_prices) > 0,
+            message=f"Successfully fetched {len(frontend_prices)} prices" if len(frontend_prices) > 0 else "No prices were fetched",
             year=year,
             month=month,
             lastBusinessDay=format_date(last_business_day),
-            prices=prices,
+            prices=frontend_prices,
             errors=errors
         )
         
