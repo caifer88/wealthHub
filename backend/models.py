@@ -1,11 +1,12 @@
 """
-Data models for WealthHub Backend
+Data models for WealthHub Backend API
 """
 
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from enum import Enum
 from decimal import Decimal
+from datetime import date
 
 
 class AssetCategory(str, Enum):
@@ -26,47 +27,87 @@ class RiskLevel(str, Enum):
 
 
 class Asset(BaseModel):
-    """Asset model with ISIN field"""
+    """Asset model with DB fields"""
     id: str
     name: str
     category: str
-    color: str
-    archived: bool = False
-    riskLevel: Optional[str] = None
+    color: Optional[str] = None
+    is_archived: bool = False
+    risk_level: Optional[str] = None
     isin: Optional[str] = None  # ISIN for funds and some assets
     ticker: Optional[str] = None  # Ticker for stocks and crypto
-    componentTickers: Optional[List[str]] = None  # For broker assets with multiple holdings
-    participations: Decimal = Decimal('0.0')  # Number of shares/participations
-    meanCost: Decimal = Decimal('0.0')  # Average cost per participation
+    description: Optional[str] = ""
+    # Fields that were in previous model but not in DB might be computed
+    # or passed as separate DTO fields if needed.
     
     class Config:
         json_schema_extra = {
             "example": {
-                "id": "asset-1",
-                "name": "Numantia Patrimonio Global",
+                "id": "a1",
+                "name": "Basalto USA",
                 "category": "Fund",
-                "color": "#6366f1",
-                "archived": False,
-                "riskLevel": "Medio",
-                "isin": "ES0165151004",
+                "color": "#102cb7",
+                "is_archived": False,
+                "risk_level": "Moderado",
+                "isin": "ES0164691083",
                 "ticker": None,
-                "componentTickers": None,
-                "participations": 400.5,
-                "meanCost": 25.0
+                "description": ""
             }
         }
 
 
 class HistoryEntry(BaseModel):
-    """History entry model"""
+    """History entry model corresponding to Asset_History"""
     id: str
-    month: str  # Format: YYYY-MM
-    assetId: str
-    participations: Decimal  # Number of shares/participations
-    liquidNavValue: Decimal  # Liquid asset value per share (fetched from market)
-    nav: Decimal  # Net Asset Value (participations * liquidNavValue)
-    contribution: Decimal  # Amount contributed/invested
-    meanCost: Decimal  # Average cost per participation
+    asset_id: Optional[str] = None
+    snapshot_date: date
+    nav: Optional[Decimal] = None
+    contribution: Optional[Decimal] = None
+    participations: Optional[Decimal] = None
+    liquid_nav_value: Optional[Decimal] = None
+    mean_cost: Optional[Decimal] = None
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id": "h-2020-01-a5",
+                "asset_id": "a5",
+                "snapshot_date": "2020-01-01",
+                "nav": 15000.0,
+                "contribution": 0.0,
+                "participations": None,
+                "liquid_nav_value": None,
+                "mean_cost": None
+            }
+        }
+
+
+class Transaction(BaseModel):
+    """Unified transaction model for Crypto and Stocks"""
+    id: str
+    asset_id: Optional[str] = None
+    transaction_date: date
+    type: Optional[str] = None
+    ticker: Optional[str] = None
+    quantity: Optional[Decimal] = None
+    price_per_unit: Optional[Decimal] = None
+    fees: Optional[Decimal] = None
+    total_amount: Optional[Decimal] = None
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id": "tx-btc-056",
+                "asset_id": "a4",
+                "transaction_date": "2026-02-19",
+                "type": "BUY",
+                "ticker": "BTC",
+                "quantity": 0.00603547,
+                "price_per_unit": 57493.4512,
+                "fees": 0.0,
+                "total_amount": 347.0
+            }
+        }
 
 
 class PriceData(BaseModel):
