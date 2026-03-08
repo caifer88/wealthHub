@@ -14,7 +14,8 @@ from sqlmodel import Session, create_engine, SQLModel
 from config import settings
 from models import (
     Asset, PriceData, FetchMonthResponse, HealthResponse,
-    HistoryEntry, Transaction
+    HistoryEntry, Transaction, PortfolioSummaryResponse,
+    PortfolioAllocationResponse, AssetMetricsResponse
 )
 from utils import (
     get_last_business_day, validate_month, format_date,
@@ -213,6 +214,143 @@ def delete_transaction(transaction_id: str, session: Session = Depends(get_sessi
     if not db_service.delete_transaction(session, transaction_id):
         raise HTTPException(status_code=404, detail="Transaction not found")
 
+# --- Analytics Endpoints ---
+
+@app.get("/api/portfolio/summary", response_model=PortfolioSummaryResponse)
+def get_portfolio_summary(session: Session = Depends(get_session)):
+    """Get the latest portfolio summary"""
+    latest_history = db_service.get_latest_portfolio_history(session)
+    active_assets = {a.id for a in db_service.get_all_assets(session) if not a.is_archived}
+
+    total_value = 0.0
+    total_invested = 0.0
+
+    for history in latest_history:
+        if history.asset_id in active_assets:
+            # We calculate total invested as the sum of all contributions over time,
+            # or based on mean_cost * participations. Based on common practice and
+            # the prompt "total invertido (coste medio * participaciones)", we use mean_cost * participations.
+            nav = float(history.nav) if history.nav else 0.0
+
+            mean_cost = float(history.mean_cost) if history.mean_cost else 0.0
+            participations = float(history.participations) if history.participations else 0.0
+            invested = mean_cost * participations if participations > 0 else float(history.contribution or 0.0)
+
+            total_value += nav
+            total_invested += invested
+
+    absolute_roi = total_value - total_invested
+    percentage_roi = (absolute_roi / total_invested * 100) if total_invested > 0 else 0.0
+
+    return PortfolioSummaryResponse(
+        total_value=total_value,
+        total_invested=total_invested,
+        absolute_roi=absolute_roi,
+        percentage_roi=percentage_roi
+    )
+
+@app.get("/api/portfolio/allocation", response_model=PortfolioAllocationResponse)
+def get_portfolio_allocation(session: Session = Depends(get_session)):
+    """Get the portfolio allocation by category"""
+    latest_history = db_service.get_latest_portfolio_history(session)
+    assets = db_service.get_all_assets(session)
+
+    asset_dict = {a.id: a for a in assets if not a.is_archived}
+
+    total_value = 0.0
+    allocations = {}
+
+    for history in latest_history:
+        if history.asset_id in asset_dict:
+            asset = asset_dict[history.asset_id]
+            nav = float(history.nav) if history.nav else 0.0
+
+            total_value += nav
+            if asset.category not in allocations:
+                allocations[asset.category] = 0.0
+            allocations[asset.category] += nav
+
+    if total_value > 0:
+        for cat in allocations:
+            allocations[cat] = (allocations[cat] / total_value) * 100
+
+    return PortfolioAllocationResponse(allocations=allocations)
+
+@app.get("/api/assets/{asset_id}/metrics", response_model=AssetMetricsResponse)
+def get_asset_metrics(asset_id: str, session: Session = Depends(get_session)):
+    """Get metrics for a specific asset"""
+    asset = db_service.get_asset_by_id(session, asset_id)
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    history = db_service.get_history_by_asset(session, asset_id)
+    if not history:
+        return AssetMetricsResponse(
+            asset_id=asset_id,
+            total_contributed=0.0,
+            current_value=0.0,
+            absolute_return=0.0,
+            percentage_return=0.0,
+            twr=0.0
+        )
+
+    # History is sorted by snapshot_date desc, we need asc for TWR
+    history_asc = list(reversed(history))
+
+    latest = history_asc[-1]
+
+    current_value = float(latest.nav) if latest.nav else 0.0
+    mean_cost = float(latest.mean_cost) if latest.mean_cost else 0.0
+    participations = float(latest.participations) if latest.participations else 0.0
+
+    if participations > 0 and mean_cost > 0:
+        total_contributed = mean_cost * participations
+    else:
+        total_contributed = float(latest.contribution) if latest.contribution else 0.0
+
+    absolute_return = current_value - total_contributed
+    percentage_return = (absolute_return / total_contributed * 100) if total_contributed > 0 else 0.0
+
+    # Calculate Time-Weighted Return (TWR)
+    # TWR = [(1 + RN) * (1 + RN+1) ... ] - 1
+    # Rn = (V_end - (V_begin + CF)) / (V_begin + CF)
+
+    twr_multiplier = 1.0
+    previous_nav = 0.0
+    previous_contribution = 0.0
+
+    for i, entry in enumerate(history_asc):
+        nav = float(entry.nav) if entry.nav else 0.0
+
+        # Contribution at this period.
+        # Since 'contribution' usually tracks running total, the cash flow is the diff
+        curr_total_contrib = 0.0
+        if entry.participations and entry.mean_cost and float(entry.participations) > 0:
+             curr_total_contrib = float(entry.participations) * float(entry.mean_cost)
+        else:
+             curr_total_contrib = float(entry.contribution) if entry.contribution else 0.0
+
+        cash_flow = curr_total_contrib - previous_contribution
+
+        # We only calculate return if there was an initial value or a cashflow
+        base_value = previous_nav + cash_flow
+        if base_value > 0:
+             period_return = (nav - base_value) / base_value
+             twr_multiplier *= (1 + period_return)
+
+        previous_nav = nav
+        previous_contribution = curr_total_contrib
+
+    twr = (twr_multiplier - 1.0) * 100
+
+    return AssetMetricsResponse(
+        asset_id=asset_id,
+        total_contributed=total_contributed,
+        current_value=current_value,
+        absolute_return=absolute_return,
+        percentage_return=percentage_return,
+        twr=twr
+    )
 
 if __name__ == "__main__":
     import uvicorn
@@ -267,26 +405,13 @@ async def fetch_month_prices(
         crypto_assets = [a for a in active_assets if a.get("category") == "Crypto" and ("BTC" in str(a.get("ticker", "")).upper() or "BITCOIN" in str(a.get("name", "")).upper())]
         fund_assets = [a for a in active_assets if a.get("category") == "Fund"]
         
-        db_transactions = db_service.get_all_transactions(session)
-        stock_transactions = [tx.model_dump() for tx in db_transactions if tx.asset_id in [a["id"] for a in active_assets if a.get("category") == "Stocks"]]
-        
         broker_assets_dict = {}
         stocks_assets = [a for a in active_assets if a.get("category") == "Stocks"]
         
         for broker_asset in stocks_assets:
              broker_id = broker_asset.get("id")
-             # Calculate holdings for this broker
-             holdings = {}
-             for tx in stock_transactions:
-                 if tx.get("asset_id") == broker_id and tx.get("ticker"):
-                     ticker = tx.get("ticker")
-                     quantity = float(tx.get("quantity", 0))
-                     tx_type = tx.get("type", "BUY").upper()
-                     if tx_type == "SELL":
-                         quantity = -quantity
-                     holdings[ticker] = holdings.get(ticker, 0.0) + quantity
-
-             active_tickers = {t: q for t, q in holdings.items() if q > 0.0001}
+             # Calculate holdings for this broker using the database aggregation
+             active_tickers = db_service.get_asset_holdings(session, broker_id)
 
              broker_assets_dict[broker_asset.get("name")] = {
                  "name": broker_asset.get("name"),
@@ -435,15 +560,8 @@ async def fetch_month_prices(
                  is_btc = asset.get("category") == "Crypto" and ("BTC" in str(asset.get("ticker", "")).upper() or "BITCOIN" in str(asset.get("name", "")).upper())
                  
                  if is_btc:
-                     # La verdad: Calcular participaciones reales desde transacciones
-                     btc_holdings = 0.0
-                     for tx in db_transactions:
-                         if tx.asset_id == asset_id or tx.ticker == "BTC":
-                             qty = float(tx.quantity) if tx.quantity else 0.0
-                             if tx.type.upper() in ["BUY", "COMPRA"]:
-                                 btc_holdings += qty
-                             elif tx.type.upper() in ["SELL", "VENTA"]:
-                                 btc_holdings -= qty
+                     # La verdad: Calcular participaciones reales desde transacciones (vía DB aggregation)
+                     btc_holdings = db_service.get_total_btc_holdings(session, asset_id)
                      
                      participations = Decimal(str(round(btc_holdings, 8)))
                      nav_val = Decimal(str(round(float(val) * btc_holdings, 2)))

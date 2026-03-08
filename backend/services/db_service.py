@@ -4,6 +4,7 @@ Replaces GAS service with direct DB interactions
 """
 
 from sqlmodel import Session, select, delete
+from sqlalchemy import func, case
 from typing import List, Optional
 import logging
 
@@ -104,6 +105,20 @@ def delete_history_entry(session: Session, history_id: str) -> bool:
     session.commit()
     return True
 
+def get_latest_portfolio_history(session: Session) -> List[AssetHistory]:
+    """Retrieve the latest history entry for each active asset"""
+    # Subquery to get the max snapshot_date per asset
+    subq = select(
+        AssetHistory.asset_id,
+        func.max(AssetHistory.snapshot_date).label('max_date')
+    ).group_by(AssetHistory.asset_id).subquery()
+
+    statement = select(AssetHistory).join(
+        subq,
+        (AssetHistory.asset_id == subq.c.asset_id) & (AssetHistory.snapshot_date == subq.c.max_date)
+    )
+    return session.exec(statement).all()
+
 # --- Transaction Operations ---
 
 def get_all_transactions(session: Session) -> List[Transaction]:
@@ -117,6 +132,39 @@ def get_transactions_by_asset(session: Session, asset_id: str) -> List[Transacti
     statement = select(Transaction).where(Transaction.asset_id == asset_id).order_by(Transaction.transaction_date.desc())
     results = session.exec(statement)
     return results.all()
+
+def get_asset_holdings(session: Session, asset_id: str) -> dict:
+    """Calcula las posiciones actuales directamente en base de datos"""
+    statement = select(
+        Transaction.ticker,
+        func.sum(
+            case(
+                (Transaction.type.in_(["BUY", "COMPRA"]), Transaction.quantity),
+                (Transaction.type.in_(["SELL", "VENTA"]), -Transaction.quantity),
+                else_=0
+            )
+        ).label('total_quantity')
+    ).where(Transaction.asset_id == asset_id).where(Transaction.ticker != None).group_by(Transaction.ticker)
+
+    results = session.exec(statement).all()
+    # Devuelve solo los tickers con cantidad > 0
+    return {ticker: float(qty) for ticker, qty in results if qty > 0.0001}
+
+def get_total_btc_holdings(session: Session, asset_id: str) -> float:
+    """Calcula la cantidad total de BTC directamente en base de datos"""
+    statement = select(
+        func.sum(
+            case(
+                (Transaction.type.in_(["BUY", "COMPRA"]), Transaction.quantity),
+                (Transaction.type.in_(["SELL", "VENTA"]), -Transaction.quantity),
+                else_=0
+            )
+        )
+    ).where(
+        (Transaction.asset_id == asset_id) | (Transaction.ticker == 'BTC')
+    )
+    result = session.exec(statement).first()
+    return float(result) if result else 0.0
 
 def create_transaction(session: Session, transaction_data: PydanticTransaction) -> Transaction:
     """Create a new transaction"""
