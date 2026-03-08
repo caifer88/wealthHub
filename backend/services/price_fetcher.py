@@ -20,18 +20,19 @@ class PriceFetcher:
     @staticmethod
     @cached(cache=TTLCache(maxsize=10, ttl=3600))  # 1 hour cache
     def fetch_bitcoin_price(date: datetime, asset_id: str = None, asset_name: str = "Bitcoin") -> Optional[PriceData]:
-        # Intento 1: Yahoo Finance
+        # Intento 1: Yahoo Finance (Actualizado para extraer el float de forma segura)
         try:
-            btc_ticker = yf.Ticker("BTC-USD")
             ticker = yf.Ticker("BTC-EUR")
             hist = ticker.history(period="5d")
-            btc_hist = btc_ticker.history(period="5d")
-
-            logger.info(f"📈 Historial de BTC-EUR: {hist.tail(1)}")
-            logger.info(f"📈 Historial de BTC-USD: {btc_hist.tail(1)}")
             
             if not hist.empty:
-                close_price = float(hist['Close'].iloc[-1])
+                close_value = hist['Close'].iloc[-1]
+                # Extracción segura compatible con las nuevas versiones de pandas
+                if hasattr(close_value, 'item'):
+                    close_price = float(close_value.item())
+                else:
+                    close_price = float(close_value)
+                    
                 return PriceData(
                     assetId=asset_id or "btc",
                     assetName=asset_name,
@@ -42,24 +43,44 @@ class PriceFetcher:
                     source="yfinance"
                 )
         except Exception as e:
-            logger.warning(f"⚠️ Yahoo falló para Bitcoin: {e}. Intentando Binance...")
+            logger.warning(f"⚠️ Yahoo falló para Bitcoin: {e}. Intentando CoinGecko...")
 
-        # Intento 2: Fallback Binance API (Pública y sin bloqueos)
+        # Intento 2: Fallback CoinGecko API (Pública, sin bloqueos y muy fiable)
+        try:
+            url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=eur"
+            res = requests.get(url, headers=PriceFetcher.HEADERS, timeout=10)
+            if res.status_code == 200:
+                data = res.json()
+                return PriceData(
+                    assetId=asset_id or "btc",
+                    assetName=asset_name,
+                    ticker="BTC-EUR",
+                    price=round(float(data['bitcoin']['eur']), 2),
+                    currency="EUR",
+                    fetchedAt=format_datetime_iso(datetime.now()),
+                    source="coingecko_api"
+                )
+        except Exception as e:
+            logger.warning(f"⚠️ CoinGecko falló para Bitcoin: {e}. Intentando Binance...")
+
+        # Intento 3: Fallback Binance API (Mantenido por si acaso)
         try:
             res = requests.get("https://api.binance.com/api/v3/ticker/price?symbol=BTCEUR", timeout=10)
-            data = res.json()
-            return PriceData(
-                assetId=asset_id or "Bitcoin",
-                assetName=asset_name,
-                ticker="BTC-EUR",
-                price=round(float(data['price']), 2),
-                currency="EUR",
-                fetchedAt=format_datetime_iso(datetime.now()),
-                source="binance_api"
-            )
+            if res.status_code == 200:
+                data = res.json()
+                return PriceData(
+                    assetId=asset_id or "btc",
+                    assetName=asset_name,
+                    ticker="BTC-EUR",
+                    price=round(float(data['price']), 2),
+                    currency="EUR",
+                    fetchedAt=format_datetime_iso(datetime.now()),
+                    source="binance_api"
+                )
         except Exception as e:
-            logger.error(f"❌ Fallo total en Bitcoin: {e}")
-            return None
+            logger.error(f"❌ Fallo total en Bitcoin usando todos los métodos: {e}")
+            
+        return None
 
     @staticmethod
     @cached(cache=TTLCache(maxsize=50, ttl=14400), key=lambda tickers, date: str(tickers) + str(date))  # 4 hours cache

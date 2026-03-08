@@ -264,7 +264,7 @@ async def fetch_month_prices(
         assets = [asset.model_dump() for asset in db_assets]
         active_assets = [a for a in assets if not a.get("is_archived", False)]
         
-        crypto_assets = [a for a in active_assets if a.get("category") == "Crypto" and "Bitcoin" in str(a.get("ticker", "")).upper()]
+        crypto_assets = [a for a in active_assets if a.get("category") == "Crypto" and ("BTC" in str(a.get("ticker", "")).upper() or "BITCOIN" in str(a.get("name", "")).upper())]
         fund_assets = [a for a in active_assets if a.get("category") == "Fund"]
         
         db_transactions = db_service.get_all_transactions(session)
@@ -419,18 +419,54 @@ async def fetch_month_prices(
 
         for asset in active_assets:
              asset_id = asset["id"]
-             # Check if we fetched a price/nav for this asset
              if asset_id in nav_mapping:
                  val = nav_mapping[asset_id]
+                 
+                 # Recuperar historial anterior para mantener datos (aportaciones, coste medio...)
+                 prev_history_all = db_service.get_history_by_asset(session, asset_id)
+                 # Evitamos coger datos del propio mes si se está recalculando
+                 prev_history = [h for h in prev_history_all if h.snapshot_date < date_obj]
+                 
+                 participations = prev_history[0].participations if prev_history else Decimal("0.0")
+                 contribution = prev_history[0].contribution if prev_history else Decimal("0.0")
+                 mean_cost = prev_history[0].mean_cost if prev_history else Decimal("0.0")
+                 
+                 # Detectar si el activo es Bitcoin
+                 is_btc = asset.get("category") == "Crypto" and ("BTC" in str(asset.get("ticker", "")).upper() or "BITCOIN" in str(asset.get("name", "")).upper())
+                 
+                 if is_btc:
+                     # La verdad: Calcular participaciones reales desde transacciones
+                     btc_holdings = 0.0
+                     for tx in db_transactions:
+                         if tx.asset_id == asset_id or tx.ticker == "BTC":
+                             qty = float(tx.quantity) if tx.quantity else 0.0
+                             if tx.type.upper() in ["BUY", "COMPRA"]:
+                                 btc_holdings += qty
+                             elif tx.type.upper() in ["SELL", "VENTA"]:
+                                 btc_holdings -= qty
+                     
+                     participations = Decimal(str(round(btc_holdings, 8)))
+                     nav_val = Decimal(str(round(float(val) * btc_holdings, 2)))
+                     liquid_nav = Decimal(str(val))
+                     
+                 elif asset.get("name") == "Interactive Brokers":
+                     nav_val = Decimal(str(val))
+                     liquid_nav = Decimal("1.0") if float(val) > 0 else Decimal("0.0")
+                     
+                 else:
+                     # Fondos indexados y resto de activos
+                     nav_val = Decimal(str(round(float(val) * float(participations), 2)))
+                     liquid_nav = Decimal(str(val))
+
                  history_entry = HistoryEntry(
                      id=str(uuid.uuid4()),
                      asset_id=asset_id,
                      snapshot_date=date_obj,
-                     liquid_nav_value=Decimal(str(val)),
-                     nav=Decimal(str(val)), # Set nav to the total value or price
-                     contribution=Decimal("0.0"),
-                     participations=Decimal("0.0"),
-                     mean_cost=Decimal("0.0")
+                     liquid_nav_value=liquid_nav,
+                     nav=nav_val,
+                     contribution=contribution,
+                     participations=participations,
+                     mean_cost=mean_cost
                  )
                  db_service.create_history_entry(session, history_entry)
                  saved_count += 1
