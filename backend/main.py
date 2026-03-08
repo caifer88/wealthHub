@@ -268,7 +268,7 @@ async def fetch_month_prices(
         fund_assets = [a for a in active_assets if a.get("category") == "Fund"]
         
         db_transactions = db_service.get_all_transactions(session)
-        stock_transactions = [tx.model_dump() for tx in db_transactions if tx.get("asset_id") in [a["id"] for a in active_assets if a.get("category") == "Stocks"]]
+        stock_transactions = [tx.model_dump() for tx in db_transactions if tx.asset_id in [a["id"] for a in active_assets if a.get("category") == "Stocks"]]
         
         broker_assets_dict = {}
         stocks_assets = [a for a in active_assets if a.get("category") == "Stocks"]

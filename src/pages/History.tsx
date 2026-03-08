@@ -209,10 +209,28 @@ export default function History() {
       {/* Historial por mes */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {Object.entries(monthsData).map(([month, monthEntries]) => {
-          const monthTotal = monthEntries.reduce((sum, e) => sum + e.nav, 0)
+          
+          // 1. Verificar si Interactive Brokers está entre los activos
+          const isIBActive = assets.some(a => a.name === 'Interactive Brokers')
+          
+          // 2. Filtrar las entradas para excluir las acciones que pertenecen a IB
+          const visibleEntries = monthEntries.filter(entry => {
+            const asset = assets.find(a => a.id === entry.assetId)
+            if (!asset) return true
+            
+            const isStockInIB = isIBActive && asset.ticker && stockTransactions.some(tx => 
+              tx.broker === 'Interactive Brokers' && tx.ticker === asset.ticker
+            )
+            
+            return !isStockInIB
+          })
+
+          // 3. Usar visibleEntries en lugar de monthEntries para los cálculos
+          const monthTotal = visibleEntries.reduce((sum, e) => sum + e.nav, 0)
+          
           // Excluir Cash del cálculo de "Invertido"
           const cashAsset = assets.find(a => a.name === 'Cash')
-          const monthInvested = monthEntries
+          const monthInvested = visibleEntries
             .filter(e => !cashAsset || e.assetId !== cashAsset.id)
             .reduce((sum, e) => sum + e.contribution, 0)
           
@@ -245,7 +263,8 @@ export default function History() {
                       </tr>
                     </thead>
                     <tbody>
-                      {monthEntries.map((entry) => {
+                      {/* 4. Mapear sobre visibleEntries en lugar de monthEntries */}
+                      {visibleEntries.map((entry) => {
                         const asset = assets.find(a => a.id === entry.assetId)
                         return (
                           <tr key={entry.id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900">
@@ -293,7 +312,8 @@ export default function History() {
                   </table>
                 </div>
 
-                {monthEntries.length === 0 && (
+                {/* 5. Actualizar la condición de lista vacía */}
+                {visibleEntries.length === 0 && (
                   <p className="text-center text-slate-500 dark:text-slate-400 text-xs py-3">
                     Sin registros
                   </p>
