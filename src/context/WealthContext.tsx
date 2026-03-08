@@ -244,28 +244,129 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Cargar datos iniciales
   useEffect(() => {
     if (isFirstRender.current) {
-        isFirstRender.current = false
-        // Fallback a localStorage
-        const localAssets = JSON.parse(localStorage.getItem('wm_assets_v4') || '[]')
-        const localHistory = JSON.parse(localStorage.getItem('wm_history_v4') || '[]')
-        const localBitcoin = JSON.parse(localStorage.getItem('wm_bitcoinTransactions_v4') || '[]')
-        const localStocks = JSON.parse(localStorage.getItem('wm_stockTransactions_v4') || '[]')
+        isFirstRender.current = false;
 
-        if (localAssets.length > 0) {
-            setAssets(localAssets)
-            setHistory(localHistory)
-            setBitcoinTransactions(sanitizeBitcoinTransactions(localBitcoin))
-            setStockTransactions(sanitizeStockTransactions(localStocks))
-            setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }))
-            return
-        }
+        const fetchInitialData = async () => {
+          setSyncState(prev => ({ ...prev, isSyncing: true }));
+          try {
+            const { config } = await import('../config');
 
-        // Si no hay datos, usar datos de muestra
-        setAssets(SAMPLE_DATA.assets)
-        setHistory(SAMPLE_DATA.history)
-        setBitcoinTransactions(SAMPLE_DATA.bitcoinTransactions)
-        setStockTransactions(SAMPLE_DATA.stockTransactions)
-        setSyncState(prev => ({ ...prev, syncError: 'Usando datos de muestra' }))
+            const [assetsRes, historyRes, txRes] = await Promise.all([
+              fetch(`${config.backendUrl}/api/assets`),
+              fetch(`${config.backendUrl}/api/history`),
+              fetch(`${config.backendUrl}/api/transactions`)
+            ]);
+
+            if (!assetsRes.ok || !historyRes.ok || !txRes.ok) {
+              throw new Error('Error al cargar datos del backend');
+            }
+
+            const backendAssets = await assetsRes.json();
+            const backendHistory = await historyRes.json();
+            const backendTxs = await txRes.json();
+
+            // Map History
+            const mappedHistory = backendHistory.map((h: any) => ({
+              id: h.id,
+              month: h.snapshot_date ? h.snapshot_date.substring(0, 7) : '',
+              assetId: h.asset_id,
+              participations: Number(h.participations) || 0,
+              liquidNavValue: Number(h.liquid_nav_value) || 0,
+              nav: Number(h.nav) || 0,
+              contribution: Number(h.contribution) || 0,
+              meanCost: Number(h.mean_cost) || 0
+            }));
+
+            // Map Assets
+            const mappedAssets = backendAssets.map((a: any) => {
+              // Find latest history entry to set participations and meanCost
+              const assetHistory = mappedHistory
+                .filter((h: any) => h.assetId === a.id)
+                .sort((x: any, y: any) => new Date(y.month).getTime() - new Date(x.month).getTime());
+
+              const lastEntry = assetHistory[0];
+
+              return {
+                id: a.id,
+                name: a.name,
+                category: a.category,
+                color: a.color || '#6366f1',
+                archived: a.is_archived || false,
+                riskLevel: a.risk_level,
+                isin: a.isin,
+                ticker: a.ticker,
+                participations: lastEntry ? lastEntry.participations : 0,
+                meanCost: lastEntry ? lastEntry.meanCost : 0
+              };
+            });
+
+            // Map Transactions
+            const bitcoinTxs: any[] = [];
+            const stockTxs: any[] = [];
+
+            backendTxs.forEach((tx: any) => {
+              const asset = mappedAssets.find((a: any) => a.id === tx.asset_id);
+              const txType = tx.type?.toUpperCase() === 'SELL' ? 'sell' : 'buy';
+
+              if (asset?.category === 'Crypto' || tx.ticker === 'BTC' || tx.ticker === 'BTC-EUR') {
+                bitcoinTxs.push({
+                  id: tx.id,
+                  date: tx.transaction_date,
+                  type: txType,
+                  amount: Number(tx.total_amount) || 0,
+                  amountBTC: Number(tx.quantity) || 0,
+                  totalCost: Number(tx.total_amount) || 0,
+                  meanPrice: Number(tx.price_per_unit) || 0
+                });
+              } else {
+                stockTxs.push({
+                  id: tx.id,
+                  ticker: tx.ticker || '',
+                  date: tx.transaction_date,
+                  type: txType,
+                  shares: Number(tx.quantity) || 0,
+                  pricePerShare: Number(tx.price_per_unit) || 0,
+                  fees: Number(tx.fees) || 0,
+                  totalAmount: Number(tx.total_amount) || 0,
+                  broker: asset?.name === 'Interactive Brokers' ? 'Interactive Brokers' : undefined
+                });
+              }
+            });
+
+            setAssets(mappedAssets);
+            setHistory(mappedHistory);
+            setBitcoinTransactions(bitcoinTxs);
+            setStockTransactions(stockTxs);
+            setSyncState(prev => ({ ...prev, isSyncing: false, lastSync: new Date(), syncError: null }));
+
+          } catch (err) {
+            console.error("Failed to fetch from backend, falling back to local storage", err);
+
+            // Fallback a localStorage
+            const localAssets = JSON.parse(localStorage.getItem('wm_assets_v4') || '[]');
+            const localHistory = JSON.parse(localStorage.getItem('wm_history_v4') || '[]');
+            const localBitcoin = JSON.parse(localStorage.getItem('wm_bitcoinTransactions_v4') || '[]');
+            const localStocks = JSON.parse(localStorage.getItem('wm_stockTransactions_v4') || '[]');
+
+            if (localAssets.length > 0) {
+                setAssets(localAssets);
+                setHistory(localHistory);
+                setBitcoinTransactions(sanitizeBitcoinTransactions(localBitcoin));
+                setStockTransactions(sanitizeStockTransactions(localStocks));
+                setSyncState(prev => ({ ...prev, isSyncing: false, lastSync: new Date(), syncError: 'Usando datos locales' }));
+                return;
+            }
+
+            // Si no hay datos, usar datos de muestra
+            setAssets(SAMPLE_DATA.assets);
+            setHistory(SAMPLE_DATA.history);
+            setBitcoinTransactions(SAMPLE_DATA.bitcoinTransactions);
+            setStockTransactions(SAMPLE_DATA.stockTransactions);
+            setSyncState(prev => ({ ...prev, isSyncing: false, syncError: 'Usando datos de muestra' }));
+          }
+        };
+
+        fetchInitialData();
     }
   }, [])
 
