@@ -10,7 +10,7 @@ import { fetchAndUpdatePrices } from '../services/priceUpdater'
 import type { HistoryEntry } from '../types'
 
 export default function History() {
-  const { assets, history, setHistory, stockTransactions } = useWealth()
+  const { assets, history, setHistory, transactions } = useWealth()
   const [selectedYear, setSelectedYear] = useState<string | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingEntry, setEditingEntry] = useState<HistoryEntry | null>(null)
@@ -127,7 +127,7 @@ export default function History() {
       setIsFetchingPrices(true)
       setFetchMessage('Obteniendo precios...')
 
-      const result = await fetchAndUpdatePrices(assets, history, stockTransactions)
+      const result = await fetchAndUpdatePrices(assets, history, transactions)
       
       if (result.success) {
         setHistory(result.updatedHistory)

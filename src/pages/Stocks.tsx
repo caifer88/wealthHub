@@ -9,12 +9,12 @@ import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { formatCurrency, formatDate, generateUUID } from '../utils'
-import type { StockTransaction } from '../types'
+import type { Transaction } from '../types'
 
 export default function Stocks() {
-  const { stockTransactions, setStockTransactions, assets, history } = useWealth()
+  const { transactions, setTransactions, assets, history } = useWealth()
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [editingTransaction, setEditingTransaction] = useState<StockTransaction | null>(null)
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [sortColumn, setSortColumn] = useState<'date' | 'ticker' | 'type' | 'shares' | 'price' | 'fees' | 'total'>('date')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [formData, setFormData] = useState({
@@ -35,11 +35,16 @@ export default function Stocks() {
       a.name.toLowerCase().includes('acciones')
     )
   }, [assets])
+
+  const stockTransactions = useMemo(() => {
+    if (!stocksAsset) return []
+    return transactions.filter((t: any) => t.assetId === stocksAsset.id)
+  }, [transactions, stocksAsset])
   
   // Get the latest NAV for the stocks asset
   const assetLatestNAV = useMemo(() => {
     if (!stocksAsset || !history) return 0
-    const assetHistory = history.filter(h => h.assetId === stocksAsset.id)
+    const assetHistory = history.filter((h: any) => h.assetId === stocksAsset.id)
     if (assetHistory.length === 0) return 0
     // Sort by month and get the latest
     const sorted = [...assetHistory].sort((a, b) => b.month.localeCompare(a.month))
@@ -50,18 +55,19 @@ export default function Stocks() {
   const portfolioMetrics = useMemo(() => {
     const tickerMap: Record<string, { shares: number; cost: number; avgPrice: number; lastPrice: number; currentValue: number; unrealizedGain: number; unrealizedGainPercent: number }> = {}
 
-    stockTransactions.forEach(tx => {
+    stockTransactions.forEach((tx: any) => {
+      if (!tx.ticker) return
       if (!tickerMap[tx.ticker]) {
         tickerMap[tx.ticker] = { shares: 0, cost: 0, avgPrice: 0, lastPrice: 0, currentValue: 0, unrealizedGain: 0, unrealizedGainPercent: 0 }
       }
 
       if (tx.type === 'buy') {
-        tickerMap[tx.ticker].shares += tx.shares
+        tickerMap[tx.ticker].shares += tx.quantity
         tickerMap[tx.ticker].cost += tx.totalAmount
       } else {
         const avgPrice = tickerMap[tx.ticker].shares > 0 ? tickerMap[tx.ticker].cost / tickerMap[tx.ticker].shares : 0
-        tickerMap[tx.ticker].shares -= tx.shares
-        tickerMap[tx.ticker].cost -= (tx.shares * avgPrice)
+        tickerMap[tx.ticker].shares -= tx.quantity
+        tickerMap[tx.ticker].cost -= (tx.quantity * avgPrice)
       }
       tickerMap[tx.ticker].avgPrice = tickerMap[tx.ticker].shares > 0 ? tickerMap[tx.ticker].cost / tickerMap[tx.ticker].shares : 0
     })
@@ -114,7 +120,7 @@ export default function Stocks() {
     return { tickers, tickerMap, totalValue: finalTotalValue, totalInvestment, unrealizedGains }
   }, [stockTransactions, assets, history, assetLatestNAV])
 
-  const getSortedTransactions = useCallback((txs: StockTransaction[], column: 'date' | 'ticker' | 'type' | 'shares' | 'price' | 'fees' | 'total', direction: 'asc' | 'desc') => {
+  const getSortedTransactions = useCallback((txs: Transaction[], column: 'date' | 'ticker' | 'type' | 'shares' | 'price' | 'fees' | 'total', direction: 'asc' | 'desc') => {
     const sorted = [...txs]
     const isAsc = direction === 'asc'
     
@@ -122,13 +128,17 @@ export default function Stocks() {
       case 'date':
         return sorted.sort((a, b) => isAsc ? new Date(a.date).getTime() - new Date(b.date).getTime() : new Date(b.date).getTime() - new Date(a.date).getTime())
       case 'ticker':
-        return sorted.sort((a, b) => isAsc ? a.ticker.localeCompare(b.ticker) : b.ticker.localeCompare(a.ticker))
+        return sorted.sort((a, b) => {
+          const tA = a.ticker || '';
+          const tB = b.ticker || '';
+          return isAsc ? tA.localeCompare(tB) : tB.localeCompare(tA);
+        })
       case 'type':
         return sorted.sort((a, b) => isAsc ? a.type.localeCompare(b.type) : b.type.localeCompare(a.type))
       case 'shares':
-        return sorted.sort((a, b) => isAsc ? a.shares - b.shares : b.shares - a.shares)
+        return sorted.sort((a, b) => isAsc ? a.quantity - b.quantity : b.quantity - a.quantity)
       case 'price':
-        return sorted.sort((a, b) => isAsc ? a.pricePerShare - b.pricePerShare : b.pricePerShare - a.pricePerShare)
+        return sorted.sort((a, b) => isAsc ? a.pricePerUnit - b.pricePerUnit : b.pricePerUnit - a.pricePerUnit)
       case 'fees':
         return sorted.sort((a, b) => isAsc ? a.fees - b.fees : b.fees - a.fees)
       case 'total':
@@ -150,21 +160,22 @@ export default function Stocks() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!formData.ticker.trim()) return
+    if (!formData.ticker.trim() || !stocksAsset) return
 
     const totalAmount = formData.shares * formData.pricePerShare + formData.fees
 
     if (editingTransaction) {
-      setStockTransactions(
-        stockTransactions.map(tx =>
+      setTransactions(
+        transactions.map((tx: any) =>
           tx.id === editingTransaction.id
             ? {
                 id: tx.id,
+                assetId: stocksAsset.id,
                 ticker: formData.ticker.toUpperCase(),
                 date: formData.date,
                 type: formData.type,
-                shares: formData.shares,
-                pricePerShare: formData.pricePerShare,
+                quantity: formData.shares,
+                pricePerUnit: formData.pricePerShare,
                 fees: formData.fees,
                 totalAmount
               }
@@ -172,18 +183,19 @@ export default function Stocks() {
         )
       )
     } else {
-      const newTx: StockTransaction = {
+      const newTx: Transaction = {
         id: generateUUID(),
+        assetId: stocksAsset.id,
         ticker: formData.ticker.toUpperCase(),
         date: formData.date,
         type: formData.type,
-        shares: formData.shares,
-        pricePerShare: formData.pricePerShare,
+        quantity: formData.shares,
+        pricePerUnit: formData.pricePerShare,
         fees: formData.fees,
         totalAmount
       }
 
-      setStockTransactions([...stockTransactions, newTx])
+      setTransactions([...transactions, newTx])
     }
 
     setIsModalOpen(false)
@@ -199,15 +211,15 @@ export default function Stocks() {
     })
   }
 
-  const handleOpenModal = (transaction?: StockTransaction) => {
+  const handleOpenModal = (transaction?: Transaction) => {
     if (transaction) {
       setEditingTransaction(transaction)
       setFormData({
-        ticker: transaction.ticker,
+        ticker: transaction.ticker || '',
         date: transaction.date,
         type: transaction.type,
-        shares: transaction.shares,
-        pricePerShare: transaction.pricePerShare,
+        shares: transaction.quantity,
+        pricePerShare: transaction.pricePerUnit,
         fees: transaction.fees,
         totalAmount: transaction.totalAmount
       })
@@ -227,7 +239,7 @@ export default function Stocks() {
   }
 
   const handleDelete = (id: string) => {
-    setStockTransactions(stockTransactions.filter(tx => tx.id !== id))
+    setTransactions(transactions.filter((tx: any) => tx.id !== id))
   }
 
   return (
@@ -480,8 +492,8 @@ export default function Stocks() {
                       {tx.type === 'buy' ? '▲ Compra' : '▼ Venta'}
                     </span>
                   </td>
-                  <td className="py-3 px-4 text-right font-bold dark:text-white">{tx.shares}</td>
-                  <td className="py-3 px-4 text-right font-bold text-slate-600 dark:text-slate-300">{formatCurrency(Math.round(tx.pricePerShare))}</td>
+                  <td className="py-3 px-4 text-right font-bold dark:text-white">{tx.quantity}</td>
+                  <td className="py-3 px-4 text-right font-bold text-slate-600 dark:text-slate-300">{formatCurrency(Math.round(tx.pricePerUnit))}</td>
                   <td className="py-3 px-4 text-right font-bold dark:text-white">{formatCurrency(Math.round(tx.fees))}</td>
                   <td className="py-3 px-4 text-right font-bold dark:text-white">{formatCurrency(Math.round(tx.totalAmount))}</td>
                   <td className="py-3 px-4 text-center space-x-2 flex gap-2 justify-center">

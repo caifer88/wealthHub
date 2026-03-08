@@ -84,21 +84,6 @@ export default function Statistics() {
           // Count months
           entries.forEach(e => monthsSet.add(e.month))
 
-          // Get invested amount AT THE END of this year
-          // Ya no sumamos (reduce), cogemos el campo contribution de la última entrada
-          const lastEntryOfYear = entries[entries.length - 1]
-          const yearInvestedEnd = lastEntryOfYear.contribution || 0
-          
-          let yearInvestedStart = 0
-          if (yearIndex > 0) {
-            const prevYear = years[yearIndex - 1]
-            const prevYearData = byYear[prevYear]
-            if (prevYearData && prevYearData[assetId] && prevYearData[assetId].length > 0) {
-              const lastEntryPrevYear = prevYearData[assetId][prevYearData[assetId].length - 1]
-              yearInvestedStart = lastEntryPrevYear.contribution || 0
-            }
-          }
-          
           // Get invested amount in this year
           const yearInvested = entries.reduce((sum, e) => sum + (e.contribution || 0), 0)
           

@@ -1,4 +1,4 @@
-import { Asset, HistoryEntry, StockTransaction } from '../types'
+import { Asset, HistoryEntry, Transaction } from '../types'
 import { formatCurrencyDecimals, generateUUID } from '../utils'
 import { config } from '../config'
 
@@ -22,7 +22,7 @@ export interface FetchPricesResult {
 export async function fetchAndUpdatePrices(
   assets: Asset[],
   history: HistoryEntry[],
-  stockTransactions: StockTransaction[] = []
+  transactions: Transaction[] = []
 ): Promise<FetchPricesResult> {
   try {
     const now = new Date()
@@ -62,18 +62,20 @@ export async function fetchAndUpdatePrices(
       return entries.sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
     }
 
-    // Helper: Calcular valor de Interactive Brokers desde transacciones de acciones
-    const calculateInteractiveBrokersValue = (): { value: number; tickerDetails: Array<{ticker: string; value: number; shares: number}> } => {
-      const ibTransactions = stockTransactions.filter(tx => tx.broker === 'Interactive Brokers')
+    // Helper: Calcular valor de broker desde transacciones
+    const calculateBrokerValue = (brokerName: string): { value: number; tickerDetails: Array<{ticker: string; value: number; shares: number}> } => {
+      const brokerAssetId = assets.find(a => a.name === brokerName)?.id
+      const brokerTransactions = transactions.filter(tx => tx.assetId === brokerAssetId)
       const tickerMap = new Map<string, { shares: number; totalCost: number }>()
 
-      for (const tx of ibTransactions) {
+      for (const tx of brokerTransactions) {
+        if (!tx.ticker) continue
         const existing = tickerMap.get(tx.ticker) || { shares: 0, totalCost: 0 }
         if (tx.type === 'buy') {
-          existing.shares += tx.shares
+          existing.shares += tx.quantity
           existing.totalCost += tx.totalAmount
         } else {
-          existing.shares -= tx.shares
+          existing.shares -= tx.quantity
           existing.totalCost -= tx.totalAmount
         }
         tickerMap.set(tx.ticker, existing)
@@ -159,14 +161,14 @@ export async function fetchAndUpdatePrices(
         let liquidNavValue: number = 0
         let nav: number = 0
 
-        if (asset.name === 'Interactive Brokers') {
+        if (asset.name === 'Interactive Brokers' || asset.category === 'Stocks') {
           // Si el backend nos envía el precio consolidado (válido), lo usamos directamente
           if (isValidPrice(price)) {
             nav = Number(price.price) // <-- AQUÍ ESTÁ LA CLAVE: Forzamos que sea numérico
             liquidNavValue = nav > 0 ? 1 : 0
           } else {
             // Fallback: calcular desde transacciones de acciones abiertas si el backend falla
-            const ibCalc = calculateInteractiveBrokersValue()
+            const ibCalc = calculateBrokerValue(asset.name)
             nav = ibCalc.value
             liquidNavValue = nav > 0 ? 1 : 0
             

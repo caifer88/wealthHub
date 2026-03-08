@@ -23,26 +23,16 @@ export interface HistoryEntry {
   meanCost: number;  // Average cost per participation
 }
 
-export interface BitcoinTransaction {
+export interface Transaction {
   id: string;
+  assetId: string;
   date: string;
   type: 'buy' | 'sell';
-  amount: number;
-  amountBTC: number;
-  totalCost: number;
-  meanPrice: number;
-}
-
-export interface StockTransaction {
-  id: string;
-  ticker: string;
-  date: string;
-  type: 'buy' | 'sell';
-  shares: number;
-  pricePerShare: number;
+  ticker?: string;
+  quantity: number;
+  pricePerUnit: number;
   fees: number;
   totalAmount: number;
-  broker?: string;  // Broker identifier (e.g."Interactive Brokers")
 }
 
 export interface SyncState {

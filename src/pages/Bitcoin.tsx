@@ -8,7 +8,7 @@ import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { formatCurrency, formatDate, generateUUID, isCurrentMonth, getMonthFromDate } from '../utils'
-import type { BitcoinTransaction } from '../types'
+import type { Transaction } from '../types'
 
 interface FormData {
   date: string
@@ -25,24 +25,27 @@ const INITIAL_FORM_DATA: FormData = {
 }
 
 export default function Bitcoin() {
-  const { bitcoinTransactions, setBitcoinTransactions, assets, history } = useWealth()
+  const { transactions, setTransactions, assets, history } = useWealth()
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [editingTransaction, setEditingTransaction] = useState<BitcoinTransaction | null>(null)
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [sortColumn, setSortColumn] = useState<'date' | 'type' | 'amount' | 'cost' | 'meanPrice'>('date')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [formData, setFormData] = useState<FormData>(INITIAL_FORM_DATA)
-
-  const validTransactions = bitcoinTransactions
 
   // Encontrar el activo de Bitcoin para obtener su NAV del historial
   const btcAsset = useMemo(() => {
     return assets.find(a => a.name.toLowerCase().includes('bitcoin') || a.category === 'Crypto')
   }, [assets])
+
+  const validTransactions = useMemo(() => {
+    if (!btcAsset) return []
+    return transactions.filter((t: any) => t.assetId === btcAsset.id)
+  }, [transactions, btcAsset])
   
   // Obtener el último NAV para el activo de Bitcoin
   const assetLatestNAV = useMemo(() => {
     if (!btcAsset || !history) return 0
-    const assetHistory = history.filter(h => h.assetId === btcAsset.id)
+    const assetHistory = history.filter((h: any) => h.assetId === btcAsset.id)
     if (assetHistory.length === 0) return 0
     // Ordenar por mes (descendente) y obtener el último
     const sorted = [...assetHistory].sort((a, b) => b.month.localeCompare(a.month))
@@ -53,14 +56,14 @@ export default function Bitcoin() {
   let currentBtcShares = 0
   let currentBtcCost = 0
   
-  validTransactions.forEach(tx => {
+  validTransactions.forEach((tx: any) => {
      if (tx.type === 'buy') {
-        currentBtcShares += (tx.amountBTC || 0)
-        currentBtcCost += (tx.totalCost || 0)
+        currentBtcShares += (tx.quantity || 0)
+        currentBtcCost += (tx.totalAmount || 0)
      } else {
         const avg = currentBtcShares > 0 ? currentBtcCost / currentBtcShares : 0
-        currentBtcShares -= (tx.amountBTC || 0)
-        currentBtcCost -= ((tx.amountBTC || 0) * avg)
+        currentBtcShares -= (tx.quantity || 0)
+        currentBtcCost -= ((tx.quantity || 0) * avg)
      }
   })
   
@@ -70,12 +73,12 @@ export default function Bitcoin() {
   
   const currentBTCValue = assetLatestNAV > 0 
     ? assetLatestNAV 
-    : (totalBTC * (validTransactions[validTransactions.length - 1]?.meanPrice || 0))
+    : (totalBTC * (validTransactions[validTransactions.length - 1]?.pricePerUnit || 0))
     
   const unrealizedGain = currentBTCValue - totalInvested
 
   // Función para ordenar transacciones
-  const getSortedTransactions = useCallback((txs: BitcoinTransaction[], column: 'date' | 'type' | 'amount' | 'cost' | 'meanPrice', direction: 'asc' | 'desc') => {
+  const getSortedTransactions = useCallback((txs: Transaction[], column: 'date' | 'type' | 'amount' | 'cost' | 'meanPrice', direction: 'asc' | 'desc') => {
     const sorted = [...txs]
     const isAsc = direction === 'asc'
     
@@ -93,17 +96,17 @@ export default function Bitcoin() {
         })
       case 'amount':
         return sorted.sort((a, b) => {
-          const diff = (a.amountBTC || 0) - (b.amountBTC || 0)
+          const diff = (a.quantity || 0) - (b.quantity || 0)
           return isAsc ? diff : -diff
         })
       case 'cost':
         return sorted.sort((a, b) => {
-          const diff = (a.totalCost || 0) - (b.totalCost || 0)
+          const diff = (a.totalAmount || 0) - (b.totalAmount || 0)
           return isAsc ? diff : -diff
         })
       case 'meanPrice':
         return sorted.sort((a, b) => {
-          const diff = (a.meanPrice || 0) - (b.meanPrice || 0)
+          const diff = (a.pricePerUnit || 0) - (b.pricePerUnit || 0)
           return isAsc ? diff : -diff
         })
       default:
@@ -116,18 +119,20 @@ export default function Bitcoin() {
     [validTransactions, sortColumn, sortDirection, getSortedTransactions]
   )
 
-  const createTransaction = useCallback((data: FormData): BitcoinTransaction => {
+  const createTransaction = useCallback((data: FormData): Transaction => {
     const amountBTC = data.amountEUR / data.meanPrice
     return {
       id: generateUUID(),
+      assetId: btcAsset?.id || 'a4',
+      ticker: btcAsset?.ticker || 'BTC-EUR',
       date: data.date,
       type: data.type,
-      amount: data.amountEUR,
-      amountBTC,
-      totalCost: data.amountEUR,
-      meanPrice: data.meanPrice
+      quantity: amountBTC,
+      fees: 0,
+      totalAmount: data.amountEUR,
+      pricePerUnit: data.meanPrice
     }
-  }, [])
+  }, [btcAsset])
 
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault()
@@ -146,19 +151,19 @@ export default function Bitcoin() {
     }
 
     if (editingTransaction) {
-      setBitcoinTransactions(bitcoinTransactions.map(t =>
+      setTransactions(transactions.map((t: any) =>
         t.id === editingTransaction.id ? { ...createTransaction(formData), id: t.id } : t
       ))
     } else {
-      setBitcoinTransactions([...bitcoinTransactions, createTransaction(formData)])
+      setTransactions([...transactions, createTransaction(formData)])
     }
     
     setIsModalOpen(false)
     setEditingTransaction(null)
     setFormData(INITIAL_FORM_DATA)
-  }, [formData, editingTransaction, bitcoinTransactions, createTransaction])
+  }, [formData, editingTransaction, transactions, createTransaction, setTransactions])
 
-  const handleOpenModal = useCallback((transaction?: BitcoinTransaction) => {
+  const handleOpenModal = useCallback((transaction?: Transaction) => {
     // Solo permitir editar transacciones del mes actual
     if (transaction && !isCurrentMonth(getMonthFromDate(transaction.date || ''))) {
       return
@@ -169,8 +174,8 @@ export default function Bitcoin() {
       setFormData({
         date: transaction.date,
         type: transaction.type,
-        amountEUR: transaction.amount,
-        meanPrice: transaction.meanPrice
+        amountEUR: transaction.totalAmount,
+        meanPrice: transaction.pricePerUnit
       })
     } else {
       setEditingTransaction(null)
@@ -180,7 +185,7 @@ export default function Bitcoin() {
   }, [])
 
   const handleDelete = useCallback((id: string) => {
-    const transaction = bitcoinTransactions.find(t => t.id === id)
+    const transaction = transactions.find((t: any) => t.id === id)
     
     // Solo permitir eliminar transacciones del mes actual
     if (transaction && !isCurrentMonth(getMonthFromDate(transaction.date || ''))) {
@@ -189,9 +194,9 @@ export default function Bitcoin() {
     }
     
     if (confirm('¿Está seguro de que desea eliminar esta transacción?')) {
-      setBitcoinTransactions(bitcoinTransactions.filter(t => t.id !== id))
+      setTransactions(transactions.filter((t: any) => t.id !== id))
     }
-  }, [bitcoinTransactions, setBitcoinTransactions])
+  }, [transactions, setTransactions])
 
   const handleCloseModal = useCallback(() => {
     setIsModalOpen(false)
@@ -351,9 +356,9 @@ export default function Bitcoin() {
                       {tx.type === 'buy' ? '▲ Compra' : '▼ Venta'}
                     </span>
                   </td>
-                  <td className="py-3 px-4 text-right font-bold dark:text-white">{(tx.amountBTC || 0).toFixed(6)}</td>
-                  <td className="py-3 px-4 text-right font-bold dark:text-white">{formatCurrency(Math.round(tx.totalCost || 0))}</td>
-                  <td className="py-3 px-4 text-right font-bold text-indigo-600">{formatCurrency(Math.round(tx.meanPrice || 0))}</td>
+                  <td className="py-3 px-4 text-right font-bold dark:text-white">{(tx.quantity || 0).toFixed(6)}</td>
+                  <td className="py-3 px-4 text-right font-bold dark:text-white">{formatCurrency(Math.round(tx.totalAmount || 0))}</td>
+                  <td className="py-3 px-4 text-right font-bold text-indigo-600">{formatCurrency(Math.round(tx.pricePerUnit || 0))}</td>
                   <td className="py-3 px-4 text-center flex gap-2 justify-center">
                     {isCurrentMonth(getMonthFromDate(tx.date || '')) ? (
                       <>

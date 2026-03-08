@@ -1,4 +1,20 @@
 services:
+  db:
+    image: postgres:15
+    container_name: wealthhub-db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wealthhub_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wealthhub_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-wealthhub}
+    ports:
+      - "5432:5432"
+    volumes:
+      - wealthhub_db_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - umbrel_main_network
+
   backend:
     build:
       context: ./backend
@@ -9,11 +25,13 @@ services:
       - "8000:8000"
     environment:
       - FRONTEND_URL=http://localhost:3000,http://main:5173
-      - VITE_GAS_URL=${VITE_GAS_URL:-}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-wealthhub_user}:${POSTGRES_PASSWORD:-wealthhub_pass}@db:5432/${POSTGRES_DB:-wealthhub}
     volumes:
       - ./backend:/app
     networks:
       - umbrel_main_network
+    depends_on:
+      - db
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -41,6 +59,9 @@ services:
       - umbrel_main_network
     depends_on:
       - backend
+
+volumes:
+  wealthhub_db_data:
 
 networks:
   umbrel_main_network:

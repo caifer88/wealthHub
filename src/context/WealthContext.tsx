@@ -1,34 +1,12 @@
 import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react'
 import useSWR from 'swr'
-import { Asset, HistoryEntry, BitcoinTransaction, StockTransaction, SyncState, Metrics } from '../types'
+import { Asset, HistoryEntry, Transaction, SyncState, Metrics } from '../types'
 import { generateUUID } from '../utils'
 import { config } from '../config'
 
 // Data validation functions
-const sanitizeBitcoinTransactions = (txs: any[]): BitcoinTransaction[] => {
-  if (!Array.isArray(txs)) return []
-  return txs.map((tx: any) => {
-    let txType: 'buy' | 'sell' = 'buy'
-    if (tx.type === 'Compra' || tx.type === 'buy') {
-      txType = 'buy'
-    } else if (tx.type === 'Venta' || tx.type === 'sell') {
-      txType = 'sell'
-    }
-    const amountBTC = parseFloat(tx.amountBTC) || 0
-    return {
-      id: tx.id || generateUUID(),
-      date: tx.date || new Date().toISOString().split('T')[0],
-      type: txType,
-      amount: parseFloat(tx.amount) || parseFloat(tx.totalCost) || 0,
-      amountBTC: amountBTC,
-      totalCost: parseFloat(tx.totalCost) || parseFloat(tx.amount) || 0,
-      meanPrice: parseFloat(tx.meanPrice) || 0
-    } as BitcoinTransaction
-  })
-}
-
-// // @ts-ignore
-export const sanitizeStockTransactions = (txs: any[]): StockTransaction[] => {
+// Data validation functions
+export const sanitizeTransactions = (txs: any[]): Transaction[] => {
   if (!Array.isArray(txs)) return []
   return txs.map((tx: any) => {
     let txType: 'buy' | 'sell' = 'buy'
@@ -39,15 +17,15 @@ export const sanitizeStockTransactions = (txs: any[]): StockTransaction[] => {
     }
     return {
       id: tx.id || generateUUID(),
-      ticker: tx.ticker || '',
-      date: tx.date || new Date().toISOString().split('T')[0],
+      assetId: tx.assetId || tx.asset_id || '',
+      ticker: tx.ticker || undefined,
+      date: tx.date || tx.transaction_date || new Date().toISOString().split('T')[0],
       type: txType,
-      shares: parseFloat(tx.shares) || 0,
-      pricePerShare: parseFloat(tx.pricePerShare) || 0,
+      quantity: parseFloat(tx.quantity) || parseFloat(tx.shares) || parseFloat(tx.amountBTC) || 0,
+      pricePerUnit: parseFloat(tx.pricePerUnit) || parseFloat(tx.price_per_unit) || parseFloat(tx.pricePerShare) || parseFloat(tx.meanPrice) || 0,
       fees: parseFloat(tx.fees) || 0,
-      totalAmount: parseFloat(tx.totalAmount) || 0,
-      broker: tx.broker || undefined
-    } as StockTransaction
+      totalAmount: parseFloat(tx.totalAmount) || parseFloat(tx.total_amount) || parseFloat(tx.totalCost) || parseFloat(tx.amount) || 0
+    } as Transaction
   })
 }
 const SAMPLE_DATA = {
@@ -149,69 +127,68 @@ const SAMPLE_DATA = {
       meanCost: 12.99
     }
   ] as HistoryEntry[],
-  bitcoinTransactions: [
+  transactions: [
     {
       id: 'btc-1',
+      assetId: 'a4',
       date: '2024-01-15',
       type: 'buy' as const,
-      amount: 10000,
-      amountBTC: 0.235294,
-      totalCost: 10000,
-      meanPrice: 42500
+      quantity: 0.235294,
+      totalAmount: 10000,
+      pricePerUnit: 42500,
+      fees: 0
     },
     {
       id: 'btc-2',
+      assetId: 'a4',
       date: '2024-02-10',
       type: 'buy' as const,
-      amount: 8000,
-      amountBTC: 0.16,
-      totalCost: 8000,
-      meanPrice: 50000
-    }
-  ] as BitcoinTransaction[],
-  stockTransactions: [
+      quantity: 0.16,
+      totalAmount: 8000,
+      pricePerUnit: 50000,
+      fees: 0
+    },
     {
       id: 'stock-1',
+      assetId: 'a9',
       ticker: 'AAPL',
       date: '2024-01-20',
       type: 'buy' as const,
-      shares: 10,
-      pricePerShare: 150,
+      quantity: 10,
+      pricePerUnit: 150,
       fees: 5,
-      totalAmount: 1505,
-      broker: 'Interactive Brokers'
+      totalAmount: 1505
     },
     {
       id: 'stock-2',
+      assetId: 'a9',
       ticker: 'MSFT',
       date: '2024-02-05',
       type: 'buy' as const,
-      shares: 5,
-      pricePerShare: 380,
+      quantity: 5,
+      pricePerUnit: 380,
       fees: 3,
-      totalAmount: 1903,
-      broker: 'Interactive Brokers'
+      totalAmount: 1903
     },
     {
       id: 'stock-3',
+      assetId: 'a9',
       ticker: 'AAPL',
       date: '2024-02-15',
       type: 'buy' as const,
-      shares: 8,
-      pricePerShare: 160,
+      quantity: 8,
+      pricePerUnit: 160,
       fees: 4,
-      totalAmount: 1284,
-      broker: 'Interactive Brokers'
+      totalAmount: 1284
     }
-  ] as StockTransaction[]
+  ] as Transaction[]
 }
 
 interface WealthContextType {
   // State
   assets: Asset[]
   history: HistoryEntry[]
-  bitcoinTransactions: BitcoinTransaction[]
-  stockTransactions: StockTransaction[]
+  transactions: Transaction[]
   syncState: SyncState
   darkMode: boolean
   metrics: Metrics | null
@@ -219,14 +196,13 @@ interface WealthContextType {
   // Actions
   setAssets: (assets: Asset[]) => void
   setHistory: (history: HistoryEntry[]) => void
-  setBitcoinTransactions: (txs: BitcoinTransaction[]) => void
-  setStockTransactions: (txs: StockTransaction[]) => void
+  setTransactions: (txs: Transaction[]) => void
   setDarkMode: (mode: boolean) => void
 
   // Sync
-  loadDataFromGAS: () => Promise<void>
-  saveDataToGAS: (assets: Asset[], history: HistoryEntry[], bitcoinTxs: BitcoinTransaction[], stockTxs: StockTransaction[]) => Promise<void>
-  downloadBackup: (assets: Asset[], history: HistoryEntry[], bitcoinTxs: BitcoinTransaction[], stockTxs: StockTransaction[]) => void
+  loadDataFromBackend: () => Promise<void>
+  saveDataToBackend: (assets: Asset[], history: HistoryEntry[], txs: Transaction[]) => Promise<void>
+  downloadBackup: (assets: Asset[], history: HistoryEntry[], txs: Transaction[]) => void
 }
 
 const WealthContext = createContext<WealthContextType | undefined>(undefined)
@@ -244,8 +220,7 @@ const gasFetcher = async (url: string) => {
 export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [assets, setAssets] = useState<Asset[]>([])
   const [history, setHistory] = useState<HistoryEntry[]>([])
-  const [bitcoinTransactions, setBitcoinTransactions] = useState<BitcoinTransaction[]>([])
-  const [stockTransactions, setStockTransactions] = useState<StockTransaction[]>([])
+  const [transactions, setTransactions] = useState<Transaction[]>([])
   const [syncState, setSyncState] = useState<SyncState>({
     isSyncing: false,
     lastSync: null,
@@ -256,7 +231,7 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const isFirstRender = useRef(true)
 
   // SWR para data fetching automático
-  const { data: gasData, error: gasError, mutate: mutateGasData, isValidating } = useSWR(config.gasUrl, gasFetcher, {
+  const { data: backendData, error: backendError, mutate: mutateBackendData, isValidating } = useSWR(`${config.backendUrl}/data`, backendFetcher, {
     revalidateOnFocus: true,
     revalidateOnReconnect: true,
     dedupingInterval: 60000, // 1 minute
@@ -270,38 +245,32 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Sincronizar Context con los datos de SWR (cada vez que SWR tenga nuevos datos validados)
   useEffect(() => {
     // Si tenemos nueva data de SWR, actualizamos el estado independientemente del primer render
-    if (gasData && gasData.assets) {
+    if (backendData && backendData.assets) {
         isFirstRender.current = false // Marcamos que ya pasó el primer render para otros efectos si hace falta
 
         // Usamos la misma lógica de normalización / validación que había
-        let bitcoinTxs = gasData.bitcoinTransactions || []
-        bitcoinTxs = sanitizeBitcoinTransactions(bitcoinTxs)
+        let txs = backendData.transactions || []
+        txs = sanitizeTransactions(txs)
 
-        let stockTxs = gasData.stockTransactions || []
-        stockTxs = sanitizeStockTransactions(stockTxs)
-
-        setAssets(gasData.assets)
-        setHistory(gasData.history || [])
-        setBitcoinTransactions(bitcoinTxs)
-        setStockTransactions(stockTxs)
+        setAssets(backendData.assets)
+        setHistory(backendData.history || [])
+        setTransactions(txs)
         setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }))
         return
     }
 
     // Solo caer en fallback si hay error y es el primer render para no sobreescribir datos en cache local tras un fallo temporal
-    if (gasError && isFirstRender.current) {
+    if (backendError && isFirstRender.current) {
         isFirstRender.current = false
         // Fallback a localStorage
         const localAssets = JSON.parse(localStorage.getItem('wm_assets_v4') || '[]')
         const localHistory = JSON.parse(localStorage.getItem('wm_history_v4') || '[]')
-        const localBitcoin = JSON.parse(localStorage.getItem('wm_bitcoinTransactions_v4') || '[]')
-        const localStocks = JSON.parse(localStorage.getItem('wm_stockTransactions_v4') || '[]')
+        const localTransactions = JSON.parse(localStorage.getItem('wm_transactions_v4') || '[]')
 
         if (localAssets.length > 0) {
             setAssets(localAssets)
             setHistory(localHistory)
-            setBitcoinTransactions(sanitizeBitcoinTransactions(localBitcoin))
-            setStockTransactions(sanitizeStockTransactions(localStocks))
+            setTransactions(sanitizeTransactions(localTransactions))
             setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }))
             return
         }
@@ -309,11 +278,10 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         // Si no hay datos en ningún lado, usar datos de muestra
         setAssets(SAMPLE_DATA.assets)
         setHistory(SAMPLE_DATA.history)
-        setBitcoinTransactions(SAMPLE_DATA.bitcoinTransactions)
-        setStockTransactions(SAMPLE_DATA.stockTransactions)
+        setTransactions(SAMPLE_DATA.transactions)
         setSyncState(prev => ({ ...prev, syncError: 'Usando datos de muestra' }))
     }
-  }, [gasData, gasError])
+  }, [backendData, backendError])
 
   // Guardar en localStorage y sincronizar con GAS
   useEffect(() => {
@@ -324,16 +292,15 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     localStorage.setItem('wm_assets_v4', JSON.stringify(assets))
     localStorage.setItem('wm_history_v4', JSON.stringify(history))
-    localStorage.setItem('wm_bitcoinTransactions_v4', JSON.stringify(bitcoinTransactions))
-    localStorage.setItem('wm_stockTransactions_v4', JSON.stringify(stockTransactions))
+    localStorage.setItem('wm_transactions_v4', JSON.stringify(transactions))
 
     document.documentElement.classList.toggle('dark', darkMode)
     localStorage.setItem('wm_theme', darkMode ? 'dark' : 'light')
 
     if (assets.length > 0) {
-      saveDataToGAS(assets, history, bitcoinTransactions, stockTransactions)
+      saveDataToBackend(assets, history, transactions)
     }
-  }, [assets, history, bitcoinTransactions, stockTransactions, darkMode])
+  }, [assets, history, transactions, darkMode])
 
   // Calcular métricas
   useEffect(() => {
@@ -367,16 +334,18 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // Excluir Cash del cálculo de ganancia/pérdida
       if (asset.name === 'Cash') return
 
-      // EVITAR DOBLE CONTABILIDAD: Excluir acciones si ya tenemos el contenedor 'Interactive Brokers'
-      const isIBActive = activeAssets.some(a => a.name === 'Interactive Brokers')
-      const isStockInIB = isIBActive && asset.ticker && stockTransactions.some(tx => tx.broker === 'Interactive Brokers' && tx.ticker === asset.ticker)
+      // EVITAR DOBLE CONTABILIDAD: Excluir acciones si ya tenemos el contenedor Broker
+      const brokerAssets = activeAssets.filter(a => a.category === 'Stocks' || a.name === 'Interactive Brokers')
+      const isStockInBroker = brokerAssets.some(broker =>
+         asset.ticker && transactions.some((tx: any) => tx.assetId === broker.id && tx.ticker === asset.ticker)
+      )
       
       // Excluir activos que son sub-componentes de otros (ej: Basalto dentro de Fondo Basalto)
       const isComponent = activeAssets.some(parent => 
         parent.name && asset.name && parent.name.length > asset.name.length && parent.name.includes(asset.name) && parent.id !== asset.id
       )
 
-      if (isStockInIB || isComponent) {
+      if (isStockInBroker || isComponent) {
         return // Saltamos este activo para no sumarlo dos veces al total
       }
 
@@ -405,16 +374,15 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     })
   }, [assets, history])
 
-  const loadDataFromGAS = useCallback(async () => {
+  const loadDataFromBackend = useCallback(async () => {
     // SWR mutate triggers a re-fetch and updates hook state automatically
-    mutateGasData()
-  }, [mutateGasData])
+    mutateBackendData()
+  }, [mutateBackendData])
 
-  const saveDataToGAS = useCallback(async (
+  const saveDataToBackend = useCallback(async (
     assetsToSave: Asset[],
     historyToSave: HistoryEntry[],
-    bitcoinTxsToSave: BitcoinTransaction[],
-    stockTxsToSave: StockTransaction[]
+    transactionsToSave: Transaction[]
   ) => {
     if (!assetsToSave || assetsToSave.length === 0) return
 
@@ -424,23 +392,21 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const dataToSend = {
         assets: assetsToSave,
         history: historyToSave,
-        bitcoinTransactions: bitcoinTxsToSave,
-        stockTransactions: stockTxsToSave,
+        transactions: transactionsToSave,
         lastUpdated: new Date().toISOString()
       }
 
-      await fetch(config.gasUrl, {
+      await fetch(`${config.backendUrl}/data`, {
         method: 'POST',
-        mode: 'no-cors',
         headers: {
-          'Content-Type': 'text/plain'
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(dataToSend)
       })
 
       setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }))
     } catch (error) {
-      console.error('❌ Error sincronizando con GAS:', error)
+      console.error('❌ Error sincronizando con Backend:', error)
       setSyncState(prev => ({
         ...prev,
         syncError: error instanceof Error ? error.message : 'Error de sincronización'
@@ -453,14 +419,12 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const downloadBackup = useCallback((
     assetsToBackup: Asset[],
     historyToBackup: HistoryEntry[],
-    bitcoinTxsToBackup: BitcoinTransaction[],
-    stockTxsToBackup: StockTransaction[]
+    transactionsToBackup: Transaction[]
   ) => {
     const backupData = {
       assets: assetsToBackup,
       history: historyToBackup,
-      bitcoinTransactions: bitcoinTxsToBackup,
-      stockTransactions: stockTxsToBackup,
+      transactions: transactionsToBackup,
       exportedAt: new Date().toISOString()
     }
 
@@ -479,18 +443,16 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const value: WealthContextType = {
     assets,
     history,
-    bitcoinTransactions,
-    stockTransactions,
+    transactions,
     syncState,
     darkMode,
     metrics,
     setAssets,
     setHistory,
-    setBitcoinTransactions,
-    setStockTransactions,
+    setTransactions,
     setDarkMode,
-    loadDataFromGAS,
-    saveDataToGAS,
+    loadDataFromBackend,
+    saveDataToBackend,
     downloadBackup
   }
 

@@ -17,8 +17,8 @@ class Settings(BaseSettings):
     # CORS Settings - supports multiple URLs comma-separated
     FRONTEND_URL: str = "http://localhost:3000,http://frontend:5173"
     
-    # Google Apps Script
-    VITE_GAS_URL: Optional[str] = None
+    # Database URL
+    DATABASE_URL: Optional[str] = None
     
     # Price Fetcher Settings
     TIMEOUT: int = 30

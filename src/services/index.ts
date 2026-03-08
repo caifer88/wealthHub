@@ -1,36 +1,33 @@
-import { Asset, HistoryEntry, BitcoinTransaction, StockTransaction } from '../types'
+import { Asset, HistoryEntry, Transaction } from '../types'
 import { jsPDF } from 'jspdf'
 import { config } from '../config'
 export { fetchAndUpdatePrices } from './priceUpdater'
 
-export const gasService = {
+export const apiService = {
   async saveData(
     assets: Asset[],
     history: HistoryEntry[],
-    bitcoinTransactions: BitcoinTransaction[],
-    stockTransactions: StockTransaction[]
+    transactions: Transaction[]
   ) {
     
     const dataToSend = {
       assets,
       history,
-      bitcoinTransactions,
-      stockTransactions,
+      transactions,
       lastUpdated: new Date().toISOString()
     }
 
-    return fetch(config.gasUrl, {
+    return fetch(`${config.backendUrl}/data`, {
       method: 'POST',
-      mode: 'no-cors',
       headers: {
-        'Content-Type': 'text/plain'
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify(dataToSend)
     })
   },
 
   async fetchData() {
-    const response = await fetch(config.gasUrl)
+    const response = await fetch(`${config.backendUrl}/data`)
     return response.json()
   }
 }
@@ -39,14 +36,12 @@ export const exportService = {
   exportJSON(
     assets: Asset[],
     history: HistoryEntry[],
-    bitcoinTransactions: BitcoinTransaction[],
-    stockTransactions: StockTransaction[]
+    transactions: Transaction[]
   ) {
     const backupData = {
       assets,
       history,
-      bitcoinTransactions,
-      stockTransactions,
+      transactions,
       exportedAt: new Date().toISOString()
     }
 
@@ -65,7 +60,7 @@ export const exportService = {
   exportPDF(
     assets: Asset[],
     history: HistoryEntry[],
-    bitcoinTransactions: BitcoinTransaction[]
+    transactions: Transaction[]
   ) {
     const pdf = new jsPDF()
     pdf.setFontSize(16)
@@ -98,19 +93,24 @@ export const exportService = {
       yPos += 7
     })
 
-    // Transacciones Bitcoin
-    if (bitcoinTransactions.length > 0) {
+    // Transacciones
+    const cryptoAssets = assets.filter(a => a.category === 'Crypto')
+    const cryptoIds = cryptoAssets.map(a => a.id)
+    const cryptoTransactions = transactions.filter(t => cryptoIds.includes(t.assetId))
+
+    if (cryptoTransactions.length > 0) {
       yPos += 10
       pdf.setFontSize(11)
-      pdf.text('Transacciones Bitcoin:', 20, yPos)
+      pdf.text('Transacciones Crypto:', 20, yPos)
       yPos += 10
 
-      bitcoinTransactions.forEach(tx => {
+      cryptoTransactions.forEach(tx => {
         if (yPos > pageHeight - bottomMargin) {
           pdf.addPage()
           yPos = 20
         }
-        const line = `${tx.date}: ${tx.type} - ${tx.amountBTC} BTC @ €${tx.meanPrice}`
+        const tickerStr = tx.ticker ? ` ${tx.ticker}` : ''
+        const line = `${tx.date}: ${tx.type} - ${tx.quantity}${tickerStr} @ €${tx.pricePerUnit}`
         pdf.text(line, 25, yPos)
         yPos += 7
       })

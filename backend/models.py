@@ -69,6 +69,27 @@ class HistoryEntry(BaseModel):
     meanCost: Decimal  # Average cost per participation
 
 
+class UnifiedTransaction(BaseModel):
+    """Unified transaction model for frontend API"""
+    id: str
+    assetId: str
+    date: str  # YYYY-MM-DD
+    type: str  # buy/sell
+    ticker: Optional[str] = None
+    quantity: Decimal
+    pricePerUnit: Decimal
+    fees: Decimal
+    totalAmount: Decimal
+
+
+class FullState(BaseModel):
+    """Full data state for sync"""
+    assets: List[Asset]
+    history: List[HistoryEntry]
+    transactions: List[UnifiedTransaction]
+    lastUpdated: str
+
+
 class PriceData(BaseModel):
     """Price data for an asset"""
     assetId: str

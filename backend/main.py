@@ -7,15 +7,16 @@ import logging
 import asyncio
 from datetime import datetime
 from typing import List, Optional
-from fastapi import FastAPI, Query, HTTPException, status
+from fastapi import FastAPI, Query, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import requests
+from sqlmodel import Session
 
 from config import settings
 from models import (
     Asset, PriceData, FetchMonthResponse, HealthResponse,
-    HistoryEntry
+    HistoryEntry, FullState
 )
 from utils import (
     get_last_business_day, validate_month, format_date,
@@ -23,7 +24,7 @@ from utils import (
 )
 from services.price_fetcher import PriceFetcher
 from services.fund_scraper import FundScraper
-from services.gas_service import load_assets_from_gas, persist_prices_to_gas, load_data_from_gas
+from services.db_service import get_session, load_assets_from_db, load_history_from_db, load_transactions_from_db, save_full_data_to_db
 
 # Configure logging
 logging.basicConfig(
@@ -103,125 +104,76 @@ async def fetch_month_prices(
     prices: List[PriceData] = []
     
     try:
-        # Get last business day of the month
-        last_business_day = get_last_business_day(year, month)
-        logger.info(f"📅 Last business day: {format_date(last_business_day)}")
+        from sqlmodel import Session
+        from services.db_service import engine
         
-        # Load assets from GAS (required - no sample fallback)
-        assets = await load_assets_from_gas()
-        if not assets:
-            logger.error("❌ No assets loaded from GAS - GAS_URL may not be configured")
-            return FetchMonthResponse(
-                success=False,
-                message="Could not load assets. Ensure GAS_URL is configured and accessible.",
-                year=year,
-                month=month,
-                lastBusinessDay=format_date(last_business_day),
-                prices=[],
-                errors=["No assets available from GAS"]
-            )
-        
-        logger.info(f"📦 Loaded {len(assets)} assets")
-        
-        # Filter only non-archived assets with price identifiers
-        active_assets = [a for a in assets if not a.get("archived", False)]
-        
-        # Debug: Log categories found
-        categories = set(a.get("category") for a in active_assets if a.get("category"))
-        logger.info(f"📋 Categories found in assets: {categories}")
-        for asset in active_assets:
-            logger.debug(f"  - {asset.get('name')}: category={asset.get('category')}, ticker={asset.get('ticker')}, isin={asset.get('isin')}, componentTickers={asset.get('componentTickers')}")
-        
-        # Organize assets by type
-        crypto_assets = [a for a in active_assets if a.get("category") == "Crypto" and "Bitcoin" in str(a.get("ticker", "")).upper()]
-        fund_assets = [a for a in active_assets if a.get("category") == "Fund"]
-        
-        # Build broker_assets from stockTransactions grouped by broker
-        # Load full data to get stockTransactions
-        full_data = await load_data_from_gas()
-        logger.info(f"📥 Full data keys from GAS: {list(full_data.keys())}")
-        
-        stock_transactions = full_data.get("stockTransactions", [])
-        logger.info(f"📋 Found {len(stock_transactions)} stockTransactions")
-        
-        broker_assets_dict = {}  # broker_name -> asset object with tickers
-        
-        if stock_transactions:
-            # Check if transactions have broker field
-            has_broker_field = stock_transactions[0].get("broker") is not None if stock_transactions else False
-            logger.info(f"📊 StockTransactions have broker field: {has_broker_field}")
+        with Session(engine) as session:
+            # Get last business day of the month
+            last_business_day = get_last_business_day(year, month)
+            logger.info(f"📅 Last business day: {format_date(last_business_day)}")
             
-            if has_broker_field:
-                # Strategy 1: Group by broker field and calculate holdings
-                broker_holdings = {}
-                for tx in stock_transactions:
-                    broker = tx.get("broker")
-                    ticker = tx.get("ticker")
-                    
-                    # Extraer el número de acciones. 
-                    # IMPORTANTE: Revisa si en tu base de datos (GAS) lo llamas 'shares', 'participations' o 'quantity'
-                    shares = float(tx.get("shares", tx.get("participations", tx.get("quantity", 0))))
-                    
-                    # Restar las acciones si es una venta
+            # Load assets from DB
+            assets = load_assets_from_db(session)
+            if not assets:
+                logger.error("❌ No assets loaded from DB")
+                return FetchMonthResponse(
+                    success=False,
+                    message="Could not load assets from DB.",
+                    year=year,
+                    month=month,
+                    lastBusinessDay=format_date(last_business_day),
+                    prices=[],
+                    errors=["No assets available"]
+                )
+
+            logger.info(f"📦 Loaded {len(assets)} assets")
+
+            # Filter only non-archived assets with price identifiers
+            active_assets = [a for a in assets if not a.get("archived", False)]
+
+            # Organize assets by type
+            crypto_assets = [a for a in active_assets if a.get("category") == "Crypto" and "Bitcoin" in str(a.get("ticker", "")).upper()]
+            fund_assets = [a for a in active_assets if a.get("category") == "Fund"]
+
+            # Load transactions to build broker holdings
+            transactions = load_transactions_from_db(session)
+
+            # Filter only transactions for assets that are Stocks/Brokers
+            broker_asset_ids = {a.get("id"): a.get("name") for a in active_assets if a.get("category") == "Stocks"}
+
+            broker_assets_dict = {}
+            for asset_id, broker_name in broker_asset_ids.items():
+                broker_assets_dict[broker_name] = {
+                    "name": broker_name,
+                    "id": asset_id,
+                    "category": "Broker",
+                    "componentTickers": [],
+                    "holdings": {}
+                }
+
+            # Calculate holdings based on transactions mapped to those brokers
+            for tx in transactions:
+                asset_id = tx.get("assetId")
+                ticker = tx.get("ticker")
+                if asset_id in broker_asset_ids and ticker:
+                    broker_name = broker_asset_ids[asset_id]
+                    quantity = tx.get("quantity", 0)
                     tx_type = tx.get("type", "BUY").upper()
                     if tx_type == "SELL":
-                        shares = -shares
-                        
-                    if broker and ticker:
-                        if broker not in broker_holdings:
-                            broker_holdings[broker] = {}
-                        if ticker not in broker_holdings[broker]:
-                            broker_holdings[broker][ticker] = 0.0
-                        broker_holdings[broker][ticker] += shares
-                
-                # Create broker_assets from grouped holdings
-                for broker_name, holdings in broker_holdings.items():
-                    # Filtrar acciones que actualmente posees (cantidad mayor que 0)
-                    active_tickers = {t: s for t, s in holdings.items() if s > 0.0001}
+                        quantity = -quantity
                     
-                    if active_tickers:
-                        # --- NUEVO: Buscar el ID real del activo en la base de datos ---
-                        # Buscamos en los activos activos uno que se llame exactamente igual que el broker
-                        matching_assets = [a for a in active_assets if a.get("name") == broker_name]
-                        real_asset_id = matching_assets[0].get("id") if matching_assets else f"broker-{broker_name.lower()}"
-                        
-                        broker_assets_dict[broker_name] = {
-                            "name": broker_name,
-                            "id": real_asset_id,  # <-- Usamos el ID real que conectará con el frontend
-                            "category": "Broker",
-                            "componentTickers": list(active_tickers.keys()),
-                            "holdings": active_tickers  # Guardamos el recuento de acciones aquí
-                        }
+                    broker_data = broker_assets_dict[broker_name]
+                    if ticker not in broker_data["holdings"]:
+                        broker_data["holdings"][ticker] = 0.0
+                    broker_data["holdings"][ticker] += quantity
+
+            # Cleanup inactive tickers
+            for broker_name, broker_data in broker_assets_dict.items():
+                active_tickers = {t: q for t, q in broker_data["holdings"].items() if q > 0.0001}
+                broker_data["holdings"] = active_tickers
+                broker_data["componentTickers"] = list(active_tickers.keys())
                 
-                logger.info(f"📊 Brokers consolidados: {list(broker_assets_dict.keys())}")
-            else:
-                # Strategy 2: Fallback - assign all tickers to existing Stocks assets
-                logger.warning("⚠️ StockTransactions missing 'broker' field - using fallback strategy")
-                
-                all_tickers = set()
-                for tx in stock_transactions:
-                    ticker = tx.get("ticker")
-                    if ticker:
-                        all_tickers.add(ticker)
-                
-                logger.info(f"📊 Extracted tickers from stockTransactions: {all_tickers}")
-                
-                # Find assets with category "Stocks" (brokers) and assign all tickers to them
-                stocks_assets = [a for a in active_assets if a.get("category") == "Stocks"]
-                logger.info(f"📊 Found {len(stocks_assets)} Stocks assets (brokers): {[a.get('name') for a in stocks_assets]}")
-                
-                for broker_asset in stocks_assets:
-                    broker_assets_dict[broker_asset.get("name")] = {
-                        "name": broker_asset.get("name"),
-                        "id": broker_asset["id"],
-                        "category": "Broker",
-                        "componentTickers": list(all_tickers)
-                    }
-                    logger.info(f"  ✅ Assigned {len(all_tickers)} tickers to {broker_asset.get('name')}: {all_tickers}")
-        else:
-            logger.warning("⚠️ No stockTransactions found in GAS data")
-        
-        broker_assets = list(broker_assets_dict.values())
+            broker_assets = [b for b in broker_assets_dict.values() if b.get("componentTickers")]
         
         logger.info(f"🔍 Found: {len(crypto_assets)} crypto, {len(fund_assets)} funds, {len(broker_assets)} broker assets")
         
@@ -356,9 +308,8 @@ async def fetch_month_prices(
                 errors=errors if errors else ["No assets with ticker/ISIN found or all fetch attempts failed"]
             )
         
-        # Only persist to GAS if we actually fetched prices
-        if prices and settings.VITE_GAS_URL:
-            await persist_prices_to_gas(prices, year, month, last_business_day)
+        # DB persistence happens on the frontend /data POST
+        # so we don't save to DB here.
         
         return FetchMonthResponse(
             success=len(prices) > 0,
@@ -382,54 +333,45 @@ async def fetch_month_prices(
         )
 
 
-@app.post("/update-prices")
-async def update_prices(price_data: List[PriceData]):
-    """
-    Manually update prices in the history.
-    Used when prices are fetched directly from frontend.
-    
-    Request body:
-    - List of PriceData objects with prices to update
-    
-    Returns:
-    - success: Whether the update was successful
-    - message: Status message
-    """
+@app.get("/data")
+async def get_data(session: Session = Depends(get_session)):
+    """Get full state from database"""
     try:
-        logger.info(f"📝 Updating {len(price_data)} prices")
-        
-        # Persist to GAS
-        if settings.VITE_GAS_URL:
-            await persist_prices_to_gas(price_data)
+        assets = load_assets_from_db(session)
+        history = load_history_from_db(session)
+        transactions = load_transactions_from_db(session)
         
         return {
             "success": True,
-            "message": f"Updated {len(price_data)} prices",
-            "prices": price_data
+            "data": {
+                "assets": assets,
+                "history": history,
+                "transactions": transactions,
+                "lastUpdated": format_datetime_iso(datetime.now())
+            }
         }
-        
     except Exception as e:
-        logger.error(f"❌ Error updating prices: {str(e)}")
+        logger.error(f"❌ Error loading data: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error updating prices: {str(e)}"
+            detail=f"Error loading data: {str(e)}"
         )
 
-
-@app.get("/assets")
-async def get_assets():
-    """Get list of all assets from GAS"""
+@app.post("/data")
+async def save_data(data: FullState, session: Session = Depends(get_session)):
+    """Save full state to database"""
     try:
-        assets = await load_assets_from_gas()
+        logger.info(f"📝 Saving data: {len(data.assets)} assets, {len(data.history)} history entries, {len(data.transactions)} txs")
+        save_full_data_to_db(session, data.dict())
         return {
             "success": True,
-            "assets": assets
+            "message": "Data saved successfully"
         }
     except Exception as e:
-        logger.error(f"❌ Error loading assets: {str(e)}")
+        logger.error(f"❌ Error saving data: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error loading assets: {str(e)}"
+            detail=f"Error saving data: {str(e)}"
         )
 
 

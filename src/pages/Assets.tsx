@@ -11,7 +11,7 @@ import { formatCurrency, generateUUID, calculateMeanCost, calculateTotalInvested
 import type { Asset } from '../types'
 
 export default function Assets() {
-  const { assets, setAssets, history, stockTransactions, bitcoinTransactions, saveDataToGAS } = useWealth()
+  const { assets, setAssets, history, transactions, saveDataToBackend } = useWealth()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null)
   const [sortColumn] = useState<'name' | 'category' | 'value' | 'percentage'>('name')
@@ -109,8 +109,9 @@ export default function Assets() {
   }))
 
   const totalNAV = assetValues.filter(a => !a.archived).reduce((sum, a) => {
-    const isIBActive = assets.some(parent => parent.name === 'Interactive Brokers')
-    const isStockInIB = isIBActive && a.ticker && stockTransactions.some(tx => tx.broker === 'Interactive Brokers' && tx.ticker === a.ticker)
+    const ibAsset = assets.find(parent => parent.name === 'Interactive Brokers' || parent.category === 'Stocks')
+    const isIBActive = !!ibAsset
+    const isStockInIB = isIBActive && a.ticker && transactions.some((tx: any) => tx.assetId === ibAsset.id && tx.ticker === a.ticker)
     const isComponent = assets.some(parent => parent.name && a.name && parent.name.length > a.name.length && parent.name.includes(a.name) && parent.id !== a.id)
     
     if (isStockInIB || isComponent) return sum
@@ -175,9 +176,9 @@ export default function Assets() {
       )
       setAssets(updatedAssets)
       
-      // Sync with GAS if archived status changed
+      // Sync with Backend if archived status changed
       if (editingAsset.archived !== formData.archived) {
-        saveDataToGAS(updatedAssets, history, [], [])
+        saveDataToBackend(updatedAssets, history, transactions)
       }
     } else {
       const newAsset: Asset = {
@@ -203,7 +204,7 @@ export default function Assets() {
     if (confirm('¿Está seguro de que desea eliminar este activo?')) {
       const updatedAssets = assets.map(a => a.id === id ? { ...a, archived: true } : a)
       setAssets(updatedAssets)
-      saveDataToGAS(updatedAssets, history, [], [])
+      saveDataToBackend(updatedAssets, history, transactions)
     }
   }
 
@@ -212,7 +213,7 @@ export default function Assets() {
       a.id === id ? { ...a, archived: !a.archived } : a
     )
     setAssets(updatedAssets)
-    saveDataToGAS(updatedAssets, history, [], [])
+    saveDataToBackend(updatedAssets, history, transactions)
   }
 
   const getArchivedCount = (): number => {
@@ -298,14 +299,15 @@ export default function Assets() {
             if (asset.category === 'Crypto' || asset.name.toLowerCase().includes('bitcoin')) {
               let btcShares = 0
               let btcCost = 0
-              bitcoinTransactions.forEach(tx => {
+              const cryptoTxs = transactions.filter((t: any) => t.assetId === asset.id)
+              cryptoTxs.forEach((tx: any) => {
                 if (tx.type === 'buy') {
-                  btcShares += (tx.amountBTC || 0)
-                  btcCost += (tx.totalCost || 0)
+                  btcShares += (tx.quantity || 0)
+                  btcCost += (tx.totalAmount || 0)
                 } else {
                   const avg = btcShares > 0 ? btcCost / btcShares : 0
-                  btcShares -= (tx.amountBTC || 0)
-                  btcCost -= ((tx.amountBTC || 0) * avg)
+                  btcShares -= (tx.quantity || 0)
+                  btcCost -= ((tx.quantity || 0) * avg)
                 }
               })
               participations = btcShares
@@ -331,20 +333,21 @@ export default function Assets() {
             
             let positionsData: Array<{ticker: string; nav: number; shares: number; avgPrice: number}> = []
             
-            if (asset.name === 'Interactive Brokers') {
-              const ibTransactions = stockTransactions.filter(tx => tx.broker === 'Interactive Brokers')
+            if (asset.name === 'Interactive Brokers' || asset.category === 'Stocks') {
+              const ibTransactions = transactions.filter((tx: any) => tx.assetId === asset.id)
               const tickerMap = new Map<string, {shares: number; totalCost: number}>()
               
               for (const tx of ibTransactions) {
+                if (!tx.ticker) continue
                 const existing = tickerMap.get(tx.ticker) || {shares: 0, totalCost: 0}
                 if (tx.type === 'buy') {
-                  existing.shares += tx.shares
+                  existing.shares += tx.quantity
                   existing.totalCost += tx.totalAmount
                 } else {
                   // 🟢 FIX 2: Restar ventas basándose en el precio medio para no corromper la inversión real
                   const avgPrice = existing.shares > 0 ? existing.totalCost / existing.shares : 0
-                  existing.shares -= tx.shares
-                  existing.totalCost -= (tx.shares * avgPrice)
+                  existing.shares -= tx.quantity
+                  existing.totalCost -= (tx.quantity * avgPrice)
                 }
                 tickerMap.set(tx.ticker, existing)
               }
@@ -401,7 +404,6 @@ export default function Assets() {
             }
             
             const hasPositions = positionsData.length > 0
-            const componentValue = positionsData.reduce((sum, p) => sum + p.nav, 0)
             
             // Usamos el currentValue (que viene directamente del Historial actualizado) 
             const valueToDisplay = currentValue
