@@ -552,9 +552,17 @@ async def fetch_month_prices(
                  # Evitamos coger datos del propio mes si se está recalculando
                  prev_history = [h for h in prev_history_all if h.snapshot_date < date_obj]
                  
-                 participations = prev_history[0].participations if prev_history else Decimal("0.0")
-                 contribution = prev_history[0].contribution if prev_history else Decimal("0.0")
-                 mean_cost = prev_history[0].mean_cost if prev_history else Decimal("0.0")
+                 participations = (prev_history[0].participations 
+                                if prev_history and prev_history[0].participations is not None 
+                                else Decimal("0.0"))
+
+                 contribution = (prev_history[0].contribution 
+                                if prev_history and prev_history[0].contribution is not None 
+                                else Decimal("0.0"))
+
+                 mean_cost = (prev_history[0].mean_cost 
+                            if prev_history and prev_history[0].mean_cost is not None 
+                            else Decimal("0.0"))
                  
                  # Detectar si el activo es Bitcoin
                  is_btc = asset.get("category") == "Crypto" and ("BTC" in str(asset.get("ticker", "")).upper() or "BITCOIN" in str(asset.get("name", "")).upper())
