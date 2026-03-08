@@ -14,8 +14,6 @@ metadata:
 containers:
   main:
     image: wealthhub:latest
-    environment:
-      VITE_GAS_URL: ${VITE_GAS_URL}
     ports:
       - "8787:3000"
     volumes:

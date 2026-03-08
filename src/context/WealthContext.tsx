@@ -1,8 +1,6 @@
 import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react'
-import useSWR from 'swr'
 import { Asset, HistoryEntry, BitcoinTransaction, StockTransaction, SyncState, Metrics } from '../types'
 import { generateUUID } from '../utils'
-import { config } from '../config'
 
 // Data validation functions
 const sanitizeBitcoinTransactions = (txs: any[]): BitcoinTransaction[] => {
@@ -224,22 +222,10 @@ interface WealthContextType {
   setDarkMode: (mode: boolean) => void
 
   // Sync
-  loadDataFromGAS: () => Promise<void>
-  saveDataToGAS: (assets: Asset[], history: HistoryEntry[], bitcoinTxs: BitcoinTransaction[], stockTxs: StockTransaction[]) => Promise<void>
   downloadBackup: (assets: Asset[], history: HistoryEntry[], bitcoinTxs: BitcoinTransaction[], stockTxs: StockTransaction[]) => void
 }
 
 const WealthContext = createContext<WealthContextType | undefined>(undefined)
-
-
-const gasFetcher = async (url: string) => {
-  const res = await fetch(url)
-  const result = await res.json()
-  if (!result.success || !result.data) {
-    throw new Error('Failed to load data from GAS')
-  }
-  return result.data
-}
 
 export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [assets, setAssets] = useState<Asset[]>([])
@@ -255,41 +241,9 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [metrics, setMetrics] = useState<Metrics | null>(null)
   const isFirstRender = useRef(true)
 
-  // SWR para data fetching automático
-  const { data: gasData, error: gasError, mutate: mutateGasData, isValidating } = useSWR(config.gasUrl, gasFetcher, {
-    revalidateOnFocus: true,
-    revalidateOnReconnect: true,
-    dedupingInterval: 60000, // 1 minute
-  })
-
-  // Sincronizar estado isSyncing de SWR
+  // Cargar datos iniciales
   useEffect(() => {
-    setSyncState(prev => ({ ...prev, isSyncing: isValidating }))
-  }, [isValidating])
-
-  // Sincronizar Context con los datos de SWR (cada vez que SWR tenga nuevos datos validados)
-  useEffect(() => {
-    // Si tenemos nueva data de SWR, actualizamos el estado independientemente del primer render
-    if (gasData && gasData.assets) {
-        isFirstRender.current = false // Marcamos que ya pasó el primer render para otros efectos si hace falta
-
-        // Usamos la misma lógica de normalización / validación que había
-        let bitcoinTxs = gasData.bitcoinTransactions || []
-        bitcoinTxs = sanitizeBitcoinTransactions(bitcoinTxs)
-
-        let stockTxs = gasData.stockTransactions || []
-        stockTxs = sanitizeStockTransactions(stockTxs)
-
-        setAssets(gasData.assets)
-        setHistory(gasData.history || [])
-        setBitcoinTransactions(bitcoinTxs)
-        setStockTransactions(stockTxs)
-        setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }))
-        return
-    }
-
-    // Solo caer en fallback si hay error y es el primer render para no sobreescribir datos en cache local tras un fallo temporal
-    if (gasError && isFirstRender.current) {
+    if (isFirstRender.current) {
         isFirstRender.current = false
         // Fallback a localStorage
         const localAssets = JSON.parse(localStorage.getItem('wm_assets_v4') || '[]')
@@ -306,19 +260,18 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             return
         }
 
-        // Si no hay datos en ningún lado, usar datos de muestra
+        // Si no hay datos, usar datos de muestra
         setAssets(SAMPLE_DATA.assets)
         setHistory(SAMPLE_DATA.history)
         setBitcoinTransactions(SAMPLE_DATA.bitcoinTransactions)
         setStockTransactions(SAMPLE_DATA.stockTransactions)
         setSyncState(prev => ({ ...prev, syncError: 'Usando datos de muestra' }))
     }
-  }, [gasData, gasError])
+  }, [])
 
-  // Guardar en localStorage y sincronizar con GAS
+  // Guardar en localStorage
   useEffect(() => {
     if (isFirstRender.current) {
-      isFirstRender.current = false
       return
     }
 
@@ -329,10 +282,6 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     document.documentElement.classList.toggle('dark', darkMode)
     localStorage.setItem('wm_theme', darkMode ? 'dark' : 'light')
-
-    if (assets.length > 0) {
-      saveDataToGAS(assets, history, bitcoinTransactions, stockTransactions)
-    }
   }, [assets, history, bitcoinTransactions, stockTransactions, darkMode])
 
   // Calcular métricas
@@ -405,51 +354,6 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     })
   }, [assets, history])
 
-  const loadDataFromGAS = useCallback(async () => {
-    // SWR mutate triggers a re-fetch and updates hook state automatically
-    mutateGasData()
-  }, [mutateGasData])
-
-  const saveDataToGAS = useCallback(async (
-    assetsToSave: Asset[],
-    historyToSave: HistoryEntry[],
-    bitcoinTxsToSave: BitcoinTransaction[],
-    stockTxsToSave: StockTransaction[]
-  ) => {
-    if (!assetsToSave || assetsToSave.length === 0) return
-
-    setSyncState(prev => ({ ...prev, isSyncing: true }))
-
-    try {
-      const dataToSend = {
-        assets: assetsToSave,
-        history: historyToSave,
-        bitcoinTransactions: bitcoinTxsToSave,
-        stockTransactions: stockTxsToSave,
-        lastUpdated: new Date().toISOString()
-      }
-
-      await fetch(config.gasUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: {
-          'Content-Type': 'text/plain'
-        },
-        body: JSON.stringify(dataToSend)
-      })
-
-      setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }))
-    } catch (error) {
-      console.error('❌ Error sincronizando con GAS:', error)
-      setSyncState(prev => ({
-        ...prev,
-        syncError: error instanceof Error ? error.message : 'Error de sincronización'
-      }))
-    } finally {
-      setSyncState(prev => ({ ...prev, isSyncing: false }))
-    }
-  }, [])
-
   const downloadBackup = useCallback((
     assetsToBackup: Asset[],
     historyToBackup: HistoryEntry[],
@@ -489,8 +393,6 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setBitcoinTransactions,
     setStockTransactions,
     setDarkMode,
-    loadDataFromGAS,
-    saveDataToGAS,
     downloadBackup
   }
 

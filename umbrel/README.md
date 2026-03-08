@@ -28,7 +28,6 @@ Once WealthHub is added to the Umbrel App Store, you can install it directly fro
 3. Configure your environment:
    ```bash
    cp .env.example .env
-   nano .env  # Add your VITE_GAS_URL
    ```
 
 4. Start the app:
