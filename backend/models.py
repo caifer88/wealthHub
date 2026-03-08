@@ -2,7 +2,10 @@
 Data models for WealthHub Backend API
 """
 
-from pydantic import BaseModel, Field
+
+
+from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic.alias_generators import to_camel
 from typing import Optional, List
 from enum import Enum
 from decimal import Decimal
@@ -189,3 +192,140 @@ class AssetMetricsResponse(BaseModel):
     absolute_return: float
     percentage_return: float
     twr: float
+
+
+class AssetResponse(BaseModel):
+    id: str
+    name: str
+    category: str
+    color: Optional[str] = None
+    archived: bool = Field(default=False, validation_alias="is_archived")
+    risk_level: Optional[str] = None
+    isin: Optional[str] = None
+    ticker: Optional[str] = None
+    description: Optional[str] = ""
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        from_attributes=True
+    )
+
+class HistoryResponse(BaseModel):
+    id: str
+    asset_id: Optional[str] = None
+    month: str
+    nav: float
+    contribution: float
+    participations: Optional[float] = None
+    liquid_nav_value: Optional[float] = None
+    mean_cost: Optional[float] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def map_fields(cls, data):
+        # Handle both dict (from tests) and ORM object (from DB)
+        if isinstance(data, dict):
+            res = dict(data)
+            if "snapshot_date" in res:
+                res["month"] = res["snapshot_date"].strftime("%Y-%m")
+            if "nav" in res and res["nav"] is not None:
+                res["nav"] = float(res["nav"])
+            else:
+                res["nav"] = 0.0
+            if "contribution" in res and res["contribution"] is not None:
+                res["contribution"] = float(res["contribution"])
+            else:
+                res["contribution"] = 0.0
+            if "participations" in res and res["participations"] is not None:
+                res["participations"] = float(res["participations"])
+            if "liquid_nav_value" in res and res["liquid_nav_value"] is not None:
+                res["liquid_nav_value"] = float(res["liquid_nav_value"])
+            if "mean_cost" in res and res["mean_cost"] is not None:
+                res["mean_cost"] = float(res["mean_cost"])
+            return res
+
+        # Object from ORM
+        res = {
+            "id": getattr(data, "id", None),
+            "asset_id": getattr(data, "asset_id", None),
+        }
+        if hasattr(data, "snapshot_date") and getattr(data, "snapshot_date"):
+            res["month"] = getattr(data, "snapshot_date").strftime("%Y-%m")
+        res["nav"] = float(getattr(data, "nav", 0.0) or 0.0)
+        res["contribution"] = float(getattr(data, "contribution", 0.0) or 0.0)
+
+        parts = getattr(data, "participations", None)
+        res["participations"] = float(parts) if parts is not None else None
+
+        liq = getattr(data, "liquid_nav_value", None)
+        res["liquid_nav_value"] = float(liq) if liq is not None else None
+
+        mean = getattr(data, "mean_cost", None)
+        res["mean_cost"] = float(mean) if mean is not None else None
+
+        return res
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        from_attributes=True
+    )
+
+class TransactionResponse(BaseModel):
+    id: str
+    asset_id: Optional[str] = None
+    date: str
+    type: Optional[str] = None
+    ticker: Optional[str] = None
+    quantity: float
+    price_per_unit: float
+    fees: float
+    total_amount: float
+
+    @model_validator(mode="before")
+    @classmethod
+    def map_fields(cls, data):
+        if isinstance(data, dict):
+            res = dict(data)
+            if "transaction_date" in res:
+                res["date"] = res["transaction_date"].strftime("%Y-%m-%d")
+            if "quantity" in res and res["quantity"] is not None:
+                res["quantity"] = float(res["quantity"])
+            else:
+                res["quantity"] = 0.0
+            if "price_per_unit" in res and res["price_per_unit"] is not None:
+                res["price_per_unit"] = float(res["price_per_unit"])
+            else:
+                res["price_per_unit"] = 0.0
+            if "fees" in res and res["fees"] is not None:
+                res["fees"] = float(res["fees"])
+            else:
+                res["fees"] = 0.0
+            if "total_amount" in res and res["total_amount"] is not None:
+                res["total_amount"] = float(res["total_amount"])
+            else:
+                res["total_amount"] = 0.0
+            return res
+
+        res = {
+            "id": getattr(data, "id", None),
+            "asset_id": getattr(data, "asset_id", None),
+            "type": getattr(data, "type", None),
+            "ticker": getattr(data, "ticker", None),
+        }
+        if hasattr(data, "transaction_date") and getattr(data, "transaction_date"):
+            res["date"] = getattr(data, "transaction_date").strftime("%Y-%m-%d")
+
+        res["quantity"] = float(getattr(data, "quantity", 0.0) or 0.0)
+        res["price_per_unit"] = float(getattr(data, "price_per_unit", 0.0) or 0.0)
+        res["fees"] = float(getattr(data, "fees", 0.0) or 0.0)
+        res["total_amount"] = float(getattr(data, "total_amount", 0.0) or 0.0)
+
+        return res
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        from_attributes=True
+    )

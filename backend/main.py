@@ -13,6 +13,7 @@ from sqlmodel import Session, create_engine, SQLModel
 
 from config import settings
 from models import (
+    AssetResponse, HistoryResponse, TransactionResponse,
     Asset, PriceData, FetchMonthResponse, HealthResponse,
     HistoryEntry, Transaction, PortfolioSummaryResponse,
     PortfolioAllocationResponse, AssetMetricsResponse
@@ -79,30 +80,10 @@ async def health_check():
 
 # --- Asset Endpoints ---
 
-@app.get("/api/assets", response_model=List[Asset])
-def get_assets(session: Session = Depends(get_session)):
-    """Get all assets"""
-    assets = db_service.get_all_assets(session)
-    # Map DB models to Pydantic models (we're using same names mostly, simple dict mapping works)
-    return [Asset(**asset.model_dump()) for asset in assets]
-
-# --- Asset Endpoints ---
-
-@app.get("/api/assets") # Quitamos response_model para devolver un JSON a medida
+@app.get("/api/assets", response_model=List[AssetResponse])
 def get_assets(session: Session = Depends(get_session)):
     """Get all assets mapped for Frontend"""
-    assets = db_service.get_all_assets(session)
-    return [{
-        "id": a.id,
-        "name": a.name,
-        "category": a.category,
-        "color": a.color,
-        "archived": a.is_archived,
-        "riskLevel": a.risk_level,
-        "isin": a.isin,
-        "ticker": a.ticker,
-        "description": a.description
-    } for a in assets]
+    return db_service.get_all_assets(session)
 
 @app.post("/api/assets", response_model=Asset, status_code=status.HTTP_201_CREATED)
 def create_asset(asset: Asset, session: Session = Depends(get_session)):
@@ -129,20 +110,10 @@ def delete_asset(asset_id: str, session: Session = Depends(get_session)):
 
 # --- History Endpoints ---
 
-@app.get("/api/history")
+@app.get("/api/history", response_model=List[HistoryResponse])
 def get_history(session: Session = Depends(get_session)):
     """Get all history mapped for Frontend"""
-    history = db_service.get_all_history(session)
-    return [{
-        "id": h.id,
-        "assetId": h.asset_id,
-        "month": h.snapshot_date.strftime("%Y-%m"), # Convertimos 2020-01-01 a "2020-01"
-        "nav": float(h.nav) if h.nav else 0,
-        "contribution": float(h.contribution) if h.contribution else 0,
-        "participations": float(h.participations) if h.participations else None,
-        "liquidNavValue": float(h.liquid_nav_value) if h.liquid_nav_value else None,
-        "meanCost": float(h.mean_cost) if h.mean_cost else None
-    } for h in history]
+    return db_service.get_all_history(session)
 
 @app.get("/api/history/asset/{asset_id}", response_model=List[HistoryEntry])
 def get_asset_history(asset_id: str, session: Session = Depends(get_session)):
@@ -172,21 +143,10 @@ def delete_history(history_id: str, session: Session = Depends(get_session)):
 
 # --- Transaction Endpoints ---
 
-@app.get("/api/transactions")
+@app.get("/api/transactions", response_model=List[TransactionResponse])
 def get_transactions(session: Session = Depends(get_session)):
     """Get all transactions mapped for Frontend"""
-    transactions = db_service.get_all_transactions(session)
-    return [{
-        "id": t.id,
-        "assetId": t.asset_id,
-        "date": t.transaction_date.strftime("%Y-%m-%d"),
-        "type": t.type,
-        "ticker": t.ticker,
-        "quantity": float(t.quantity) if t.quantity else 0,
-        "pricePerUnit": float(t.price_per_unit) if t.price_per_unit else 0,
-        "fees": float(t.fees) if t.fees else 0,
-        "totalAmount": float(t.total_amount) if t.total_amount else 0
-    } for t in transactions]
+    return db_service.get_all_transactions(session)
 
 @app.get("/api/transactions/asset/{asset_id}", response_model=List[Transaction])
 def get_asset_transactions(asset_id: str, session: Session = Depends(get_session)):
