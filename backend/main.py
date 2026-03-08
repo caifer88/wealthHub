@@ -79,15 +79,6 @@ async def health_check():
 
 # --- Asset Endpoints ---
 
-@app.get("/api/assets", response_model=List[Asset])
-def get_assets(session: Session = Depends(get_session)):
-    """Get all assets"""
-    assets = db_service.get_all_assets(session)
-    # Map DB models to Pydantic models (we're using same names mostly, simple dict mapping works)
-    return [Asset(**asset.model_dump()) for asset in assets]
-
-# --- Asset Endpoints ---
-
 @app.get("/api/assets") # Quitamos response_model para devolver un JSON a medida
 def get_assets(session: Session = Depends(get_session)):
     """Get all assets mapped for Frontend"""
