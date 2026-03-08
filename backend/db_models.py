@@ -2,6 +2,7 @@ from sqlmodel import Field, SQLModel
 from typing import Optional
 from decimal import Decimal
 from datetime import date
+from sqlalchemy import Column, Numeric
 
 
 class Asset(SQLModel, table=True):
@@ -24,11 +25,11 @@ class AssetHistory(SQLModel, table=True):
     id: str = Field(primary_key=True, max_length=100)
     asset_id: Optional[str] = Field(default=None, foreign_key="asset.id", max_length=50)
     snapshot_date: date
-    nav: Optional[Decimal] = Field(default=None, max_digits=15, decimal_places=4)
-    contribution: Optional[Decimal] = Field(default=None, max_digits=15, decimal_places=4)
-    participations: Optional[Decimal] = Field(default=None, max_digits=18, decimal_places=8)
-    liquid_nav_value: Optional[Decimal] = Field(default=None, max_digits=15, decimal_places=4)
-    mean_cost: Optional[Decimal] = Field(default=None, max_digits=15, decimal_places=4)
+    nav: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(15, 4)))
+    contribution: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(15, 4)))
+    participations: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
+    liquid_nav_value: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(15, 4)))
+    mean_cost: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(15, 4)))
 
     class Config:
         arbitrary_types_allowed = True
@@ -40,10 +41,10 @@ class Transaction(SQLModel, table=True):
     transaction_date: date
     type: Optional[str] = Field(default=None, max_length=20)
     ticker: Optional[str] = Field(default=None, max_length=50)
-    quantity: Optional[Decimal] = Field(default=None, max_digits=18, decimal_places=8)
-    price_per_unit: Optional[Decimal] = Field(default=None, max_digits=18, decimal_places=8)
-    fees: Optional[Decimal] = Field(default=None, max_digits=10, decimal_places=4)
-    total_amount: Optional[Decimal] = Field(default=None, max_digits=15, decimal_places=4)
+    quantity: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
+    price_per_unit: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
+    fees: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(10, 4)))
+    total_amount: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(15, 4)))
 
     class Config:
         arbitrary_types_allowed = True
