@@ -1,39 +1,6 @@
 import { Asset, HistoryEntry, BitcoinTransaction, StockTransaction } from '../types'
 import { jsPDF } from 'jspdf'
-import { config } from '../config'
 export { fetchAndUpdatePrices } from './priceUpdater'
-
-export const gasService = {
-  async saveData(
-    assets: Asset[],
-    history: HistoryEntry[],
-    bitcoinTransactions: BitcoinTransaction[],
-    stockTransactions: StockTransaction[]
-  ) {
-    
-    const dataToSend = {
-      assets,
-      history,
-      bitcoinTransactions,
-      stockTransactions,
-      lastUpdated: new Date().toISOString()
-    }
-
-    return fetch(config.gasUrl, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: {
-        'Content-Type': 'text/plain'
-      },
-      body: JSON.stringify(dataToSend)
-    })
-  },
-
-  async fetchData() {
-    const response = await fetch(config.gasUrl)
-    return response.json()
-  }
-}
 
 export const exportService = {
   exportJSON(

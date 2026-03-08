@@ -11,7 +11,7 @@ import { formatCurrency, generateUUID, calculateMeanCost, calculateTotalInvested
 import type { Asset } from '../types'
 
 export default function Assets() {
-  const { assets, setAssets, history, stockTransactions, bitcoinTransactions, saveDataToGAS } = useWealth()
+  const { assets, setAssets, history, stockTransactions, bitcoinTransactions } = useWealth()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null)
   const [sortColumn] = useState<'name' | 'category' | 'value' | 'percentage'>('name')
@@ -174,11 +174,6 @@ export default function Assets() {
           : a
       )
       setAssets(updatedAssets)
-      
-      // Sync with GAS if archived status changed
-      if (editingAsset.archived !== formData.archived) {
-        saveDataToGAS(updatedAssets, history, [], [])
-      }
     } else {
       const newAsset: Asset = {
         id: generateUUID(),
@@ -203,7 +198,6 @@ export default function Assets() {
     if (confirm('¿Está seguro de que desea eliminar este activo?')) {
       const updatedAssets = assets.map(a => a.id === id ? { ...a, archived: true } : a)
       setAssets(updatedAssets)
-      saveDataToGAS(updatedAssets, history, [], [])
     }
   }
 
@@ -212,7 +206,6 @@ export default function Assets() {
       a.id === id ? { ...a, archived: !a.archived } : a
     )
     setAssets(updatedAssets)
-    saveDataToGAS(updatedAssets, history, [], [])
   }
 
   const getArchivedCount = (): number => {
