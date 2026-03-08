@@ -165,3 +165,23 @@ class HealthResponse(BaseModel):
     status: str
     message: str
     version: str
+
+class PortfolioSummaryResponse(BaseModel):
+    """Response model for portfolio summary endpoint"""
+    total_value: float
+    total_invested: float
+    absolute_roi: float
+    percentage_roi: float
+
+class PortfolioAllocationResponse(BaseModel):
+    """Response model for portfolio allocation endpoint"""
+    allocations: dict[str, float]
+
+class AssetMetricsResponse(BaseModel):
+    """Response model for individual asset metrics endpoint"""
+    asset_id: str
+    total_contributed: float
+    current_value: float
+    absolute_return: float
+    percentage_return: float
+    twr: float
