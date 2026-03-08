@@ -3,7 +3,7 @@ Data models for WealthHub Backend API
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Dict
 from enum import Enum
 from decimal import Decimal
 from datetime import date
@@ -179,7 +179,7 @@ class PortfolioSummaryResponse(BaseModel):
 
 class PortfolioAllocationResponse(BaseModel):
     """Response model for portfolio allocation endpoint"""
-    allocations: dict[str, float]
+    allocations: Dict[str, float]
 
 class AssetMetricsResponse(BaseModel):
     """Response model for individual asset metrics endpoint"""

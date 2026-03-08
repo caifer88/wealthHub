@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS Asset (
     id VARCHAR(50) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     category VARCHAR(50) NOT NULL,
+    currency VARCHAR(10) DEFAULT 'EUR',
     color VARCHAR(20),
     is_archived BOOLEAN DEFAULT false,
     risk_level VARCHAR(50),
@@ -31,6 +32,7 @@ CREATE TABLE IF NOT EXISTS Transaction (
     transaction_date DATE NOT NULL,
     type VARCHAR(20),
     ticker VARCHAR(50),
+    currency VARCHAR(10) DEFAULT 'EUR',
     quantity NUMERIC(18, 8),
     price_per_unit NUMERIC(18, 8),
     fees NUMERIC(10, 4),
@@ -47,7 +49,6 @@ INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, tic
 INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a7', 'Broker DeGiro', 'Stocks', '#60a5fa', true, 'Medio', NULL, NULL, NULL) ON CONFLICT (id) DO NOTHING;
 INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a8', 'Numantia Patrimonio', 'Fund', '#b2b512', false, 'Moderado', 'ES0173311103', NULL, NULL) ON CONFLICT (id) DO NOTHING;
 INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a9', 'Interactive Brokers', 'Stocks', '#3b82f6', false, 'Medio', NULL, NULL, 'Cartera de acciones individuales') ON CONFLICT (id) DO NOTHING;
-
 -- 3. INSERCIÓN DE HISTORIAL MENSUAL
 INSERT INTO Asset_History (id, asset_id, snapshot_date, nav, contribution, participations, liquid_nav_value, mean_cost) VALUES ('h-2020-01-a5', 'a5', '2020-01-01', 15000, 0, NULL, NULL, NULL) ON CONFLICT (id) DO NOTHING;
 INSERT INTO Asset_History (id, asset_id, snapshot_date, nav, contribution, participations, liquid_nav_value, mean_cost) VALUES ('h-2020-01-a6', 'a6', '2020-01-01', 0, 0, NULL, NULL, NULL) ON CONFLICT (id) DO NOTHING;
