@@ -30,6 +30,12 @@ class RiskLevel(str, Enum):
     HIGH = "Alto"
 
 
+class TransactionType(str, Enum):
+    """Transaction types"""
+    BUY = "BUY"
+    SELL = "SELL"
+
+
 # Base configuration for models to serialize snake_case to camelCase for the frontend
 frontend_config = ConfigDict(
     alias_generator=to_camel,
@@ -78,7 +84,7 @@ class Transaction(SQLModel, table=True):
     id: str = Field(primary_key=True, max_length=100)
     asset_id: Optional[str] = Field(default=None, foreign_key="asset.id", max_length=50, index=True)
     transaction_date: date
-    type: Optional[str] = Field(default=None, max_length=20)
+    type: Optional[str] = Field(default=None)
     ticker: Optional[str] = Field(default=None, max_length=50, index=True)
     currency: Optional[str] = Field(default="EUR", max_length=10)
     quantity: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))

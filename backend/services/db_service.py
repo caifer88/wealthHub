@@ -134,8 +134,8 @@ def get_asset_holdings(session: Session, asset_id: str) -> dict:
         Transaction.ticker,
         func.sum(
             case(
-                (Transaction.type.in_(["BUY", "COMPRA"]), Transaction.quantity),
-                (Transaction.type.in_(["SELL", "VENTA"]), -Transaction.quantity),
+                (Transaction.type == "BUY", Transaction.quantity),
+                (Transaction.type == "SELL", -Transaction.quantity),
                 else_=0
             )
         ).label('total_quantity')
@@ -150,8 +150,8 @@ def get_total_btc_holdings(session: Session, asset_id: str) -> float:
     statement = select(
         func.sum(
             case(
-                (Transaction.type.in_(["BUY", "COMPRA"]), Transaction.quantity),
-                (Transaction.type.in_(["SELL", "VENTA"]), -Transaction.quantity),
+                (Transaction.type == "BUY", Transaction.quantity),
+                (Transaction.type == "SELL", -Transaction.quantity),
                 else_=0
             )
         )
