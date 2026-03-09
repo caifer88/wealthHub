@@ -2,6 +2,13 @@ import datetime
 from sqlmodel import Field, SQLModel
 from typing import Optional
 from decimal import Decimal
+from enum import Enum
+
+
+class TransactionType(str, Enum):
+    """Transaction types"""
+    BUY = "BUY"
+    SELL = "SELL"
 
 
 class Asset(SQLModel, table=True):
@@ -33,7 +40,7 @@ class Transaction(SQLModel, table=True):
     id: str = Field(primary_key=True, max_length=100)
     asset_id: Optional[str] = Field(default=None, foreign_key="asset.id", max_length=50, index=True)
     transaction_date: datetime.date
-    type: Optional[str] = Field(default=None, max_length=20)
+    type: Optional[str] = Field(default=None)
     ticker: Optional[str] = Field(default=None, max_length=50, index=True)
     currency: Optional[str] = Field(default="EUR", max_length=10)
     quantity: Optional[Decimal] = Field(default=None)

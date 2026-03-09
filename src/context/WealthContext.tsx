@@ -94,11 +94,10 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const fetchFromDatabase = async () => {
             try {
                 // Hacemos las llamadas a la API de FastAPI
-                const [assetsRes, historyRes, txsRes, summaryRes] = await Promise.all([
+                const [assetsRes, historyRes, txsRes] = await Promise.all([
                     fetch(`${config.backendUrl}/api/assets`),
                     fetch(`${config.backendUrl}/api/history`),
-                    fetch(`${config.backendUrl}/api/transactions`),
-                    fetch(`${config.backendUrl}/api/portfolio/summary`)
+                    fetch(`${config.backendUrl}/api/transactions`)
                 ]);
 
                 if (!assetsRes.ok) throw new Error("Fallo al conectar con la API");

@@ -25,7 +25,6 @@ from utils import (
 from services.price_fetcher import PriceFetcher
 from services.fund_scraper import FundScraper
 from services import db_service
-import db_models
 from cachetools import cached, TTLCache
 import yfinance as yf
 
@@ -74,7 +73,7 @@ frontend_urls = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=".*",
+    allow_origins=frontend_urls,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -103,21 +102,10 @@ async def health_check():
 
 # --- Asset Endpoints ---
 
-@app.get("/api/assets") # Quitamos response_model para devolver un JSON a medida
+@app.get("/api/assets", response_model=List[Asset])
 def get_assets(session: Session = Depends(get_session)):
     """Get all assets mapped for Frontend"""
-    assets = db_service.get_all_assets(session)
-    return [{
-        "id": a.id,
-        "name": a.name,
-        "category": a.category,
-        "color": a.color,
-        "archived": a.is_archived,
-        "riskLevel": a.risk_level,
-        "isin": a.isin,
-        "ticker": a.ticker,
-        "description": a.description
-    } for a in assets]
+    return db_service.get_all_assets(session)
 
 @app.post("/api/assets", response_model=Asset, status_code=status.HTTP_201_CREATED)
 def create_asset(asset: Asset, session: Session = Depends(get_session)):
@@ -125,8 +113,7 @@ def create_asset(asset: Asset, session: Session = Depends(get_session)):
     # Check if ID already exists
     if db_service.get_asset_by_id(session, asset.id):
         raise HTTPException(status_code=400, detail="Asset ID already exists")
-    created = db_service.create_asset(session, asset)
-    return Asset(**created.model_dump())
+    return db_service.create_asset(session, asset)
 
 @app.put("/api/assets/{asset_id}", response_model=Asset)
 def update_asset(asset_id: str, asset: Asset, session: Session = Depends(get_session)):
@@ -134,7 +121,7 @@ def update_asset(asset_id: str, asset: Asset, session: Session = Depends(get_ses
     updated = db_service.update_asset(session, asset_id, asset)
     if not updated:
         raise HTTPException(status_code=404, detail="Asset not found")
-    return Asset(**updated.model_dump())
+    return updated
 
 @app.delete("/api/assets/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_asset(asset_id: str, session: Session = Depends(get_session)):
@@ -154,22 +141,20 @@ def get_history(session: Session = Depends(get_session)):
         "month": h.snapshot_date.strftime("%Y-%m"), # Convertimos 2020-01-01 a "2020-01"
         "nav": float(h.nav) if h.nav else 0,
         "contribution": float(h.contribution) if h.contribution else 0,
-        "participations": float(h.participations) if h.participations else None,
-        "liquidNavValue": float(h.liquid_nav_value) if h.liquid_nav_value else None,
-        "meanCost": float(h.mean_cost) if h.mean_cost else None
+        "participations": float(h.participations) if h.participations is not None else None,
+        "liquidNavValue": float(h.liquid_nav_value) if h.liquid_nav_value is not None else None,
+        "meanCost": float(h.mean_cost) if h.mean_cost is not None else None
     } for h in history]
 
 @app.get("/api/history/asset/{asset_id}", response_model=List[HistoryEntry])
 def get_asset_history(asset_id: str, session: Session = Depends(get_session)):
     """Get history for a specific asset"""
-    history = db_service.get_history_by_asset(session, asset_id)
-    return [HistoryEntry(**entry.model_dump()) for entry in history]
+    return db_service.get_history_by_asset(session, asset_id)
 
 @app.post("/api/history", response_model=HistoryEntry, status_code=status.HTTP_201_CREATED)
 def create_history(entry: HistoryEntry, session: Session = Depends(get_session)):
     """Create a new history entry"""
-    created = db_service.create_history_entry(session, entry)
-    return HistoryEntry(**created.model_dump())
+    return db_service.create_history_entry(session, entry)
 
 @app.put("/api/history/{history_id}", response_model=HistoryEntry)
 def update_history(history_id: str, entry: HistoryEntry, session: Session = Depends(get_session)):
@@ -177,7 +162,7 @@ def update_history(history_id: str, entry: HistoryEntry, session: Session = Depe
     updated = db_service.update_history_entry(session, history_id, entry)
     if not updated:
         raise HTTPException(status_code=404, detail="History entry not found")
-    return HistoryEntry(**updated.model_dump())
+    return updated
 
 @app.delete("/api/history/{history_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_history(history_id: str, session: Session = Depends(get_session)):
@@ -197,23 +182,21 @@ def get_transactions(session: Session = Depends(get_session)):
         "date": t.transaction_date.strftime("%Y-%m-%d"),
         "type": t.type,
         "ticker": t.ticker,
-        "quantity": float(t.quantity) if t.quantity else 0,
-        "pricePerUnit": float(t.price_per_unit) if t.price_per_unit else 0,
-        "fees": float(t.fees) if t.fees else 0,
-        "totalAmount": float(t.total_amount) if t.total_amount else 0
+        "quantity": float(t.quantity) if t.quantity is not None else 0,
+        "pricePerUnit": float(t.price_per_unit) if t.price_per_unit is not None else 0,
+        "fees": float(t.fees) if t.fees is not None else 0,
+        "totalAmount": float(t.total_amount) if t.total_amount is not None else 0
     } for t in transactions]
 
 @app.get("/api/transactions/asset/{asset_id}", response_model=List[Transaction])
 def get_asset_transactions(asset_id: str, session: Session = Depends(get_session)):
     """Get transactions for a specific asset"""
-    transactions = db_service.get_transactions_by_asset(session, asset_id)
-    return [Transaction(**tx.model_dump()) for tx in transactions]
+    return db_service.get_transactions_by_asset(session, asset_id)
 
 @app.post("/api/transactions", response_model=Transaction, status_code=status.HTTP_201_CREATED)
 def create_transaction(transaction: Transaction, session: Session = Depends(get_session)):
     """Create a new transaction"""
-    created = db_service.create_transaction(session, transaction)
-    return Transaction(**created.model_dump())
+    return db_service.create_transaction(session, transaction)
 
 @app.put("/api/transactions/{transaction_id}", response_model=Transaction)
 def update_transaction(transaction_id: str, transaction: Transaction, session: Session = Depends(get_session)):
@@ -221,7 +204,7 @@ def update_transaction(transaction_id: str, transaction: Transaction, session: S
     updated = db_service.update_transaction(session, transaction_id, transaction)
     if not updated:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    return Transaction(**updated.model_dump())
+    return updated
 
 @app.delete("/api/transactions/{transaction_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_transaction(transaction_id: str, session: Session = Depends(get_session)):
@@ -647,7 +630,7 @@ async def fetch_month_prices(
                      nav_val = Decimal(str(round(float(val) * btc_holdings, 2)))
                      liquid_nav = Decimal(str(val))
                      
-                 elif asset.get("name") == "Interactive Brokers":
+                 elif asset.get("category") == "Stocks":
                      nav_val = Decimal(str(val))
                      liquid_nav = Decimal("1.0") if float(val) > 0 else Decimal("0.0")
                      
