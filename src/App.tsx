@@ -1,7 +1,6 @@
 import { useState, Suspense, lazy } from 'react'
-import { Moon, Sun, Menu, X, Download } from 'lucide-react'
+import { Moon, Sun, Menu, X } from 'lucide-react'
 import { useWealth } from './context/WealthContext'
-import { exportService } from './services'
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const History = lazy(() => import('./pages/History'))
 const Assets = lazy(() => import('./pages/Assets'))
@@ -15,7 +14,7 @@ type TabType = 'dashboard' | 'history' | 'assets' | 'bitcoin' | 'stocks' | 'proy
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const { darkMode, setDarkMode, assets, history, bitcoinTransactions, stockTransactions } = useWealth()
+  const { darkMode, setDarkMode } = useWealth()
 
   const tabs = [
     { id: 'dashboard' as TabType, label: '📊 Dashboard', icon: '📊' },
@@ -99,16 +98,6 @@ export default function App() {
                 </button>
               ))}
             </nav>
-              
-              <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-800">
-                <button
-                  onClick={() => exportService.exportJSON(assets, history, bitcoinTransactions, stockTransactions)}
-                  className="w-full flex items-center gap-2 text-left px-4 py-3 rounded-2xl font-semibold transition-colors bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300"
-                >
-                  <Download size={18} />
-                  <span>Exportar Backup</span>
-                </button>
-              </div>
           </aside>
 
           {/* Main content */}
