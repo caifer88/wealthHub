@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS Asset (
     risk_level VARCHAR(50),
     isin VARCHAR(50),
     ticker VARCHAR(50),
-    description TEXT
+    description TEXT,
+    parent_asset_id VARCHAR(50) REFERENCES Asset(id)
 );
 
 CREATE TABLE IF NOT EXISTS Asset_History (
