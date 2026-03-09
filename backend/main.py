@@ -6,6 +6,7 @@ Main FastAPI application with endpoints for fetching asset prices and managing d
 import logging
 import asyncio
 from datetime import datetime
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from typing import List, Optional
 from fastapi import FastAPI, Query, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,7 +15,8 @@ from sqlmodel import Session, create_engine, SQLModel
 from config import settings
 from models import (
     Asset, PriceData, FetchMonthResponse, HealthResponse,
-    HistoryEntry, Transaction
+    HistoryEntry, Transaction, PortfolioSummaryResponse,
+    PortfolioAllocationResponse, AssetMetricsResponse
 )
 from utils import (
     get_last_business_day, validate_month, format_date,
@@ -24,6 +26,8 @@ from services.price_fetcher import PriceFetcher
 from services.fund_scraper import FundScraper
 from services import db_service
 import db_models
+from cachetools import cached, TTLCache
+import yfinance as yf
 
 # Configure logging
 logging.basicConfig(
@@ -31,6 +35,22 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+scheduler = AsyncIOScheduler()
+
+async def scheduled_update_nav():
+    """Tarea que se ejecutará automáticamente"""
+    logger.info("⏰ Ejecutando cron job diario de actualización de NAV...")
+    now = datetime.now()
+    
+    # Abrimos una sesión de base de datos específica para esta tarea en segundo plano
+    with Session(engine) as session:
+        try:
+            # Reutilizamos la lógica de tu endpoint pasándole el mes y año actual
+            await fetch_month_prices(year=now.year, month=now.month, session=session)
+            logger.info("✅ Cron job de actualización completado con éxito.")
+        except Exception as e:
+            logger.error(f"❌ Error en el cron job de NAV: {e}")
 
 # Create Database engine
 engine = create_engine(settings.DATABASE_URL or "sqlite:///./wealthhub.db", echo=settings.DEBUG)
@@ -63,9 +83,14 @@ app.add_middleware(
 logger.info(f"🔧 CORS configured for: {', '.join(frontend_urls)}")
 
 @app.on_event("startup")
-def on_startup():
+async def on_startup():
     SQLModel.metadata.create_all(engine)
     logger.info("📦 Database tables created or verified")
+    
+    # Programar la actualización para que corra todos los días a las 09:00
+    scheduler.add_job(scheduled_update_nav, 'cron', hour=9, minute=00)
+    scheduler.start()
+    logger.info("🕒 Scheduler iniciado. Actualización de NAV programada a las 9:00 AM.")
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
@@ -78,20 +103,21 @@ async def health_check():
 
 # --- Asset Endpoints ---
 
-@app.get("/api/assets", response_model=List[Asset])
+@app.get("/api/assets") # Quitamos response_model para devolver un JSON a medida
 def get_assets(session: Session = Depends(get_session)):
-    """Get all assets"""
+    """Get all assets mapped for Frontend"""
     assets = db_service.get_all_assets(session)
-    # Map DB models to Pydantic models (we're using same names mostly, simple dict mapping works)
-    return [Asset(**asset.model_dump()) for asset in assets]
-
-@app.get("/api/assets/{asset_id}", response_model=Asset)
-def get_asset(asset_id: str, session: Session = Depends(get_session)):
-    """Get an asset by ID"""
-    asset = db_service.get_asset_by_id(session, asset_id)
-    if not asset:
-        raise HTTPException(status_code=404, detail="Asset not found")
-    return Asset(**asset.model_dump())
+    return [{
+        "id": a.id,
+        "name": a.name,
+        "category": a.category,
+        "color": a.color,
+        "archived": a.is_archived,
+        "riskLevel": a.risk_level,
+        "isin": a.isin,
+        "ticker": a.ticker,
+        "description": a.description
+    } for a in assets]
 
 @app.post("/api/assets", response_model=Asset, status_code=status.HTTP_201_CREATED)
 def create_asset(asset: Asset, session: Session = Depends(get_session)):
@@ -118,11 +144,20 @@ def delete_asset(asset_id: str, session: Session = Depends(get_session)):
 
 # --- History Endpoints ---
 
-@app.get("/api/history", response_model=List[HistoryEntry])
+@app.get("/api/history")
 def get_history(session: Session = Depends(get_session)):
-    """Get all history entries"""
+    """Get all history mapped for Frontend"""
     history = db_service.get_all_history(session)
-    return [HistoryEntry(**entry.model_dump()) for entry in history]
+    return [{
+        "id": h.id,
+        "assetId": h.asset_id,
+        "month": h.snapshot_date.strftime("%Y-%m"), # Convertimos 2020-01-01 a "2020-01"
+        "nav": float(h.nav) if h.nav else 0,
+        "contribution": float(h.contribution) if h.contribution else 0,
+        "participations": float(h.participations) if h.participations else None,
+        "liquidNavValue": float(h.liquid_nav_value) if h.liquid_nav_value else None,
+        "meanCost": float(h.mean_cost) if h.mean_cost else None
+    } for h in history]
 
 @app.get("/api/history/asset/{asset_id}", response_model=List[HistoryEntry])
 def get_asset_history(asset_id: str, session: Session = Depends(get_session)):
@@ -152,11 +187,21 @@ def delete_history(history_id: str, session: Session = Depends(get_session)):
 
 # --- Transaction Endpoints ---
 
-@app.get("/api/transactions", response_model=List[Transaction])
+@app.get("/api/transactions")
 def get_transactions(session: Session = Depends(get_session)):
-    """Get all transactions"""
+    """Get all transactions mapped for Frontend"""
     transactions = db_service.get_all_transactions(session)
-    return [Transaction(**tx.model_dump()) for tx in transactions]
+    return [{
+        "id": t.id,
+        "assetId": t.asset_id,
+        "date": t.transaction_date.strftime("%Y-%m-%d"),
+        "type": t.type,
+        "ticker": t.ticker,
+        "quantity": float(t.quantity) if t.quantity else 0,
+        "pricePerUnit": float(t.price_per_unit) if t.price_per_unit else 0,
+        "fees": float(t.fees) if t.fees else 0,
+        "totalAmount": float(t.total_amount) if t.total_amount else 0
+    } for t in transactions]
 
 @app.get("/api/transactions/asset/{asset_id}", response_model=List[Transaction])
 def get_asset_transactions(asset_id: str, session: Session = Depends(get_session)):
@@ -184,6 +229,143 @@ def delete_transaction(transaction_id: str, session: Session = Depends(get_sessi
     if not db_service.delete_transaction(session, transaction_id):
         raise HTTPException(status_code=404, detail="Transaction not found")
 
+# --- Analytics Endpoints ---
+
+@app.get("/api/portfolio/summary", response_model=PortfolioSummaryResponse)
+def get_portfolio_summary(session: Session = Depends(get_session)):
+    """Get the latest portfolio summary"""
+    latest_history = db_service.get_latest_portfolio_history(session)
+    active_assets = {a.id for a in db_service.get_all_assets(session) if not a.is_archived}
+
+    total_value = 0.0
+    total_invested = 0.0
+
+    for history in latest_history:
+        if history.asset_id in active_assets:
+            # We calculate total invested as the sum of all contributions over time,
+            # or based on mean_cost * participations. Based on common practice and
+            # the prompt "total invertido (coste medio * participaciones)", we use mean_cost * participations.
+            nav = float(history.nav) if history.nav else 0.0
+
+            mean_cost = float(history.mean_cost) if history.mean_cost else 0.0
+            participations = float(history.participations) if history.participations else 0.0
+            invested = mean_cost * participations if participations > 0 else float(history.contribution or 0.0)
+
+            total_value += nav
+            total_invested += invested
+
+    absolute_roi = total_value - total_invested
+    percentage_roi = (absolute_roi / total_invested * 100) if total_invested > 0 else 0.0
+
+    return PortfolioSummaryResponse(
+        total_value=total_value,
+        total_invested=total_invested,
+        absolute_roi=absolute_roi,
+        percentage_roi=percentage_roi
+    )
+
+@app.get("/api/portfolio/allocation", response_model=PortfolioAllocationResponse)
+def get_portfolio_allocation(session: Session = Depends(get_session)):
+    """Get the portfolio allocation by category"""
+    latest_history = db_service.get_latest_portfolio_history(session)
+    assets = db_service.get_all_assets(session)
+
+    asset_dict = {a.id: a for a in assets if not a.is_archived}
+
+    total_value = 0.0
+    allocations = {}
+
+    for history in latest_history:
+        if history.asset_id in asset_dict:
+            asset = asset_dict[history.asset_id]
+            nav = float(history.nav) if history.nav else 0.0
+
+            total_value += nav
+            if asset.category not in allocations:
+                allocations[asset.category] = 0.0
+            allocations[asset.category] += nav
+
+    if total_value > 0:
+        for cat in allocations:
+            allocations[cat] = (allocations[cat] / total_value) * 100
+
+    return PortfolioAllocationResponse(allocations=allocations)
+
+@app.get("/api/assets/{asset_id}/metrics", response_model=AssetMetricsResponse)
+def get_asset_metrics(asset_id: str, session: Session = Depends(get_session)):
+    """Get metrics for a specific asset"""
+    asset = db_service.get_asset_by_id(session, asset_id)
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    history = db_service.get_history_by_asset(session, asset_id)
+    if not history:
+        return AssetMetricsResponse(
+            asset_id=asset_id,
+            total_contributed=0.0,
+            current_value=0.0,
+            absolute_return=0.0,
+            percentage_return=0.0,
+            twr=0.0
+        )
+
+    # History is sorted by snapshot_date desc, we need asc for TWR
+    history_asc = list(reversed(history))
+
+    latest = history_asc[-1]
+
+    current_value = float(latest.nav) if latest.nav else 0.0
+    mean_cost = float(latest.mean_cost) if latest.mean_cost else 0.0
+    participations = float(latest.participations) if latest.participations else 0.0
+
+    if participations > 0 and mean_cost > 0:
+        total_contributed = mean_cost * participations
+    else:
+        total_contributed = float(latest.contribution) if latest.contribution else 0.0
+
+    absolute_return = current_value - total_contributed
+    percentage_return = (absolute_return / total_contributed * 100) if total_contributed > 0 else 0.0
+
+    # Calculate Time-Weighted Return (TWR)
+    # TWR = [(1 + RN) * (1 + RN+1) ... ] - 1
+    # Rn = (V_end - (V_begin + CF)) / (V_begin + CF)
+
+    twr_multiplier = 1.0
+    previous_nav = 0.0
+    previous_contribution = 0.0
+
+    for i, entry in enumerate(history_asc):
+        nav = float(entry.nav) if entry.nav else 0.0
+
+        # Contribution at this period.
+        # Since 'contribution' usually tracks running total, the cash flow is the diff
+        curr_total_contrib = 0.0
+        if entry.participations and entry.mean_cost and float(entry.participations) > 0:
+             curr_total_contrib = float(entry.participations) * float(entry.mean_cost)
+        else:
+             curr_total_contrib = float(entry.contribution) if entry.contribution else 0.0
+
+        cash_flow = curr_total_contrib - previous_contribution
+
+        # We only calculate return if there was an initial value or a cashflow
+        base_value = previous_nav + cash_flow
+        if base_value > 0:
+             period_return = (nav - base_value) / base_value
+             twr_multiplier *= (1 + period_return)
+
+        previous_nav = nav
+        previous_contribution = curr_total_contrib
+
+    twr = (twr_multiplier - 1.0) * 100
+
+    return AssetMetricsResponse(
+        asset_id=asset_id,
+        total_contributed=total_contributed,
+        current_value=current_value,
+        absolute_return=absolute_return,
+        percentage_return=percentage_return,
+        twr=twr
+    )
 
 if __name__ == "__main__":
     import uvicorn
@@ -194,6 +376,29 @@ if __name__ == "__main__":
         port=8000,
         log_level="info"
     )
+
+# Caché de 24 horas (86400 segundos) para no saturar la API
+@cached(cache=TTLCache(maxsize=1, ttl=86400))
+def fetch_btc_history():
+    ticker = yf.Ticker("BTC-EUR")
+    hist = ticker.history(period="5y", interval="1wk")
+    result = []
+    for index, row in hist.iterrows():
+        if str(row['Close']) != 'nan':
+            result.append({
+                "date": index.strftime("%Y-%m-%d"),
+                "price": round(float(row['Close']), 2)
+            })
+    return result
+
+@app.get("/api/bitcoin/historical-prices")
+def get_bitcoin_historical_prices():
+    """Get historical weekly prices for Bitcoin"""
+    try:
+        return fetch_btc_history()
+    except Exception as e:
+        logger.error(f"Error fetching historical BTC prices: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/fetch-month", response_model=FetchMonthResponse)
 async def fetch_month_prices(
@@ -235,29 +440,16 @@ async def fetch_month_prices(
         assets = [asset.model_dump() for asset in db_assets]
         active_assets = [a for a in assets if not a.get("is_archived", False)]
         
-        crypto_assets = [a for a in active_assets if a.get("category") == "Crypto" and "Bitcoin" in str(a.get("ticker", "")).upper()]
+        crypto_assets = [a for a in active_assets if a.get("category") == "Crypto" and ("BTC" in str(a.get("ticker", "")).upper() or "BITCOIN" in str(a.get("name", "")).upper())]
         fund_assets = [a for a in active_assets if a.get("category") == "Fund"]
-        
-        db_transactions = db_service.get_all_transactions(session)
-        stock_transactions = [tx.model_dump() for tx in db_transactions if tx.get("asset_id") in [a["id"] for a in active_assets if a.get("category") == "Stocks"]]
         
         broker_assets_dict = {}
         stocks_assets = [a for a in active_assets if a.get("category") == "Stocks"]
         
         for broker_asset in stocks_assets:
              broker_id = broker_asset.get("id")
-             # Calculate holdings for this broker
-             holdings = {}
-             for tx in stock_transactions:
-                 if tx.get("asset_id") == broker_id and tx.get("ticker"):
-                     ticker = tx.get("ticker")
-                     quantity = float(tx.get("quantity", 0))
-                     tx_type = tx.get("type", "BUY").upper()
-                     if tx_type == "SELL":
-                         quantity = -quantity
-                     holdings[ticker] = holdings.get(ticker, 0.0) + quantity
-
-             active_tickers = {t: q for t, q in holdings.items() if q > 0.0001}
+             # Calculate holdings for this broker using the database aggregation
+             active_tickers = db_service.get_asset_holdings(session, broker_id)
 
              broker_assets_dict[broker_asset.get("name")] = {
                  "name": broker_asset.get("name"),
@@ -390,18 +582,55 @@ async def fetch_month_prices(
 
         for asset in active_assets:
              asset_id = asset["id"]
-             # Check if we fetched a price/nav for this asset
              if asset_id in nav_mapping:
                  val = nav_mapping[asset_id]
+                 
+                 # Recuperar historial anterior para mantener datos (aportaciones, coste medio...)
+                 prev_history_all = db_service.get_history_by_asset(session, asset_id)
+                 # Evitamos coger datos del propio mes si se está recalculando
+                 prev_history = [h for h in prev_history_all if h.snapshot_date < date_obj]
+                 
+                 participations = (prev_history[0].participations 
+                                if prev_history and prev_history[0].participations is not None 
+                                else Decimal("0.0"))
+
+                 contribution = (prev_history[0].contribution 
+                                if prev_history and prev_history[0].contribution is not None 
+                                else Decimal("0.0"))
+
+                 mean_cost = (prev_history[0].mean_cost 
+                            if prev_history and prev_history[0].mean_cost is not None 
+                            else Decimal("0.0"))
+                 
+                 # Detectar si el activo es Bitcoin
+                 is_btc = asset.get("category") == "Crypto" and ("BTC" in str(asset.get("ticker", "")).upper() or "BITCOIN" in str(asset.get("name", "")).upper())
+                 
+                 if is_btc:
+                     # La verdad: Calcular participaciones reales desde transacciones (vía DB aggregation)
+                     btc_holdings = db_service.get_total_btc_holdings(session, asset_id)
+                     
+                     participations = Decimal(str(round(btc_holdings, 8)))
+                     nav_val = Decimal(str(round(float(val) * btc_holdings, 2)))
+                     liquid_nav = Decimal(str(val))
+                     
+                 elif asset.get("name") == "Interactive Brokers":
+                     nav_val = Decimal(str(val))
+                     liquid_nav = Decimal("1.0") if float(val) > 0 else Decimal("0.0")
+                     
+                 else:
+                     # Fondos indexados y resto de activos
+                     nav_val = Decimal(str(round(float(val) * float(participations), 2)))
+                     liquid_nav = Decimal(str(val))
+
                  history_entry = HistoryEntry(
                      id=str(uuid.uuid4()),
                      asset_id=asset_id,
                      snapshot_date=date_obj,
-                     liquid_nav_value=Decimal(str(val)),
-                     nav=Decimal(str(val)), # Set nav to the total value or price
-                     contribution=Decimal("0.0"),
-                     participations=Decimal("0.0"),
-                     mean_cost=Decimal("0.0")
+                     liquid_nav_value=liquid_nav,
+                     nav=nav_val,
+                     contribution=contribution,
+                     participations=participations,
+                     mean_cost=mean_cost
                  )
                  db_service.create_history_entry(session, history_entry)
                  saved_count += 1

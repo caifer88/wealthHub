@@ -1,4 +1,4 @@
-import { Asset, HistoryEntry, StockTransaction } from '../types'
+import { Asset, HistoryEntry, StockTransaction, BitcoinTransaction } from '../types' // Añade BitcoinTransaction
 import { formatCurrencyDecimals, generateUUID } from '../utils'
 import { config } from '../config'
 
@@ -15,6 +15,8 @@ export interface FetchPricesResult {
   errors: string[]
 }
 
+
+
 /**
  * Función centralizada para actualizar precios de activos
  * Mantiene consistencia entre las pestañas de Activos e Historial
@@ -22,7 +24,8 @@ export interface FetchPricesResult {
 export async function fetchAndUpdatePrices(
   assets: Asset[],
   history: HistoryEntry[],
-  stockTransactions: StockTransaction[] = []
+  stockTransactions: StockTransaction[] = [],
+  bitcoinTransactions: BitcoinTransaction[] = [] // <--- Nuevo parámetro añadido
 ): Promise<FetchPricesResult> {
   try {
     const now = new Date()
@@ -143,8 +146,22 @@ export async function fetchAndUpdatePrices(
         const lastEntry = getLastEntry(asset.id, monthStr)
 
         // 🟢 FIX 1: Priorizar las participaciones y coste medio del último historial
-        const participations = existingEntry?.participations ?? lastEntry?.participations ?? asset.participations ?? 0;
+        let participations = existingEntry?.participations ?? lastEntry?.participations ?? asset.participations ?? 0;
         const meanCost = existingEntry?.meanCost ?? lastEntry?.meanCost ?? asset.meanCost ?? 0;
+
+        // 🟢 FIX 2: Para Bitcoin, las participaciones son siempre la suma de las transacciones
+        const isBitcoin = asset.category === 'Crypto' || asset.ticker?.toUpperCase() === 'BTC' || asset.name.toLowerCase().includes('bitcoin');
+        
+        if (isBitcoin && bitcoinTransactions.length > 0) {
+          let totalBtc = 0;
+          bitcoinTransactions.forEach(tx => {
+            if (tx.type === 'buy') totalBtc += (tx.amountBTC || 0);
+            else if (tx.type === 'sell') totalBtc -= (tx.amountBTC || 0);
+          });
+          if (totalBtc > 0) {
+            participations = totalBtc; // Usamos el total real (~0.254)
+          }
+        }
 
         // Helper para validar si un precio es válido (no NaN, no null, no undefined, > 0)
         const isValidPrice = (p: any): boolean => {
@@ -254,29 +271,27 @@ export async function fetchAndUpdatePrices(
           meanCost: meanCost
         }
       })
-
-    // Añadir entradas al historial para los tickers individuales
-    result.prices.forEach((p: any) => {
-      if (p.assetId && p.assetId.startsWith('ticker-')) {
-        const existingEntry = history.find(h => h.month === monthStr && h.assetId === p.assetId)
-        const lastEntry = history.filter(h => h.assetId === p.assetId && h.month < monthStr)
-                                 .sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
-                                 
-        const alreadyAdded = newHistoryEntries.some(e => e.assetId === p.assetId && e.month === monthStr)
-        if (!alreadyAdded) {
-            newHistoryEntries.push({
-              id: existingEntry?.id || generateUUID(),
-              month: monthStr,
-              assetId: p.assetId,
-              participations: 1,
-              liquidNavValue: p.price,
-              nav: p.price,
-              contribution: 0,
-              meanCost: existingEntry?.meanCost || lastEntry?.meanCost || p.price
-            })
+      
+      // 🟢 FIX: Añadir precios de tickers individuales al historial para que la pestaña de Acciones pueda leerlos
+      const tickerPrices = result.prices.filter((p: any) => p.assetId && p.assetId.startsWith('ticker-'))
+      
+      for (const p of tickerPrices) {
+        if (p.price !== undefined && p.price !== null && !isNaN(p.price) && p.price > 0) {
+          const fakeAssetId = p.assetId
+          const existingEntry = history.find(h => h.month === monthStr && h.assetId === fakeAssetId)
+          
+          newHistoryEntries.push({
+            id: existingEntry?.id || generateUUID(),
+            month: monthStr,
+            assetId: fakeAssetId,
+            participations: 1,
+            liquidNavValue: p.price,
+            nav: p.price,
+            contribution: 0, // No aplica aportación individual, está agregada en el Broker
+            meanCost: p.price
+          })
         }
       }
-    })
     
     // Build detailed message with updated assets info
     const successLines: string[] = []

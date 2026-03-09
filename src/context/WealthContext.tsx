@@ -241,31 +241,96 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [metrics, setMetrics] = useState<Metrics | null>(null)
   const isFirstRender = useRef(true)
 
-  // Cargar datos iniciales
+  // Cargar datos iniciales desde la Base de Datos
   useEffect(() => {
     if (isFirstRender.current) {
         isFirstRender.current = false
-        // Fallback a localStorage
-        const localAssets = JSON.parse(localStorage.getItem('wm_assets_v4') || '[]')
-        const localHistory = JSON.parse(localStorage.getItem('wm_history_v4') || '[]')
-        const localBitcoin = JSON.parse(localStorage.getItem('wm_bitcoinTransactions_v4') || '[]')
-        const localStocks = JSON.parse(localStorage.getItem('wm_stockTransactions_v4') || '[]')
 
-        if (localAssets.length > 0) {
-            setAssets(localAssets)
-            setHistory(localHistory)
-            setBitcoinTransactions(sanitizeBitcoinTransactions(localBitcoin))
-            setStockTransactions(sanitizeStockTransactions(localStocks))
-            setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }))
-            return
-        }
+        const fetchFromDatabase = async () => {
+            try {
+                // Hacemos las llamadas a la API de FastAPI
+                const [assetsRes, historyRes, txsRes] = await Promise.all([
+                    fetch('http://localhost:8000/api/assets'),
+                    fetch('http://localhost:8000/api/history'),
+                    fetch('http://localhost:8000/api/transactions')
+                ]);
 
-        // Si no hay datos, usar datos de muestra
-        setAssets(SAMPLE_DATA.assets)
-        setHistory(SAMPLE_DATA.history)
-        setBitcoinTransactions(SAMPLE_DATA.bitcoinTransactions)
-        setStockTransactions(SAMPLE_DATA.stockTransactions)
-        setSyncState(prev => ({ ...prev, syncError: 'Usando datos de muestra' }))
+                if (!assetsRes.ok) throw new Error("Fallo al conectar con la API");
+
+                const dbAssets = await assetsRes.json();
+                const dbHistory = await historyRes.json();
+                const dbTxs = await txsRes.json();
+
+                if (dbAssets.length > 0) {
+                    setAssets(dbAssets);
+                    setHistory(dbHistory);
+
+                    // Separar transacciones unificadas en Crypto y Acciones
+                    const btcTxs: any[] = [];
+                    const stockTxs: any[] = [];
+
+                    dbTxs.forEach((tx: any) => {
+                        // Identificamos las de Bitcoin (por ticker o assetId 'a4')
+                        if (tx.assetId === 'a4' || tx.ticker === 'BTC') {
+                            btcTxs.push({
+                                id: tx.id,
+                                date: tx.date,
+                                type: tx.type.toLowerCase(),
+                                amountBTC: tx.quantity,
+                                meanPrice: tx.pricePerUnit,
+                                totalCost: tx.totalAmount,
+                                amount: tx.totalAmount
+                            });
+                        } else {
+                            // Encontrar el nombre del broker original
+                            const brokerAsset = dbAssets.find((a: any) => a.id === tx.assetId);
+                            stockTxs.push({
+                                id: tx.id,
+                                ticker: tx.ticker,
+                                date: tx.date,
+                                type: tx.type.toLowerCase(),
+                                shares: tx.quantity,
+                                pricePerShare: tx.pricePerUnit,
+                                fees: tx.fees,
+                                totalAmount: tx.totalAmount,
+                                broker: brokerAsset ? brokerAsset.name : undefined
+                            });
+                        }
+                    });
+
+                    setBitcoinTransactions(sanitizeBitcoinTransactions(btcTxs));
+                    setStockTransactions(sanitizeStockTransactions(stockTxs));
+                    setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }));
+                    return;
+                }
+            } catch (error) {
+                console.error("Error cargando de BD, usando fallback localStorage:", error);
+                
+                // Fallback a localStorage si el backend está apagado
+                const localAssets = JSON.parse(localStorage.getItem('wm_assets_v4') || '[]')
+                const localHistory = JSON.parse(localStorage.getItem('wm_history_v4') || '[]')
+                const localBitcoin = JSON.parse(localStorage.getItem('wm_bitcoinTransactions_v4') || '[]')
+                const localStocks = JSON.parse(localStorage.getItem('wm_stockTransactions_v4') || '[]')
+
+                if (localAssets.length > 0) {
+                    setAssets(localAssets)
+                    setHistory(localHistory)
+                    setBitcoinTransactions(sanitizeBitcoinTransactions(localBitcoin))
+                    setStockTransactions(sanitizeStockTransactions(localStocks))
+                    setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }))
+                    return
+                }
+
+                // Si no hay datos, usar datos de muestra
+                setAssets(SAMPLE_DATA.assets)
+                setHistory(SAMPLE_DATA.history)
+                setBitcoinTransactions(SAMPLE_DATA.bitcoinTransactions)
+                setStockTransactions(SAMPLE_DATA.stockTransactions)
+                setSyncState(prev => ({ ...prev, syncError: 'Usando datos de muestra' }))
+            }
+        };
+
+        fetchFromDatabase();
     }
   }, [])
 

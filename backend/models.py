@@ -3,7 +3,7 @@ Data models for WealthHub Backend API
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Dict
 from enum import Enum
 from decimal import Decimal
 from datetime import date
@@ -31,6 +31,7 @@ class Asset(BaseModel):
     id: str
     name: str
     category: str
+    currency: Optional[str] = "EUR"
     color: Optional[str] = None
     is_archived: bool = False
     risk_level: Optional[str] = None
@@ -46,6 +47,7 @@ class Asset(BaseModel):
                 "id": "a1",
                 "name": "Basalto USA",
                 "category": "Fund",
+                "currency": "EUR",
                 "color": "#102cb7",
                 "is_archived": False,
                 "risk_level": "Moderado",
@@ -89,6 +91,7 @@ class Transaction(BaseModel):
     transaction_date: date
     type: Optional[str] = None
     ticker: Optional[str] = None
+    currency: Optional[str] = "EUR"
     quantity: Optional[Decimal] = None
     price_per_unit: Optional[Decimal] = None
     fees: Optional[Decimal] = None
@@ -102,6 +105,7 @@ class Transaction(BaseModel):
                 "transaction_date": "2026-02-19",
                 "type": "BUY",
                 "ticker": "BTC",
+                "currency": "EUR",
                 "quantity": 0.00603547,
                 "price_per_unit": 57493.4512,
                 "fees": 0.0,
@@ -165,3 +169,23 @@ class HealthResponse(BaseModel):
     status: str
     message: str
     version: str
+
+class PortfolioSummaryResponse(BaseModel):
+    """Response model for portfolio summary endpoint"""
+    total_value: float
+    total_invested: float
+    absolute_roi: float
+    percentage_roi: float
+
+class PortfolioAllocationResponse(BaseModel):
+    """Response model for portfolio allocation endpoint"""
+    allocations: Dict[str, float]
+
+class AssetMetricsResponse(BaseModel):
+    """Response model for individual asset metrics endpoint"""
+    asset_id: str
+    total_contributed: float
+    current_value: float
+    absolute_return: float
+    percentage_return: float
+    twr: float

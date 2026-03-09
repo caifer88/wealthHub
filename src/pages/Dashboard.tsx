@@ -43,11 +43,10 @@ export default function Dashboard() {
 
   // Distribution data for pie chart
   const distributionData = activeAssets
-    .filter(a => a.name !== 'Cash')
     .filter(a => distributionFilter.length === 0 || distributionFilter.includes(a.id))
     .map(asset => ({
       name: asset.name,
-      value: roiMetrics.find(m => m.asset.id === asset.id)?.nav || 0,
+      value: asset.name === 'Cash' ? metrics.cash : (roiMetrics.find(m => m.asset.id === asset.id)?.nav || 0),
       color: asset.color
     }))
     .filter(d => d.value > 0)
@@ -116,8 +115,7 @@ export default function Dashboard() {
               📊 Total
             </button>
             {activeAssets
-              .filter(a => a.name !== 'Cash')
-              .map(asset => (
+                .map(asset => (
                 <button
                   key={asset.id}
                   onClick={() =>
@@ -235,7 +233,6 @@ export default function Dashboard() {
                 🔄 Todos
               </button>
               {activeAssets
-                .filter(a => a.name !== 'Cash')
                 .map(asset => (
                   <button
                     key={asset.id}
