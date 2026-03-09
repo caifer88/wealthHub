@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useRef, useEffect } from 'r
 import { Asset, HistoryEntry, BitcoinTransaction, StockTransaction, SyncState, Metrics } from '../types'
 import { generateUUID } from '../utils'
 import { SAMPLE_DATA } from './mockData'
+import { config } from '../config'
 
 // Data validation functions
 const sanitizeBitcoinTransactions = (txs: any[]): BitcoinTransaction[] => {
@@ -94,9 +95,9 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             try {
                 // Hacemos las llamadas a la API de FastAPI
                 const [assetsRes, historyRes, txsRes] = await Promise.all([
-                    fetch('http://localhost:8000/api/assets'),
-                    fetch('http://localhost:8000/api/history'),
-                    fetch('http://localhost:8000/api/transactions')
+                    fetch(`${config.backendUrl}/api/assets`),
+                    fetch(`${config.backendUrl}/api/history`),
+                    fetch(`${config.backendUrl}/api/transactions`)
                 ]);
 
                 if (!assetsRes.ok) throw new Error("Fallo al conectar con la API");

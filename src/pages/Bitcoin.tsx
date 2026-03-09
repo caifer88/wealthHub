@@ -9,6 +9,7 @@ import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { formatCurrency, formatDate, generateUUID, isCurrentMonth, getMonthFromDate } from '../utils'
 import type { BitcoinTransaction } from '../types'
+import { config } from '../config'
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -55,7 +56,7 @@ export default function Bitcoin() {
     const fetchPrices = async () => {
       try {
         setIsLoadingChart(true)
-        const res = await fetch('http://localhost:8000/api/bitcoin/historical-prices')
+        const res = await fetch(`${config.backendUrl}/api/bitcoin/historical-prices`)
         if (res.ok) {
           const data = await res.json()
           setHistoricalPrices(data)
