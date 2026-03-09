@@ -28,9 +28,8 @@ services:
     restart: always
     ports:
       - "8000:8000"
-    environment:
-      - FRONTEND_URL=http://localhost:3000,http://main:5173
-      - DATABASE_URL=postgresql://wealthhub:wealthhub_password@db:5432/wealthhub
+    env_file:
+      - .env.docker
     volumes:
       - ./backend:/app
     networks:
@@ -51,8 +50,8 @@ services:
     restart: always
     ports:
       - "8787:5173"
-    environment:
-      - BACKEND_URL=http://backend:8000
+    env_file:
+      - .env.docker
     volumes:
       - ./src:/app/src
       - ./public:/app/public
