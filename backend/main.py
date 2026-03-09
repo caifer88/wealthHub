@@ -24,7 +24,7 @@ from utils import (
 )
 from services.price_fetcher import PriceFetcher
 from services.fund_scraper import FundScraper
-from services import db_service
+from services import db_service, portfolio_service, metrics_service
 from services.monthly_fetch_service import process_monthly_prices
 from cachetools import cached, TTLCache
 import yfinance as yf
@@ -220,172 +220,17 @@ def delete_transaction(transaction_id: str, session: Session = Depends(get_sessi
 @app.get("/api/portfolio/summary", response_model=PortfolioSummaryResponse)
 def get_portfolio_summary(session: Session = Depends(get_session)):
     """Get the latest portfolio summary"""
-    latest_history = db_service.get_latest_portfolio_history(session)
-    all_assets = db_service.get_all_assets(session)
-    active_assets_dict = {a.id: a for a in all_assets if not a.is_archived}
-
-    total_value = 0.0
-    total_invested = 0.0
-    cash_value = 0.0
-
-    # EVITAR DOBLE CONTABILIDAD: Excluir acciones si ya tenemos el contenedor 'Interactive Brokers'
-    ib_tickers = set()
-    ib_asset = next((a for a in active_assets_dict.values() if a.name == 'Interactive Brokers'), None)
-    if ib_asset:
-        ib_txs = db_service.get_transactions_by_asset(session, ib_asset.id)
-        ib_tickers = {tx.ticker for tx in ib_txs if tx.ticker}
-
-    # Pre-fetch all history to avoid N+1 queries
-    all_history = db_service.get_all_history(session)
-    history_by_asset = {}
-    for h in all_history:
-        if h.asset_id not in history_by_asset:
-            history_by_asset[h.asset_id] = []
-        history_by_asset[h.asset_id].append(h)
-
-    for history in latest_history:
-        if history.asset_id in active_assets_dict:
-            asset = active_assets_dict[history.asset_id]
-            nav = float(history.nav) if history.nav else 0.0
-
-            if asset.name == 'Cash':
-                cash_value = nav
-                continue
-
-            # Skip individual stocks that are already accounted for in Interactive Brokers
-            if ib_asset and asset.ticker and asset.ticker in ib_tickers:
-                continue
-
-            # Check if it's a sub-component (e.g., Basalto within Fondo Basalto)
-            is_component = False
-            for parent_id, parent in active_assets_dict.items():
-                if parent.name and asset.name and len(parent.name) > len(asset.name) and asset.name in parent.name and parent.id != asset.id:
-                    is_component = True
-                    break
-
-            if is_component:
-                continue
-
-            # We calculate total invested as the sum of all historical contributions
-            asset_history_entries = history_by_asset.get(asset.id, [])
-            invested = sum([float(h.contribution) if h.contribution else 0.0 for h in asset_history_entries])
-
-            total_value += nav
-            total_invested += invested
-
-    absolute_roi = total_value - total_invested
-    percentage_roi = (absolute_roi / total_invested * 100) if total_invested > 0 else 0.0
-
-    return PortfolioSummaryResponse(
-        total_value=total_value,
-        total_invested=total_invested,
-        absolute_roi=absolute_roi,
-        percentage_roi=percentage_roi,
-        cash_value=cash_value
-    )
+    return portfolio_service.get_portfolio_summary(session)
 
 @app.get("/api/portfolio/allocation", response_model=PortfolioAllocationResponse)
 def get_portfolio_allocation(session: Session = Depends(get_session)):
     """Get the portfolio allocation by category"""
-    latest_history = db_service.get_latest_portfolio_history(session)
-    assets = db_service.get_all_assets(session)
-
-    asset_dict = {a.id: a for a in assets if not a.is_archived}
-
-    total_value = 0.0
-    allocations = {}
-
-    for history in latest_history:
-        if history.asset_id in asset_dict:
-            asset = asset_dict[history.asset_id]
-            nav = float(history.nav) if history.nav else 0.0
-
-            total_value += nav
-            if asset.category not in allocations:
-                allocations[asset.category] = 0.0
-            allocations[asset.category] += nav
-
-    if total_value > 0:
-        for cat in allocations:
-            allocations[cat] = (allocations[cat] / total_value) * 100
-
-    return PortfolioAllocationResponse(allocations=allocations)
+    return portfolio_service.get_portfolio_allocation(session)
 
 @app.get("/api/assets/{asset_id}/metrics", response_model=AssetMetricsResponse)
 def get_asset_metrics(asset_id: str, session: Session = Depends(get_session)):
     """Get metrics for a specific asset"""
-    asset = db_service.get_asset_by_id(session, asset_id)
-    if not asset:
-        raise HTTPException(status_code=404, detail="Asset not found")
-
-    history = db_service.get_history_by_asset(session, asset_id)
-    if not history:
-        return AssetMetricsResponse(
-            asset_id=asset_id,
-            total_contributed=0.0,
-            current_value=0.0,
-            absolute_return=0.0,
-            percentage_return=0.0,
-            twr=0.0
-        )
-
-    # History is sorted by snapshot_date desc, we need asc for TWR
-    history_asc = list(reversed(history))
-
-    latest = history_asc[-1]
-
-    current_value = float(latest.nav) if latest.nav else 0.0
-    mean_cost = float(latest.mean_cost) if latest.mean_cost else 0.0
-    participations = float(latest.participations) if latest.participations else 0.0
-
-    if participations > 0 and mean_cost > 0:
-        total_contributed = mean_cost * participations
-    else:
-        total_contributed = float(latest.contribution) if latest.contribution else 0.0
-
-    absolute_return = current_value - total_contributed
-    percentage_return = (absolute_return / total_contributed * 100) if total_contributed > 0 else 0.0
-
-    # Calculate Time-Weighted Return (TWR)
-    # TWR = [(1 + RN) * (1 + RN+1) ... ] - 1
-    # Rn = (V_end - (V_begin + CF)) / (V_begin + CF)
-
-    twr_multiplier = 1.0
-    previous_nav = 0.0
-    previous_contribution = 0.0
-
-    for i, entry in enumerate(history_asc):
-        nav = float(entry.nav) if entry.nav else 0.0
-
-        # Contribution at this period.
-        # Since 'contribution' usually tracks running total, the cash flow is the diff
-        curr_total_contrib = 0.0
-        if entry.participations and entry.mean_cost and float(entry.participations) > 0:
-             curr_total_contrib = float(entry.participations) * float(entry.mean_cost)
-        else:
-             curr_total_contrib = float(entry.contribution) if entry.contribution else 0.0
-
-        cash_flow = curr_total_contrib - previous_contribution
-
-        # We only calculate return if there was an initial value or a cashflow
-        base_value = previous_nav + cash_flow
-        if base_value > 0:
-             period_return = (nav - base_value) / base_value
-             twr_multiplier *= (1 + period_return)
-
-        previous_nav = nav
-        previous_contribution = curr_total_contrib
-
-    twr = (twr_multiplier - 1.0) * 100
-
-    return AssetMetricsResponse(
-        asset_id=asset_id,
-        total_contributed=total_contributed,
-        current_value=current_value,
-        absolute_return=absolute_return,
-        percentage_return=percentage_return,
-        twr=twr
-    )
+    return metrics_service.get_asset_metrics(asset_id, session)
 
 if __name__ == "__main__":
     import uvicorn
