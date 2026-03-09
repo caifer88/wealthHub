@@ -221,9 +221,10 @@ def fetch_btc_history():
     return result
 
 @app.get("/api/bitcoin/historical-prices")
-def get_bitcoin_historical_prices():
+async def get_bitcoin_historical_prices(): # <-- Hazla async
     try:
-        return fetch_btc_history()
+        # Ejecuta la función síncrona en un thread pool
+        return await asyncio.to_thread(fetch_btc_history) 
     except Exception as e:
         logger.error(f"Error fetching historical BTC prices: {e}")
         raise HTTPException(status_code=500, detail=str(e))
