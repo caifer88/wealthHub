@@ -1,7 +1,7 @@
 import yfinance as yf
 import pandas as pd
 import requests
-from bs4 import BeautifulSoup  # Añadido para hacer web scraping
+from bs4 import BeautifulSoup
 from typing import Optional, Dict, List, Tuple
 from datetime import datetime, timedelta
 import logging
@@ -20,14 +20,14 @@ class PriceFetcher:
     @staticmethod
     @cached(cache=TTLCache(maxsize=10, ttl=3600))  # 1 hour cache
     def fetch_bitcoin_price(date: datetime, asset_id: str = None, asset_name: str = "Bitcoin") -> Optional[PriceData]:
-        # Intento 1: Yahoo Finance (Actualizado para extraer el float de forma segura)
+        # Attempt 1: Yahoo Finance
         try:
             ticker = yf.Ticker("BTC-EUR")
             hist = ticker.history(period="5d")
             
             if not hist.empty:
                 close_value = hist['Close'].iloc[-1]
-                # Extracción segura compatible con las nuevas versiones de pandas
+                # Safe extraction for new pandas versions
                 if hasattr(close_value, 'item'):
                     close_price = float(close_value.item())
                 else:
@@ -43,9 +43,9 @@ class PriceFetcher:
                     source="yfinance"
                 )
         except Exception as e:
-            logger.warning(f"⚠️ Yahoo falló para Bitcoin: {e}. Intentando CoinGecko...")
+            logger.warning(f"⚠️ Yahoo failed for Bitcoin: {e}. Trying CoinGecko...")
 
-        # Intento 2: Fallback CoinGecko API (Pública, sin bloqueos y muy fiable)
+        # Attempt 2: Fallback CoinGecko API
         try:
             url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=eur"
             res = requests.get(url, headers=PriceFetcher.HEADERS, timeout=10)
@@ -61,9 +61,9 @@ class PriceFetcher:
                     source="coingecko_api"
                 )
         except Exception as e:
-            logger.warning(f"⚠️ CoinGecko falló para Bitcoin: {e}. Intentando Binance...")
+            logger.warning(f"⚠️ CoinGecko failed for Bitcoin: {e}. Trying Binance...")
 
-        # Intento 3: Fallback Binance API (Mantenido por si acaso)
+        # Attempt 3: Fallback Binance API
         try:
             res = requests.get("https://api.binance.com/api/v3/ticker/price?symbol=BTCEUR", timeout=10)
             if res.status_code == 200:
@@ -78,7 +78,7 @@ class PriceFetcher:
                     source="binance_api"
                 )
         except Exception as e:
-            logger.error(f"❌ Fallo total en Bitcoin usando todos los métodos: {e}")
+            logger.error(f"❌ Total failure for Bitcoin using all methods: {e}")
             
         return None
 
@@ -91,7 +91,7 @@ class PriceFetcher:
             price = None
             source = "yfinance"
             
-            # Intento 1: yfinance
+            # Attempt 1: yfinance
             try:
                 data = yf.download(ticker_symbol, period="5d", progress=False)
                 if not data.empty:
@@ -101,9 +101,9 @@ class PriceFetcher:
                     else:
                         price = float(close_value)
             except Exception as e:
-                logger.warning(f"⚠️ yfinance falló para {ticker_symbol}. Intentando API directa...")
+                logger.warning(f"⚠️ yfinance failed for {ticker_symbol}. Trying direct API...")
 
-            # Intento 2: Petición HTTP directa a la API JSON de Yahoo
+            # Attempt 2: Direct HTTP request to Yahoo JSON API
             if price is None:
                 try:
                     url = f"https://query2.finance.yahoo.com/v8/finance/chart/{ticker_symbol}?range=1d&interval=1d"
@@ -116,13 +116,13 @@ class PriceFetcher:
                             price = float(result['meta']['regularMarketPrice'])
                             source = "yahoo_api_direct"
                 except Exception as e:
-                    logger.warning(f"⚠️ Fallo en la petición HTTP API para {ticker_symbol}")
+                    logger.warning(f"⚠️ HTTP request to API failed for {ticker_symbol}")
 
-            # Intento 3: Batería de Web Scraping (MarketWatch, Finviz, CNBC, Yahoo HTML)
+            # Attempt 3: Web Scraping battery (MarketWatch, Finviz, CNBC, Yahoo HTML)
             if price is None:
-                logger.info(f"🔄 Iniciando batería de Web Scraping para {ticker_symbol}...")
+                logger.info(f"🔄 Starting Web Scraping battery for {ticker_symbol}...")
                 
-                # Opción A: MarketWatch
+                # Option A: MarketWatch
                 try:
                     mw_url = f"https://www.marketwatch.com/investing/stock/{ticker_symbol.lower()}"
                     mw_res = requests.get(mw_url, headers=PriceFetcher.HEADERS, timeout=10)
@@ -133,25 +133,24 @@ class PriceFetcher:
                             price = float(price_element.text.replace(',', '').strip())
                             source = "marketwatch_scraper"
                 except Exception as e:
-                    logger.debug(f"Fallo en MarketWatch: {e}")
+                    logger.debug(f"MarketWatch failed: {e}")
 
-                # Opción B: Finviz (Muy fiable para acciones de EEUU)
+                # Option B: Finviz
                 if price is None:
                     try:
                         fv_url = f"https://finviz.com/quote.ashx?t={ticker_symbol.upper()}"
                         fv_res = requests.get(fv_url, headers=PriceFetcher.HEADERS, timeout=10)
                         if fv_res.status_code == 200:
                             soup = BeautifulSoup(fv_res.text, "html.parser")
-                            # En Finviz el precio está junto a la etiqueta 'Price' en negrita
                             price_label = soup.find(string="Price")
                             if price_label:
                                 price_val = price_label.find_next("b").text
                                 price = float(price_val.replace(',', '').strip())
                                 source = "finviz_scraper"
                     except Exception as e:
-                        logger.debug(f"Fallo en Finviz: {e}")
+                        logger.debug(f"Finviz failed: {e}")
 
-                # Opción C: CNBC
+                # Option C: CNBC
                 if price is None:
                     try:
                         cnbc_url = f"https://www.cnbc.com/quotes/{ticker_symbol}"
@@ -163,9 +162,9 @@ class PriceFetcher:
                                 price = float(price_element.text.replace(',', '').strip())
                                 source = "cnbc_scraper"
                     except Exception as e:
-                        logger.debug(f"Fallo en CNBC: {e}")
+                        logger.debug(f"CNBC failed: {e}")
 
-                # Opción D: Yahoo HTML Puro
+                # Option D: Yahoo HTML
                 if price is None:
                     try:
                         yh_url = f"https://finance.yahoo.com/quote/{ticker_symbol}"
@@ -177,9 +176,9 @@ class PriceFetcher:
                                 price = float(streamer.get("value"))
                                 source = "yahoo_html_scraper"
                     except Exception as e:
-                        logger.debug(f"Fallo en Yahoo HTML: {e}")
+                        logger.debug(f"Yahoo HTML failed: {e}")
 
-            # Validar y guardar el precio final obtenido
+            # Validate and save the final price obtained
             if price is not None:
                 prices.append(PriceData(
                     asset_id=asset_id,
@@ -189,8 +188,8 @@ class PriceFetcher:
                     fetched_at=format_datetime_iso(datetime.now()),
                     source=source
                 ))
-                logger.info(f"✅ {ticker_symbol}: {round(price, 2)} EUR (Fuente: {source})")
+                logger.info(f"✅ {ticker_symbol}: {round(price, 2)} EUR (Source: {source})")
             else:
-                logger.error(f"❌ No se pudo obtener precio para {ticker_symbol} con NINGÚN método.")
+                logger.error(f"❌ Failed to fetch price for {ticker_symbol} using ANY method.")
                 
         return prices

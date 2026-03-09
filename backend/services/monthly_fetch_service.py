@@ -17,10 +17,6 @@ from services import db_service
 logger = logging.getLogger(__name__)
 
 async def process_monthly_prices(year: int, month: int, session: Session) -> FetchMonthResponse:
-    """
-    Fetch prices for all assets for the given month.
-    """
-
     logger.info(f"📊 Fetch-month request: {year}-{month:02d}")
 
     if not validate_month(year, month):
@@ -59,7 +55,6 @@ async def process_monthly_prices(year: int, month: int, session: Session) -> Fet
 
         for broker_asset in stocks_assets:
              broker_id = broker_asset.get("id")
-             # Calculate holdings for this broker using the database aggregation
              active_tickers = db_service.get_asset_holdings(session, broker_id)
 
              broker_assets_dict[broker_asset.get("name")] = {
@@ -144,7 +139,6 @@ async def process_monthly_prices(year: int, month: int, session: Session) -> Fet
 
         results = await asyncio.gather(*tasks)
 
-        # To keep track of nav mapping
         nav_mapping = {}
 
         for result in results:
@@ -153,7 +147,7 @@ async def process_monthly_prices(year: int, month: int, session: Session) -> Fet
                 _, asset, btc_data = result
                 if btc_data:
                     prices.append(btc_data)
-                    nav_mapping[btc_data.asset_id] = btc_data.price # Just storing price
+                    nav_mapping[btc_data.asset_id] = btc_data.price
                 else: errors.append("Failed to fetch Bitcoin price")
             elif type_ == "fund":
                 _, fund, price_data = result
@@ -165,7 +159,7 @@ async def process_monthly_prices(year: int, month: int, session: Session) -> Fet
                 _, broker, broker_prices = result
                 prices.extend(broker_prices)
                 for p in broker_prices:
-                    if p.ticker is None: # The aggregated one
+                    if p.ticker is None:
                          nav_mapping[p.asset_id] = p.price
 
         logger.info(f"✅ Fetched {len(prices)} prices successfully")
@@ -185,17 +179,12 @@ async def process_monthly_prices(year: int, month: int, session: Session) -> Fet
         month_str = f"{year}-{month:02d}-01"
         date_obj = datetime.strptime(month_str, "%Y-%m-%d").date()
 
-        # We only want to save HistoryEntry for actual assets (not individual tickers inside a broker)
-        # So we look at the original active_assets and the nav_mapping
-
         for asset in active_assets:
              asset_id = asset["id"]
              if asset_id in nav_mapping:
                  val = nav_mapping[asset_id]
 
-                 # Recuperar historial anterior para mantener datos (aportaciones, coste medio...)
                  prev_history_all = db_service.get_history_by_asset(session, asset_id)
-                 # Evitamos coger datos del propio mes si se está recalculando
                  prev_history = [h for h in prev_history_all if h.snapshot_date < date_obj]
 
                  participations = (prev_history[0].participations
@@ -210,11 +199,9 @@ async def process_monthly_prices(year: int, month: int, session: Session) -> Fet
                             if prev_history and prev_history[0].mean_cost is not None
                             else Decimal("0.0"))
 
-                 # Detectar si el activo es Bitcoin
                  is_btc = asset.get("category") == "Crypto" and ("BTC" in str(asset.get("ticker", "")).upper() or "BITCOIN" in str(asset.get("name", "")).upper())
 
                  if is_btc:
-                     # La verdad: Calcular participaciones reales desde transacciones (vía DB aggregation)
                      btc_holdings = db_service.get_total_btc_holdings(session, asset_id)
 
                      participations = Decimal(str(round(btc_holdings, 8)))
@@ -226,7 +213,6 @@ async def process_monthly_prices(year: int, month: int, session: Session) -> Fet
                      liquid_nav = Decimal("1.0") if float(val) > 0 else Decimal("0.0")
 
                  else:
-                     # Fondos indexados y resto de activos
                      nav_val = Decimal(str(round(float(val) * float(participations), 2)))
                      liquid_nav = Decimal(str(val))
 
