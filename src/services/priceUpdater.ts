@@ -349,12 +349,10 @@ export async function fetchAndUpdatePrices(
 
     let message = `✅ ACTUALIZACIÓN COMPLETADA\n`
     message += `╔════════════════════════════════════════╗\n`
-    message += `║  Fecha: ${result.lastBusinessDay}                     ║\n`
-    message += `║  Activos: ${result.prices.length}                              ║\n`
+    message += `║  Fecha: ${result.lastBusinessDay}                      ║\n`
+    message += `║  Activos: ${result.prices.length}                            ║\n`
     message += `╚════════════════════════════════════════╝\n\n`
 
-    message += `DETALLES POR ACTIVO:\n`
-    message += `───────────────────────────────────────\n\n`
     message += successLines.join('\n\n')
 
     // Add summary by source
