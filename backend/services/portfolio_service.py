@@ -12,13 +12,6 @@ async def get_portfolio_summary(session: AsyncSession) -> PortfolioSummaryRespon
     total_invested = 0.0
     cash_value = 0.0
 
-    # EVITAR DOBLE CONTABILIDAD: Excluir acciones si ya tenemos el contenedor 'Interactive Brokers'
-    ib_tickers = set()
-    ib_asset = next((a for a in active_assets_dict.values() if a.name == 'Interactive Brokers'), None)
-    if ib_asset:
-        ib_txs = await db_service.get_transactions_by_asset(session, ib_asset.id)
-        ib_tickers = {tx.ticker for tx in ib_txs if tx.ticker}
-
     # Pre-fetch all history to avoid N+1 queries
     all_history = await db_service.get_all_history(session)
     history_by_asset = {}
@@ -27,27 +20,19 @@ async def get_portfolio_summary(session: AsyncSession) -> PortfolioSummaryRespon
             history_by_asset[h.asset_id] = []
         history_by_asset[h.asset_id].append(h)
 
+    from models import AssetCategory
+
     for history in latest_history:
         if history.asset_id in active_assets_dict:
             asset = active_assets_dict[history.asset_id]
             nav = float(history.nav) if history.nav else 0.0
 
-            if asset.name == 'Cash':
-                cash_value = nav
+            if asset.category == AssetCategory.CASH:
+                cash_value += nav
                 continue
 
-            # Skip individual stocks that are already accounted for in Interactive Brokers
-            if ib_asset and asset.ticker and asset.ticker in ib_tickers:
-                continue
-
-            # Check if it's a sub-component (e.g., Basalto within Fondo Basalto)
-            is_component = False
-            for parent_id, parent in active_assets_dict.items():
-                if parent.name and asset.name and len(parent.name) > len(asset.name) and asset.name in parent.name and parent.id != asset.id:
-                    is_component = True
-                    break
-
-            if is_component:
+            # Check if it's a sub-component (i.e. has a parent_asset_id)
+            if asset.parent_asset_id is not None:
                 continue
 
             # We calculate total invested as the sum of all historical contributions
