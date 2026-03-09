@@ -22,53 +22,53 @@ class FundScraper:
     def fetch_fund_price(isin: str, asset_name: str, asset_id: str) -> Optional[PriceData]:
         """Try multiple strategies to fetch fund price"""
         
-        # Estrategia 1: QueFondos (La más fiable para fondos y PP españoles)
+        # Strategy 1: QueFondos (Most reliable for Spanish funds and PP)
         price_data = FundScraper._fetch_from_quefondos(isin, asset_name, asset_id)
         if price_data:
             logger.info(f"✅ {asset_name}: {price_data.price} EUR (QueFondos)")
             return price_data
 
-        # Estrategia 2: Morningstar
+        # Strategy 2: Morningstar
         price_data = FundScraper._fetch_from_morningstar(isin, asset_name, asset_id)
         if price_data:
             logger.info(f"✅ {asset_name}: {price_data.price} EUR (Morningstar)")
             return price_data
         
-        # Estrategia 3: FT Markets
+        # Strategy 3: FT Markets
         price_data = FundScraper._fetch_from_ft(isin, asset_name, asset_id)
         if price_data:
             logger.info(f"✅ {asset_name}: {price_data.price} EUR (FT Markets)")
             return price_data
         
-        # Estrategia 4: Fondos.net
+        # Strategy 4: Fondos.net
         price_data = FundScraper._fetch_from_fondosnet(isin, asset_name, asset_id)
         if price_data:
             logger.info(f"✅ {asset_name}: {price_data.price} EUR (Fondos.net)")
             return price_data
         
-        logger.error(f"❌ No se encontró precio para {asset_name} ({isin}) en ninguna fuente")
+        logger.error(f"❌ No price found for {asset_name} ({isin}) in any source")
         return None
 
     @staticmethod
     def _fetch_from_quefondos(isin: str, asset_name: str, asset_id: str) -> Optional[PriceData]:
         """Fetch from QueFondos.com (Very reliable for Spanish ISINs)"""
         try:
-            logger.info(f"🔄 Intentando QueFondos para {asset_name} ({isin})")
+            logger.info(f"🔄 Trying QueFondos for {asset_name} ({isin})")
             url = f"https://www.quefondos.com/es/fondos/ficha/index.html?isin={isin}"
             response = requests.get(url, headers=FundScraper.HEADERS, timeout=15)
             
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, "html.parser")
-                # El NAV suele estar en un span con la clase "float-right enorme"
+                # NAV is usually in a span with class "float-right enorme"
                 price_element = soup.find("span", class_="float-right enorme")
                 if price_element:
                     price_text = price_element.text.strip()
-                    # Extraer el número
+                    # Extract the number
                     price_match = re.search(r'[\d\.,]+', price_text)
                     if price_match:
                         return FundScraper._create_price_data(asset_id, asset_name, isin, price_match.group())
         except Exception as e:
-            logger.debug(f"Error en QueFondos scraper para {isin}: {e}")
+            logger.debug(f"Error in QueFondos scraper for {isin}: {e}")
         return None
 
     @staticmethod
@@ -76,9 +76,9 @@ class FundScraper:
         """Fetch from Morningstar via API and Next.js State"""
         import json
         try:
-            logger.info(f"🔄 Intentando Morningstar API para {asset_name} ({isin})")
+            logger.info(f"🔄 Trying Morningstar API for {asset_name} ({isin})")
             
-            # CORRECCIÓN: Usar idtype=ISIN para que Morningstar acepte el ISIN correctamente
+            # FIX: Use idtype=ISIN for Morningstar to accept ISIN correctly
             for suffix in ["", "]2]0]FOESP$$ALL"]:
                 api_url = f"https://tools.morningstar.es/api/rest.svc/timeseries_price/t92wz0sj7c?id={isin}{suffix}&currencyId=EUR&idtype=ISIN&frequency=daily&outputType=JSON"
                 response_api = requests.get(api_url, headers=FundScraper.HEADERS, timeout=10)
@@ -92,10 +92,10 @@ class FundScraper:
                             if last_price:
                                 return FundScraper._create_price_data(asset_id, asset_name, isin, str(last_price))
                     except Exception as e:
-                        logger.debug(f"Error en API de Morningstar con sufijo '{suffix}': {e}")
+                        logger.debug(f"Error in Morningstar API with suffix '{suffix}': {e}")
 
-            # INTENTO Web Next.js
-            logger.info(f"🔄 Intentando Morningstar Web (Next.js) para {asset_name} ({isin})")
+            # ATTEMPT Web Next.js
+            logger.info(f"🔄 Trying Morningstar Web (Next.js) for {asset_name} ({isin})")
             url = f"https://www.morningstar.es/es/funds/{isin}/quote.html"
             response = requests.get(url, headers=FundScraper.HEADERS, timeout=15)
             
@@ -115,14 +115,14 @@ class FundScraper:
             return None
             
         except Exception as e:
-            logger.debug(f"Error en Morningstar scraper para {isin}: {e}")
+            logger.debug(f"Error in Morningstar scraper for {isin}: {e}")
             return None
 
     @staticmethod
     def _fetch_from_ft(isin: str, asset_name: str, asset_id: str) -> Optional[PriceData]:
         """Fetch from Financial Times Markets"""
         try:
-            logger.info(f"🔄 Intentando FT Markets para {asset_name} ({isin})")
+            logger.info(f"🔄 Trying FT Markets for {asset_name} ({isin})")
             url = f"https://markets.ft.com/data/funds/tearsheet/summary?s={isin}:EUR"
             response = requests.get(url, headers=FundScraper.HEADERS, timeout=15)
             if response.status_code != 200: return None
@@ -144,14 +144,14 @@ class FundScraper:
                     continue
             return None
         except Exception as e:
-            logger.debug(f"Error en FT scraper para {isin}: {e}")
+            logger.debug(f"Error in FT scraper for {isin}: {e}")
             return None
 
     @staticmethod
     def _fetch_from_fondosnet(isin: str, asset_name: str, asset_id: str) -> Optional[PriceData]:
         """Fetch from Fondos.net"""
         try:
-            logger.info(f"🔄 Intentando Fondos.net para {asset_name} ({isin})")
+            logger.info(f"🔄 Trying Fondos.net for {asset_name} ({isin})")
             url = f"https://www.fondos.net/fondo/{isin.lower()}"
             response = requests.get(url, headers=FundScraper.HEADERS, timeout=15)
             if response.status_code != 200: return None
@@ -168,7 +168,7 @@ class FundScraper:
                     return FundScraper._create_price_data(asset_id, asset_name, isin, match.group(1))
             return None
         except Exception as e:
-            logger.debug(f"Error en Fondos.net scraper para {isin}: {e}")
+            logger.debug(f"Error in Fondos.net scraper for {isin}: {e}")
             return None
 
     @staticmethod
@@ -177,14 +177,14 @@ class FundScraper:
         try:
             price_clean = price_str.replace("€", "").strip()
             
-            # Lógica para detectar decimales europeos (1.234,56 -> 1234.56)
+            # Logic to detect European decimals (1.234,56 -> 1234.56)
             if "." in price_clean and "," in price_clean:
                 if price_clean.rfind(",") > price_clean.rfind("."):
                     price_clean = price_clean.replace(".", "").replace(",", ".")
                 else:
                     price_clean = price_clean.replace(",", "")
             elif "," in price_clean:
-                # Si solo tiene coma, asumimos que es el separador decimal (ej: 14,84)
+                # If it only has a comma, assume it's the decimal separator (e.g.: 14,84)
                 price_clean = price_clean.replace(",", ".")
                 
             price_value = float(price_clean)
@@ -199,5 +199,5 @@ class FundScraper:
                 source="fund_scraper"
             )
         except Exception as e:
-            logger.error(f"Error al parsear precio '{price_str}' para {isin}: {e}")
+            logger.error(f"Error parsing price '{price_str}' for {isin}: {e}")
             return None

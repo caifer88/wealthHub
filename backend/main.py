@@ -29,7 +29,6 @@ from services.monthly_fetch_service import process_monthly_prices
 from cachetools import cached, TTLCache
 import yfinance as yf
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -39,35 +38,28 @@ logger = logging.getLogger(__name__)
 scheduler = AsyncIOScheduler()
 
 async def scheduled_update_nav():
-    """Tarea que se ejecutará automáticamente"""
-    logger.info("⏰ Ejecutando cron job diario de actualización de NAV...")
+    logger.info("⏰ Executing daily NAV update cron job...")
     now = datetime.now()
     
-    # Abrimos una sesión de base de datos específica para esta tarea en segundo plano
     with Session(engine) as session:
         try:
-            # Reutilizamos la lógica de tu endpoint pasándole el mes y año actual
             await fetch_month_prices(year=now.year, month=now.month, session=session)
-            logger.info("✅ Cron job de actualización completado con éxito.")
+            logger.info("✅ NAV update cron job completed successfully.")
         except Exception as e:
-            logger.error(f"❌ Error en el cron job de NAV: {e}")
+            logger.error(f"❌ Error in NAV cron job: {e}")
 
-# Create Database engine
 engine = create_engine(settings.DATABASE_URL or "sqlite:///./wealthhub.db", echo=settings.DEBUG)
 
 def get_session():
     with Session(engine) as session:
         yield session
 
-# Create FastAPI app
 app = FastAPI(
     title=settings.API_TITLE,
     version=settings.API_VERSION,
     description="Backend API for WealthHub wealth management application"
 )
 
-# Configure CORS
-# Parse multiple frontend URLs
 frontend_urls = [
     url.strip() for url in settings.FRONTEND_URL.split(',') if url.strip()
 ]
@@ -87,38 +79,30 @@ async def on_startup():
     SQLModel.metadata.create_all(engine)
     logger.info("📦 Database tables created or verified")
     
-    # Programar la actualización para que corra todos los días a las 09:00
     scheduler.add_job(scheduled_update_nav, 'cron', hour=9, minute=00)
     scheduler.start()
-    logger.info("🕒 Scheduler iniciado. Actualización de NAV programada a las 9:00 AM.")
+    logger.info("🕒 Scheduler started. NAV update scheduled at 9:00 AM.")
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Health check endpoint"""
     return HealthResponse(
         status="healthy",
         message="WealthHub Backend is running",
         version=settings.API_VERSION
     )
 
-# --- Asset Endpoints ---
-
 @app.get("/api/assets", response_model=List[Asset])
 def get_assets(session: Session = Depends(get_session)):
-    """Get all assets mapped for Frontend"""
     return db_service.get_all_assets(session)
 
 @app.post("/api/assets", response_model=Asset, status_code=status.HTTP_201_CREATED)
 def create_asset(asset: Asset, session: Session = Depends(get_session)):
-    """Create a new asset"""
-    # Check if ID already exists
     if db_service.get_asset_by_id(session, asset.id):
         raise HTTPException(status_code=400, detail="Asset ID already exists")
     return db_service.create_asset(session, asset)
 
 @app.put("/api/assets/{asset_id}", response_model=Asset)
 def update_asset(asset_id: str, asset: Asset, session: Session = Depends(get_session)):
-    """Update an existing asset"""
     updated = db_service.update_asset(session, asset_id, asset)
     if not updated:
         raise HTTPException(status_code=404, detail="Asset not found")
@@ -126,20 +110,16 @@ def update_asset(asset_id: str, asset: Asset, session: Session = Depends(get_ses
 
 @app.delete("/api/assets/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_asset(asset_id: str, session: Session = Depends(get_session)):
-    """Delete an asset"""
     if not db_service.delete_asset(session, asset_id):
         raise HTTPException(status_code=404, detail="Asset not found")
 
-# --- History Endpoints ---
-
 @app.get("/api/history")
 def get_history(session: Session = Depends(get_session)):
-    """Get all history mapped for Frontend"""
     history = db_service.get_all_history(session)
     return [{
         "id": h.id,
         "asset_id": h.asset_id,
-        "month": h.snapshot_date.strftime("%Y-%m"), # Convertimos 2020-01-01 a "2020-01"
+        "month": h.snapshot_date.strftime("%Y-%m"),
         "nav": float(h.nav) if h.nav else 0,
         "contribution": float(h.contribution) if h.contribution else 0,
         "participations": float(h.participations) if h.participations is not None else None,
@@ -149,17 +129,14 @@ def get_history(session: Session = Depends(get_session)):
 
 @app.get("/api/history/asset/{asset_id}", response_model=List[HistoryEntry])
 def get_asset_history(asset_id: str, session: Session = Depends(get_session)):
-    """Get history for a specific asset"""
     return db_service.get_history_by_asset(session, asset_id)
 
 @app.post("/api/history", response_model=HistoryEntry, status_code=status.HTTP_201_CREATED)
 def create_history(entry: HistoryEntry, session: Session = Depends(get_session)):
-    """Create a new history entry"""
     return db_service.create_history_entry(session, entry)
 
 @app.put("/api/history/{history_id}", response_model=HistoryEntry)
 def update_history(history_id: str, entry: HistoryEntry, session: Session = Depends(get_session)):
-    """Update an existing history entry"""
     updated = db_service.update_history_entry(session, history_id, entry)
     if not updated:
         raise HTTPException(status_code=404, detail="History entry not found")
@@ -167,15 +144,11 @@ def update_history(history_id: str, entry: HistoryEntry, session: Session = Depe
 
 @app.delete("/api/history/{history_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_history(history_id: str, session: Session = Depends(get_session)):
-    """Delete a history entry"""
     if not db_service.delete_history_entry(session, history_id):
         raise HTTPException(status_code=404, detail="History entry not found")
 
-# --- Transaction Endpoints ---
-
 @app.get("/api/transactions")
 def get_transactions(session: Session = Depends(get_session)):
-    """Get all transactions mapped for Frontend"""
     transactions = db_service.get_all_transactions(session)
     return [{
         "id": t.id,
@@ -191,17 +164,14 @@ def get_transactions(session: Session = Depends(get_session)):
 
 @app.get("/api/transactions/asset/{asset_id}", response_model=List[Transaction])
 def get_asset_transactions(asset_id: str, session: Session = Depends(get_session)):
-    """Get transactions for a specific asset"""
     return db_service.get_transactions_by_asset(session, asset_id)
 
 @app.post("/api/transactions", response_model=Transaction, status_code=status.HTTP_201_CREATED)
 def create_transaction(transaction: Transaction, session: Session = Depends(get_session)):
-    """Create a new transaction"""
     return db_service.create_transaction(session, transaction)
 
 @app.put("/api/transactions/{transaction_id}", response_model=Transaction)
 def update_transaction(transaction_id: str, transaction: Transaction, session: Session = Depends(get_session)):
-    """Update an existing transaction"""
     updated = db_service.update_transaction(session, transaction_id, transaction)
     if not updated:
         raise HTTPException(status_code=404, detail="Transaction not found")
@@ -209,25 +179,19 @@ def update_transaction(transaction_id: str, transaction: Transaction, session: S
 
 @app.delete("/api/transactions/{transaction_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_transaction(transaction_id: str, session: Session = Depends(get_session)):
-    """Delete a transaction"""
     if not db_service.delete_transaction(session, transaction_id):
         raise HTTPException(status_code=404, detail="Transaction not found")
 
-# --- Analytics Endpoints ---
-
 @app.get("/api/portfolio/summary", response_model=PortfolioSummaryResponse)
 def get_portfolio_summary(session: Session = Depends(get_session)):
-    """Get the latest portfolio summary"""
     return portfolio_service.get_portfolio_summary(session)
 
 @app.get("/api/portfolio/allocation", response_model=PortfolioAllocationResponse)
 def get_portfolio_allocation(session: Session = Depends(get_session)):
-    """Get the portfolio allocation by category"""
     return portfolio_service.get_portfolio_allocation(session)
 
 @app.get("/api/assets/{asset_id}/metrics", response_model=AssetMetricsResponse)
 def get_asset_metrics(asset_id: str, session: Session = Depends(get_session)):
-    """Get metrics for a specific asset"""
     return metrics_service.get_asset_metrics(asset_id, session)
 
 if __name__ == "__main__":
@@ -240,7 +204,6 @@ if __name__ == "__main__":
         log_level="info"
     )
 
-# Caché de 24 horas (86400 segundos) para no saturar la API
 @cached(cache=TTLCache(maxsize=1, ttl=86400))
 def fetch_btc_history():
     ticker = yf.Ticker("BTC-EUR")
@@ -256,7 +219,6 @@ def fetch_btc_history():
 
 @app.get("/api/bitcoin/historical-prices")
 def get_bitcoin_historical_prices():
-    """Get historical weekly prices for Bitcoin"""
     try:
         return fetch_btc_history()
     except Exception as e:
@@ -269,7 +231,4 @@ async def fetch_month_prices(
     month: int = Query(..., ge=1, le=12, description="Month (1-12)"),
     session: Session = Depends(get_session)
 ):
-    """
-    Fetch prices for all assets for the given month.
-    """
     return await process_monthly_prices(year, month, session)
