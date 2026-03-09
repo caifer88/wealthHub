@@ -18,7 +18,8 @@ from config import settings
 from models import (
     Asset, PriceData, FetchMonthResponse, HealthResponse,
     HistoryEntry, Transaction, PortfolioSummaryResponse,
-    PortfolioAllocationResponse, AssetMetricsResponse
+    PortfolioAllocationResponse, AssetMetricsResponse,
+    HistoryResponseDTO, TransactionResponseDTO
 )
 from utils import (
     get_last_business_day, validate_month, format_date,
@@ -116,19 +117,9 @@ async def delete_asset(asset_id: str, session: AsyncSession = Depends(get_sessio
     if not await db_service.delete_asset(session, asset_id):
         raise HTTPException(status_code=404, detail="Asset not found")
 
-@app.get("/api/history")
+@app.get("/api/history", response_model=List[HistoryResponseDTO])
 async def get_history(session: AsyncSession = Depends(get_session)):
-    history = await db_service.get_all_history(session)
-    return [{
-        "id": h.id,
-        "asset_id": h.asset_id,
-        "month": h.snapshot_date.strftime("%Y-%m"),
-        "nav": float(h.nav) if h.nav else 0,
-        "contribution": float(h.contribution) if h.contribution else 0,
-        "participations": float(h.participations) if h.participations is not None else None,
-        "liquidNavValue": float(h.liquid_nav_value) if h.liquid_nav_value is not None else None,
-        "meanCost": float(h.mean_cost) if h.mean_cost is not None else None
-    } for h in history]
+    return await db_service.get_all_history(session)
 
 @app.get("/api/history/asset/{asset_id}", response_model=List[HistoryEntry])
 async def get_asset_history(asset_id: str, session: AsyncSession = Depends(get_session)):
@@ -150,20 +141,9 @@ async def delete_history(history_id: str, session: AsyncSession = Depends(get_se
     if not await db_service.delete_history_entry(session, history_id):
         raise HTTPException(status_code=404, detail="History entry not found")
 
-@app.get("/api/transactions")
+@app.get("/api/transactions", response_model=List[TransactionResponseDTO])
 async def get_transactions(session: AsyncSession = Depends(get_session)):
-    transactions = await db_service.get_all_transactions(session)
-    return [{
-        "id": t.id,
-        "asset_id": t.asset_id,
-        "date": t.transaction_date.strftime("%Y-%m-%d"),
-        "type": t.type,
-        "ticker": t.ticker,
-        "quantity": float(t.quantity) if t.quantity is not None else 0,
-        "pricePerUnit": float(t.price_per_unit) if t.price_per_unit is not None else 0,
-        "fees": float(t.fees) if t.fees is not None else 0,
-        "totalAmount": float(t.total_amount) if t.total_amount is not None else 0
-    } for t in transactions]
+    return await db_service.get_all_transactions(session)
 
 @app.get("/api/transactions/asset/{asset_id}", response_model=List[Transaction])
 async def get_asset_transactions(asset_id: str, session: AsyncSession = Depends(get_session)):
