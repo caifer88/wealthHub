@@ -72,8 +72,6 @@ frontend_urls = [
     url.strip() for url in settings.FRONTEND_URL.split(',') if url.strip()
 ]
 
-frontend_urls.append("http://localhost:8787")
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=frontend_urls,
