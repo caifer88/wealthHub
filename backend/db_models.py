@@ -45,6 +45,6 @@ class Transaction(SQLModel, table=True):
 class ExchangeRate(SQLModel, table=True):
     __tablename__ = "exchange_rates"
     id: Optional[int] = Field(default=None, primary_key=True)
-    date: datetime.date = Field(index=True)  # <-- Aquí estaba el bucle infinito, ahora ya no se confunde
+    date: datetime.date = Field(index=True)
     currency_pair: str = Field(max_length=20, index=True)
     rate: Decimal = Field(default=0)
