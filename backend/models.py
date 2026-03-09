@@ -132,7 +132,7 @@ class HistoryResponse(BaseModel):
     model_config = frontend_config
 
     id: str
-    asset_id: Optional[str] = None
+    asset_id: Optional[str] = Field(default=None, alias="asset_id")
     month: str
     nav: float
     contribution: float
@@ -162,7 +162,7 @@ class TransactionResponse(BaseModel):
     model_config = frontend_config
 
     id: str
-    asset_id: Optional[str] = None
+    asset_id: Optional[str] = Field(default=None, alias="asset_id")
     date: str
     type: Optional[str] = None
     ticker: Optional[str] = None
