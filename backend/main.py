@@ -596,7 +596,7 @@ async def fetch_month_prices(
                      nav_val = Decimal(str(round(float(val) * btc_holdings, 2)))
                      liquid_nav = Decimal(str(val))
                      
-                 elif asset.get("name") == "Interactive Brokers":
+                 elif asset.get("category") == "Stocks":
                      nav_val = Decimal(str(val))
                      liquid_nav = Decimal("1.0") if float(val) > 0 else Decimal("0.0")
                      
