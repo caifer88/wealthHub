@@ -7,7 +7,7 @@ from sqlalchemy import func, case
 from typing import List, Optional
 import logging
 
-from models import Asset, HistoryEntry as AssetHistory, Transaction
+from models import Asset, HistoryEntry as AssetHistory, Transaction, TransactionType
 
 logger = logging.getLogger(__name__)
 
@@ -114,8 +114,8 @@ def get_asset_holdings(session: Session, asset_id: str) -> dict:
         Transaction.ticker,
         func.sum(
             case(
-                (Transaction.type == "BUY", Transaction.quantity),
-                (Transaction.type == "SELL", -Transaction.quantity),
+                (Transaction.type == TransactionType.BUY, Transaction.quantity),
+                (Transaction.type == TransactionType.SELL, -Transaction.quantity),
                 else_=0
             )
         ).label('total_quantity')
@@ -128,8 +128,8 @@ def get_total_btc_holdings(session: Session, asset_id: str) -> float:
     statement = select(
         func.sum(
             case(
-                (Transaction.type == "BUY", Transaction.quantity),
-                (Transaction.type == "SELL", -Transaction.quantity),
+                (Transaction.type == TransactionType.BUY, Transaction.quantity),
+                (Transaction.type == TransactionType.SELL, -Transaction.quantity),
                 else_=0
             )
         )
