@@ -1,11 +1,11 @@
-from sqlmodel import Session
+from sqlmodel.ext.asyncio.session import AsyncSession
 from models import PortfolioSummaryResponse, PortfolioAllocationResponse
 from services import db_service
 
-def get_portfolio_summary(session: Session) -> PortfolioSummaryResponse:
+async def get_portfolio_summary(session: AsyncSession) -> PortfolioSummaryResponse:
     """Get the latest portfolio summary"""
-    latest_history = db_service.get_latest_portfolio_history(session)
-    all_assets = db_service.get_all_assets(session)
+    latest_history = await db_service.get_latest_portfolio_history(session)
+    all_assets = await db_service.get_all_assets(session)
     active_assets_dict = {a.id: a for a in all_assets if not a.is_archived}
 
     total_value = 0.0
@@ -16,11 +16,11 @@ def get_portfolio_summary(session: Session) -> PortfolioSummaryResponse:
     ib_tickers = set()
     ib_asset = next((a for a in active_assets_dict.values() if a.name == 'Interactive Brokers'), None)
     if ib_asset:
-        ib_txs = db_service.get_transactions_by_asset(session, ib_asset.id)
+        ib_txs = await db_service.get_transactions_by_asset(session, ib_asset.id)
         ib_tickers = {tx.ticker for tx in ib_txs if tx.ticker}
 
     # Pre-fetch all history to avoid N+1 queries
-    all_history = db_service.get_all_history(session)
+    all_history = await db_service.get_all_history(session)
     history_by_asset = {}
     for h in all_history:
         if h.asset_id not in history_by_asset:
@@ -69,10 +69,10 @@ def get_portfolio_summary(session: Session) -> PortfolioSummaryResponse:
     )
 
 
-def get_portfolio_allocation(session: Session) -> PortfolioAllocationResponse:
+async def get_portfolio_allocation(session: AsyncSession) -> PortfolioAllocationResponse:
     """Get the portfolio allocation by category"""
-    latest_history = db_service.get_latest_portfolio_history(session)
-    assets = db_service.get_all_assets(session)
+    latest_history = await db_service.get_latest_portfolio_history(session)
+    assets = await db_service.get_all_assets(session)
 
     asset_dict = {a.id: a for a in assets if not a.is_archived}
 
