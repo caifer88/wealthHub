@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useRef, useEffect } from 'r
 import { Asset, HistoryEntry, BitcoinTransaction, StockTransaction, SyncState, Metrics } from '../types'
 import { generateUUID } from '../utils'
 import { SAMPLE_DATA } from './mockData'
+import { config } from '../config'
 
 // Data validation functions
 const sanitizeBitcoinTransactions = (txs: any[]): BitcoinTransaction[] => {
@@ -93,10 +94,11 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const fetchFromDatabase = async () => {
             try {
                 // Hacemos las llamadas a la API de FastAPI
-                const [assetsRes, historyRes, txsRes] = await Promise.all([
-                    fetch('http://localhost:8000/api/assets'),
-                    fetch('http://localhost:8000/api/history'),
-                    fetch('http://localhost:8000/api/transactions')
+                const [assetsRes, historyRes, txsRes, summaryRes] = await Promise.all([
+                    fetch(`${config.backendUrl}/api/assets`),
+                    fetch(`${config.backendUrl}/api/history`),
+                    fetch(`${config.backendUrl}/api/transactions`),
+                    fetch(`${config.backendUrl}/api/portfolio/summary`)
                 ]);
 
                 if (!assetsRes.ok) throw new Error("Fallo al conectar con la API");
@@ -104,6 +106,7 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 const dbAssets = await assetsRes.json();
                 const dbHistory = await historyRes.json();
                 const dbTxs = await txsRes.json();
+                const dbSummary = summaryRes.ok ? await summaryRes.json() : null;
 
                 if (dbAssets.length > 0) {
                     setAssets(dbAssets);
@@ -145,6 +148,16 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     setBitcoinTransactions(sanitizeBitcoinTransactions(btcTxs));
                     setStockTransactions(sanitizeStockTransactions(stockTxs));
                     setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }));
+
+                    if (dbSummary) {
+                        setMetrics({
+                            totalNAV: dbSummary.total_value,
+                            totalInv: dbSummary.total_invested,
+                            totalProfit: dbSummary.absolute_roi,
+                            roi: dbSummary.percentage_roi,
+                            cash: dbSummary.cash_value
+                        });
+                    }
                     return;
                 }
             } catch (error) {
@@ -156,12 +169,52 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 const localBitcoin = JSON.parse(localStorage.getItem('wm_bitcoinTransactions_v4') || '[]')
                 const localStocks = JSON.parse(localStorage.getItem('wm_stockTransactions_v4') || '[]')
 
+                const calculateFallbackMetrics = (assets: Asset[], history: HistoryEntry[], stockTxs: StockTransaction[]) => {
+                    const activeAssets = assets.filter(a => !a.archived)
+                    const cashAsset = activeAssets.find(a => a.name === 'Cash')
+                    let cash = 0
+                    if (cashAsset) {
+                        const cashHistory = history.filter(h => h.assetId === cashAsset.id).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())
+                        cash = cashHistory.length > 0 ? cashHistory[0].nav || 0 : 0
+                    }
+
+                    let totalNAV = 0
+                    let totalInvested = 0
+                    let totalProfit = 0
+
+                    activeAssets.forEach(asset => {
+                        if (asset.name === 'Cash') return
+                        const isIBActive = activeAssets.some(a => a.name === 'Interactive Brokers')
+                        const isStockInIB = isIBActive && asset.ticker && stockTxs.some(tx => tx.broker === 'Interactive Brokers' && tx.ticker === asset.ticker)
+                        const isComponent = activeAssets.some(parent => parent.name && asset.name && parent.name.length > asset.name.length && parent.name.includes(asset.name) && parent.id !== asset.id)
+
+                        if (isStockInIB || isComponent) return
+
+                        const assetHistory = history.filter(h => h.assetId === asset.id).sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime())
+                        if (assetHistory.length > 0) {
+                            totalNAV += assetHistory[assetHistory.length - 1].nav
+                            totalInvested += assetHistory.reduce((sum, h) => sum + (h.contribution || 0), 0)
+                        }
+                    })
+
+                    totalProfit = totalNAV - totalInvested
+                    const roi = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0
+
+                    return { totalNAV, totalInv: totalInvested, totalProfit, roi, cash }
+                }
+
                 if (localAssets.length > 0) {
                     setAssets(localAssets)
                     setHistory(localHistory)
-                    setBitcoinTransactions(sanitizeBitcoinTransactions(localBitcoin))
-                    setStockTransactions(sanitizeStockTransactions(localStocks))
+
+                    const bitcoinTxs = sanitizeBitcoinTransactions(localBitcoin)
+                    const stockTxs = sanitizeStockTransactions(localStocks)
+                    setBitcoinTransactions(bitcoinTxs)
+                    setStockTransactions(stockTxs)
                     setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }))
+
+                    // Fallback para métricas si el backend falla
+                    setMetrics(calculateFallbackMetrics(localAssets, localHistory, stockTxs))
                     return
                 }
 
@@ -171,12 +224,73 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 setBitcoinTransactions(SAMPLE_DATA.bitcoinTransactions)
                 setStockTransactions(SAMPLE_DATA.stockTransactions)
                 setSyncState(prev => ({ ...prev, syncError: 'Usando datos de muestra' }))
+                setMetrics({ totalNAV: 0, totalInv: 0, totalProfit: 0, roi: 0, cash: 0 })
             }
         };
 
         fetchFromDatabase();
     }
   }, [])
+
+  // Calcular métricas de forma reactiva llamando al backend
+  useEffect(() => {
+    if (isFirstRender.current || assets.length === 0) return
+
+    const calculateFallbackMetrics = (assetsList: Asset[], historyList: HistoryEntry[], stockTxs: StockTransaction[]) => {
+      const activeAssets = assetsList.filter(a => !a.archived)
+      const cashAsset = activeAssets.find(a => a.name === 'Cash')
+      let cash = 0
+      if (cashAsset) {
+        const cashHistory = historyList.filter(h => h.assetId === cashAsset.id).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())
+        cash = cashHistory.length > 0 ? cashHistory[0].nav || 0 : 0
+      }
+
+      let totalNAV = 0
+      let totalInvested = 0
+      let totalProfit = 0
+
+      activeAssets.forEach(asset => {
+        if (asset.name === 'Cash') return
+        const isIBActive = activeAssets.some(a => a.name === 'Interactive Brokers')
+        const isStockInIB = isIBActive && asset.ticker && stockTxs.some(tx => tx.broker === 'Interactive Brokers' && tx.ticker === asset.ticker)
+        const isComponent = activeAssets.some(parent => parent.name && asset.name && parent.name.length > asset.name.length && parent.name.includes(asset.name) && parent.id !== asset.id)
+
+        if (isStockInIB || isComponent) return
+
+        const assetHistory = historyList.filter(h => h.assetId === asset.id).sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime())
+        if (assetHistory.length > 0) {
+            totalNAV += assetHistory[assetHistory.length - 1].nav
+            totalInvested += assetHistory.reduce((sum, h) => sum + (h.contribution || 0), 0)
+        }
+      })
+
+      totalProfit = totalNAV - totalInvested
+      const roi = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0
+
+      return { totalNAV, totalInv: totalInvested, totalProfit, roi, cash }
+    }
+
+    const fetchMetrics = async () => {
+      try {
+        const res = await fetch(`${config.backendUrl}/api/portfolio/summary`)
+        if (res.ok) {
+          const dbSummary = await res.json()
+          setMetrics({
+            totalNAV: dbSummary.total_value,
+            totalInv: dbSummary.total_invested,
+            totalProfit: dbSummary.absolute_roi,
+            roi: dbSummary.percentage_roi,
+            cash: dbSummary.cash_value
+          })
+        } else {
+          setMetrics(calculateFallbackMetrics(assets, history, stockTransactions))
+        }
+      } catch (e) {
+        setMetrics(calculateFallbackMetrics(assets, history, stockTransactions))
+      }
+    }
+    fetchMetrics()
+  }, [assets, history, stockTransactions])
 
   // Guardar en localStorage
   useEffect(() => {
@@ -192,76 +306,6 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     document.documentElement.classList.toggle('dark', darkMode)
     localStorage.setItem('wm_theme', darkMode ? 'dark' : 'light')
   }, [assets, history, bitcoinTransactions, stockTransactions, darkMode])
-
-  // Calcular métricas
-  useEffect(() => {
-    if (assets.length === 0) {
-      setMetrics(null)
-      return
-    }
-
-    const activeAssets = assets.filter(a => !a.archived)
-    const cashAsset = activeAssets.find(a => a.name === 'Cash')
-    
-    // Obtener el valor de Cash del último mes del historial
-    let cash = 0
-    if (cashAsset) {
-      const cashHistory = history
-        .filter(h => h.assetId === cashAsset.id)
-        .sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())
-      if (cashHistory.length > 0) {
-        cash = cashHistory[0].nav || 0
-      } else {
-        cash = 0
-      }
-    }
-
-    // Calcular NAV total y ROI (excluyendo Cash para ganancia/pérdida)
-    let totalNAV = 0
-    let totalInvested = 0
-    let totalProfit = 0
-
-    activeAssets.forEach(asset => {
-      // Excluir Cash del cálculo de ganancia/pérdida
-      if (asset.name === 'Cash') return
-
-      // EVITAR DOBLE CONTABILIDAD: Excluir acciones si ya tenemos el contenedor 'Interactive Brokers'
-      const isIBActive = activeAssets.some(a => a.name === 'Interactive Brokers')
-      const isStockInIB = isIBActive && asset.ticker && stockTransactions.some(tx => tx.broker === 'Interactive Brokers' && tx.ticker === asset.ticker)
-      
-      // Excluir activos que son sub-componentes de otros (ej: Basalto dentro de Fondo Basalto)
-      const isComponent = activeAssets.some(parent => 
-        parent.name && asset.name && parent.name.length > asset.name.length && parent.name.includes(asset.name) && parent.id !== asset.id
-      )
-
-      if (isStockInIB || isComponent) {
-        return // Saltamos este activo para no sumarlo dos veces al total
-      }
-
-      const assetHistory = history.filter(h => h.assetId === asset.id).sort((a, b) => 
-        new Date(a.month).getTime() - new Date(b.month).getTime()
-      )
-      
-      if (assetHistory.length > 0) {
-        // Usar el último valor del histórico para el NAV
-        const lastEntry = assetHistory[assetHistory.length - 1]
-        totalNAV += lastEntry.nav
-        // Sumamos TODO el histórico de aportaciones para el Total Invertido
-        totalInvested += assetHistory.reduce((sum, h) => sum + (h.contribution || 0), 0)
-      }
-    })
-
-    totalProfit = totalNAV - totalInvested
-    const roi = totalInvested > 0 ? ((totalProfit) / totalInvested) * 100 : 0
-
-    setMetrics({
-      totalNAV,
-      totalInv: totalInvested,
-      totalProfit,
-      roi,
-      cash
-    })
-  }, [assets, history])
 
   const value: WealthContextType = {
     assets,
