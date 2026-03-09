@@ -34,12 +34,12 @@ class PriceFetcher:
                     close_price = float(close_value)
                     
                 return PriceData(
-                    assetId=asset_id or "btc",
-                    assetName=asset_name,
+                    asset_id=asset_id or "btc",
+                    asset_name=asset_name,
                     ticker="BTC-EUR",
                     price=round(close_price, 2),
                     currency="EUR",
-                    fetchedAt=format_datetime_iso(datetime.now()),
+                    fetched_at=format_datetime_iso(datetime.now()),
                     source="yfinance"
                 )
         except Exception as e:
@@ -52,12 +52,12 @@ class PriceFetcher:
             if res.status_code == 200:
                 data = res.json()
                 return PriceData(
-                    assetId=asset_id or "btc",
-                    assetName=asset_name,
+                    asset_id=asset_id or "btc",
+                    asset_name=asset_name,
                     ticker="BTC-EUR",
                     price=round(float(data['bitcoin']['eur']), 2),
                     currency="EUR",
-                    fetchedAt=format_datetime_iso(datetime.now()),
+                    fetched_at=format_datetime_iso(datetime.now()),
                     source="coingecko_api"
                 )
         except Exception as e:
@@ -69,12 +69,12 @@ class PriceFetcher:
             if res.status_code == 200:
                 data = res.json()
                 return PriceData(
-                    assetId=asset_id or "btc",
-                    assetName=asset_name,
+                    asset_id=asset_id or "btc",
+                    asset_name=asset_name,
                     ticker="BTC-EUR",
                     price=round(float(data['price']), 2),
                     currency="EUR",
-                    fetchedAt=format_datetime_iso(datetime.now()),
+                    fetched_at=format_datetime_iso(datetime.now()),
                     source="binance_api"
                 )
         except Exception as e:
@@ -182,11 +182,11 @@ class PriceFetcher:
             # Validar y guardar el precio final obtenido
             if price is not None:
                 prices.append(PriceData(
-                    assetId=asset_id,
-                    assetName=name,
+                    asset_id=asset_id,
+                    asset_name=name,
                     ticker=ticker_symbol,
                     price=round(price, 2),
-                    fetchedAt=format_datetime_iso(datetime.now()),
+                    fetched_at=format_datetime_iso(datetime.now()),
                     source=source
                 ))
                 logger.info(f"✅ {ticker_symbol}: {round(price, 2)} EUR (Fuente: {source})")

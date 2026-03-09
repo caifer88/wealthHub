@@ -86,6 +86,8 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [metrics, setMetrics] = useState<Metrics | null>(null)
   const isFirstRender = useRef(true)
 
+  const [isDataLoaded, setIsDataLoaded] = useState(false)
+
   // Cargar datos iniciales desde la Base de Datos
   useEffect(() => {
     if (isFirstRender.current) {
@@ -94,47 +96,54 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const fetchFromDatabase = async () => {
             try {
                 // Hacemos las llamadas a la API de FastAPI
-                const [assetsRes, historyRes, txsRes] = await Promise.all([
+                const [assetsRes, historyRes, txsRes, summaryRes] = await Promise.all([
                     fetch(`${config.backendUrl}/api/assets`),
                     fetch(`${config.backendUrl}/api/history`),
-                    fetch(`${config.backendUrl}/api/transactions`)
+                    fetch(`${config.backendUrl}/api/transactions`),
+                    fetch(`${config.backendUrl}/api/portfolio/summary`)
                 ]);
 
-                if (!assetsRes.ok) throw new Error("Fallo al conectar con la API");
+                // ✅ 1. Comprobamos TODOS los endpoints críticos
+                if (!assetsRes.ok || !historyRes.ok || !txsRes.ok) {
+                    throw new Error("Fallo al conectar con la API principal");
+                }
 
                 const dbAssets = await assetsRes.json();
                 const dbHistory = await historyRes.json();
                 const dbTxs = await txsRes.json();
                 const dbSummary = summaryRes.ok ? await summaryRes.json() : null;
 
-                if (dbAssets.length > 0) {
-                    setAssets(dbAssets);
-                    setHistory(dbHistory);
+                // Aplicamos los datos aunque la base de datos esté vacía
+                setAssets(dbAssets);
+                setHistory(dbHistory);
 
-                    // Separar transacciones unificadas en Crypto y Acciones
-                    const btcTxs: any[] = [];
-                    const stockTxs: any[] = [];
+                // Separar transacciones unificadas en Crypto y Acciones
+                const btcTxs: any[] = [];
+                const stockTxs: any[] = [];
 
+                if (Array.isArray(dbTxs)) {
                     dbTxs.forEach((tx: any) => {
-                        // Identificamos las de Bitcoin (por ticker o assetId 'a4')
+                        // ✅ 2. Evitamos el crash de toLowerCase() si type es null
+                        const txType = (tx.type || 'buy').toLowerCase(); 
+
+                        // Identificamos las de Bitcoin
                         if (tx.assetId === 'a4' || tx.ticker === 'BTC') {
                             btcTxs.push({
                                 id: tx.id,
                                 date: tx.date,
-                                type: tx.type.toLowerCase(),
+                                type: txType,
                                 amountBTC: tx.quantity,
                                 meanPrice: tx.pricePerUnit,
                                 totalCost: tx.totalAmount,
                                 amount: tx.totalAmount
                             });
                         } else {
-                            // Encontrar el nombre del broker original
                             const brokerAsset = dbAssets.find((a: any) => a.id === tx.assetId);
                             stockTxs.push({
                                 id: tx.id,
                                 ticker: tx.ticker,
                                 date: tx.date,
-                                type: tx.type.toLowerCase(),
+                                type: txType,
                                 shares: tx.quantity,
                                 pricePerShare: tx.pricePerUnit,
                                 fees: tx.fees,
@@ -143,31 +152,35 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                             });
                         }
                     });
-
-                    setBitcoinTransactions(sanitizeBitcoinTransactions(btcTxs));
-                    setStockTransactions(sanitizeStockTransactions(stockTxs));
-                    setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }));
-
-                    if (dbSummary) {
-                        setMetrics({
-                            totalNAV: dbSummary.total_value,
-                            totalInv: dbSummary.total_invested,
-                            totalProfit: dbSummary.absolute_roi,
-                            roi: dbSummary.percentage_roi,
-                            cash: dbSummary.cash_value
-                        });
-                    }
-                    return;
                 }
+
+                setBitcoinTransactions(sanitizeBitcoinTransactions(btcTxs));
+                setStockTransactions(sanitizeStockTransactions(stockTxs));
+                setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }));
+
+                if (dbSummary) {
+                    setMetrics({
+                        totalNAV: dbSummary.total_value,
+                        totalInv: dbSummary.total_invested,
+                        totalProfit: dbSummary.absolute_roi,
+                        roi: dbSummary.percentage_roi,
+                        cash: dbSummary.cash_value
+                    });
+                }
+                
+                setIsDataLoaded(true); // ✅ Avisar que terminó de cargar ok
+                return;
+                
             } catch (error) {
                 console.error("Error cargando de BD, usando fallback localStorage:", error);
                 
-                // Fallback a localStorage si el backend está apagado
+                // Fallback a localStorage si el backend falla
                 const localAssets = JSON.parse(localStorage.getItem('wm_assets_v4') || '[]')
                 const localHistory = JSON.parse(localStorage.getItem('wm_history_v4') || '[]')
                 const localBitcoin = JSON.parse(localStorage.getItem('wm_bitcoinTransactions_v4') || '[]')
                 const localStocks = JSON.parse(localStorage.getItem('wm_stockTransactions_v4') || '[]')
 
+                // (Misma función de cálculo que tenías...)
                 const calculateFallbackMetrics = (assets: Asset[], history: HistoryEntry[], stockTxs: StockTransaction[]) => {
                     const activeAssets = assets.filter(a => !a.archived)
                     const cashAsset = activeAssets.find(a => a.name === 'Cash')
@@ -205,25 +218,20 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 if (localAssets.length > 0) {
                     setAssets(localAssets)
                     setHistory(localHistory)
-
-                    const bitcoinTxs = sanitizeBitcoinTransactions(localBitcoin)
-                    const stockTxs = sanitizeStockTransactions(localStocks)
-                    setBitcoinTransactions(bitcoinTxs)
-                    setStockTransactions(stockTxs)
+                    setBitcoinTransactions(sanitizeBitcoinTransactions(localBitcoin))
+                    setStockTransactions(sanitizeStockTransactions(localStocks))
                     setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }))
-
-                    // Fallback para métricas si el backend falla
-                    setMetrics(calculateFallbackMetrics(localAssets, localHistory, stockTxs))
-                    return
+                    setMetrics(calculateFallbackMetrics(localAssets, localHistory, sanitizeStockTransactions(localStocks)))
+                } else {
+                    setAssets(SAMPLE_DATA.assets)
+                    setHistory(SAMPLE_DATA.history)
+                    setBitcoinTransactions(SAMPLE_DATA.bitcoinTransactions)
+                    setStockTransactions(SAMPLE_DATA.stockTransactions)
+                    setSyncState(prev => ({ ...prev, syncError: 'Usando datos de muestra' }))
+                    setMetrics({ totalNAV: 0, totalInv: 0, totalProfit: 0, roi: 0, cash: 0 })
                 }
-
-                // Si no hay datos, usar datos de muestra
-                setAssets(SAMPLE_DATA.assets)
-                setHistory(SAMPLE_DATA.history)
-                setBitcoinTransactions(SAMPLE_DATA.bitcoinTransactions)
-                setStockTransactions(SAMPLE_DATA.stockTransactions)
-                setSyncState(prev => ({ ...prev, syncError: 'Usando datos de muestra' }))
-                setMetrics({ totalNAV: 0, totalInv: 0, totalProfit: 0, roi: 0, cash: 0 })
+                
+                setIsDataLoaded(true); // ✅ Avisar que terminó de cargar ok
             }
         };
 
@@ -293,7 +301,8 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Guardar en localStorage
   useEffect(() => {
-    if (isFirstRender.current) {
+    // ✅ 3. Solo guardar cuando ya han cargado los datos iniciales
+    if (!isDataLoaded) {
       return
     }
 
@@ -304,7 +313,7 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     document.documentElement.classList.toggle('dark', darkMode)
     localStorage.setItem('wm_theme', darkMode ? 'dark' : 'light')
-  }, [assets, history, bitcoinTransactions, stockTransactions, darkMode])
+  }, [assets, history, bitcoinTransactions, stockTransactions, darkMode, isDataLoaded]) // <-- Añadir isDataLoaded a dependencias
 
   const value: WealthContextType = {
     assets,

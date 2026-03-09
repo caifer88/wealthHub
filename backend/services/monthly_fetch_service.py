@@ -120,17 +120,17 @@ async def process_monthly_prices(year: int, month: int, session: Session) -> Fet
                 for p in individual_prices:
                     shares = holdings.get(p.ticker, 0.0)
                     total_broker_value += float(p.price) * shares
-                    p.assetId = f"ticker-{p.ticker}"
-                    p.assetName = f"Stock {p.ticker}"
+                    p.asset_id = f"ticker-{p.ticker}"
+                    p.asset_name = f"Stock {p.ticker}"
 
                 if total_broker_value > 0:
                     aggregated_price = PriceData(
-                        assetId=broker["id"],
-                        assetName=broker["name"],
+                        asset_id=broker["id"],
+                        asset_name=broker["name"],
                         ticker=None,
                         price=round(total_broker_value, 2),
                         currency="EUR",
-                        fetchedAt=format_datetime_iso(datetime.now()),
+                        fetched_at=format_datetime_iso(datetime.now()),
                         source="yfinance_aggregated"
                     )
                     return ("broker", broker, [aggregated_price] + individual_prices)
@@ -153,20 +153,20 @@ async def process_monthly_prices(year: int, month: int, session: Session) -> Fet
                 _, asset, btc_data = result
                 if btc_data:
                     prices.append(btc_data)
-                    nav_mapping[btc_data.assetId] = btc_data.price # Just storing price
+                    nav_mapping[btc_data.asset_id] = btc_data.price # Just storing price
                 else: errors.append("Failed to fetch Bitcoin price")
             elif type_ == "fund":
                 _, fund, price_data = result
                 if price_data:
                     prices.append(price_data)
-                    nav_mapping[price_data.assetId] = price_data.price
+                    nav_mapping[price_data.asset_id] = price_data.price
                 else: errors.append(f"Failed to fetch price for {fund.get('name')}")
             elif type_ == "broker":
                 _, broker, broker_prices = result
                 prices.extend(broker_prices)
                 for p in broker_prices:
                     if p.ticker is None: # The aggregated one
-                         nav_mapping[p.assetId] = p.price
+                         nav_mapping[p.asset_id] = p.price
 
         logger.info(f"✅ Fetched {len(prices)} prices successfully")
 
