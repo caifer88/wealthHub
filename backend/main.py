@@ -10,7 +10,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from typing import List, Optional
 from fastapi import FastAPI, Query, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from sqlmodel import Session, create_engine, SQLModel
+from sqlmodel import SQLModel
+from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from config import settings
 from models import (
@@ -41,17 +43,17 @@ async def scheduled_update_nav():
     logger.info("⏰ Executing daily NAV update cron job...")
     now = datetime.now()
     
-    with Session(engine) as session:
+    async with AsyncSession(engine) as session:
         try:
             await fetch_month_prices(year=now.year, month=now.month, session=session)
             logger.info("✅ NAV update cron job completed successfully.")
         except Exception as e:
             logger.error(f"❌ Error in NAV cron job: {e}")
 
-engine = create_engine(settings.DATABASE_URL or "sqlite:///./wealthhub.db", echo=settings.DEBUG)
+engine = create_async_engine(settings.DATABASE_URL, echo=settings.DEBUG)
 
-def get_session():
-    with Session(engine) as session:
+async def get_session():
+    async with AsyncSession(engine) as session:
         yield session
 
 app = FastAPI(
@@ -76,7 +78,8 @@ logger.info(f"🔧 CORS configured for: {', '.join(frontend_urls)}")
 
 @app.on_event("startup")
 async def on_startup():
-    SQLModel.metadata.create_all(engine)
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
     logger.info("📦 Database tables created or verified")
     
     scheduler.add_job(scheduled_update_nav, 'cron', hour=9, minute=00)
@@ -92,30 +95,30 @@ async def health_check():
     )
 
 @app.get("/api/assets", response_model=List[Asset])
-def get_assets(session: Session = Depends(get_session)):
-    return db_service.get_all_assets(session)
+async def get_assets(session: AsyncSession = Depends(get_session)):
+    return await db_service.get_all_assets(session)
 
 @app.post("/api/assets", response_model=Asset, status_code=status.HTTP_201_CREATED)
-def create_asset(asset: Asset, session: Session = Depends(get_session)):
-    if db_service.get_asset_by_id(session, asset.id):
+async def create_asset(asset: Asset, session: AsyncSession = Depends(get_session)):
+    if await db_service.get_asset_by_id(session, asset.id):
         raise HTTPException(status_code=400, detail="Asset ID already exists")
-    return db_service.create_asset(session, asset)
+    return await db_service.create_asset(session, asset)
 
 @app.put("/api/assets/{asset_id}", response_model=Asset)
-def update_asset(asset_id: str, asset: Asset, session: Session = Depends(get_session)):
-    updated = db_service.update_asset(session, asset_id, asset)
+async def update_asset(asset_id: str, asset: Asset, session: AsyncSession = Depends(get_session)):
+    updated = await db_service.update_asset(session, asset_id, asset)
     if not updated:
         raise HTTPException(status_code=404, detail="Asset not found")
     return updated
 
 @app.delete("/api/assets/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_asset(asset_id: str, session: Session = Depends(get_session)):
-    if not db_service.delete_asset(session, asset_id):
+async def delete_asset(asset_id: str, session: AsyncSession = Depends(get_session)):
+    if not await db_service.delete_asset(session, asset_id):
         raise HTTPException(status_code=404, detail="Asset not found")
 
 @app.get("/api/history")
-def get_history(session: Session = Depends(get_session)):
-    history = db_service.get_all_history(session)
+async def get_history(session: AsyncSession = Depends(get_session)):
+    history = await db_service.get_all_history(session)
     return [{
         "id": h.id,
         "asset_id": h.asset_id,
@@ -128,28 +131,28 @@ def get_history(session: Session = Depends(get_session)):
     } for h in history]
 
 @app.get("/api/history/asset/{asset_id}", response_model=List[HistoryEntry])
-def get_asset_history(asset_id: str, session: Session = Depends(get_session)):
-    return db_service.get_history_by_asset(session, asset_id)
+async def get_asset_history(asset_id: str, session: AsyncSession = Depends(get_session)):
+    return await db_service.get_history_by_asset(session, asset_id)
 
 @app.post("/api/history", response_model=HistoryEntry, status_code=status.HTTP_201_CREATED)
-def create_history(entry: HistoryEntry, session: Session = Depends(get_session)):
-    return db_service.create_history_entry(session, entry)
+async def create_history(entry: HistoryEntry, session: AsyncSession = Depends(get_session)):
+    return await db_service.create_history_entry(session, entry)
 
 @app.put("/api/history/{history_id}", response_model=HistoryEntry)
-def update_history(history_id: str, entry: HistoryEntry, session: Session = Depends(get_session)):
-    updated = db_service.update_history_entry(session, history_id, entry)
+async def update_history(history_id: str, entry: HistoryEntry, session: AsyncSession = Depends(get_session)):
+    updated = await db_service.update_history_entry(session, history_id, entry)
     if not updated:
         raise HTTPException(status_code=404, detail="History entry not found")
     return updated
 
 @app.delete("/api/history/{history_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_history(history_id: str, session: Session = Depends(get_session)):
-    if not db_service.delete_history_entry(session, history_id):
+async def delete_history(history_id: str, session: AsyncSession = Depends(get_session)):
+    if not await db_service.delete_history_entry(session, history_id):
         raise HTTPException(status_code=404, detail="History entry not found")
 
 @app.get("/api/transactions")
-def get_transactions(session: Session = Depends(get_session)):
-    transactions = db_service.get_all_transactions(session)
+async def get_transactions(session: AsyncSession = Depends(get_session)):
+    transactions = await db_service.get_all_transactions(session)
     return [{
         "id": t.id,
         "asset_id": t.asset_id,
@@ -163,36 +166,36 @@ def get_transactions(session: Session = Depends(get_session)):
     } for t in transactions]
 
 @app.get("/api/transactions/asset/{asset_id}", response_model=List[Transaction])
-def get_asset_transactions(asset_id: str, session: Session = Depends(get_session)):
-    return db_service.get_transactions_by_asset(session, asset_id)
+async def get_asset_transactions(asset_id: str, session: AsyncSession = Depends(get_session)):
+    return await db_service.get_transactions_by_asset(session, asset_id)
 
 @app.post("/api/transactions", response_model=Transaction, status_code=status.HTTP_201_CREATED)
-def create_transaction(transaction: Transaction, session: Session = Depends(get_session)):
-    return db_service.create_transaction(session, transaction)
+async def create_transaction(transaction: Transaction, session: AsyncSession = Depends(get_session)):
+    return await db_service.create_transaction(session, transaction)
 
 @app.put("/api/transactions/{transaction_id}", response_model=Transaction)
-def update_transaction(transaction_id: str, transaction: Transaction, session: Session = Depends(get_session)):
-    updated = db_service.update_transaction(session, transaction_id, transaction)
+async def update_transaction(transaction_id: str, transaction: Transaction, session: AsyncSession = Depends(get_session)):
+    updated = await db_service.update_transaction(session, transaction_id, transaction)
     if not updated:
         raise HTTPException(status_code=404, detail="Transaction not found")
     return updated
 
 @app.delete("/api/transactions/{transaction_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_transaction(transaction_id: str, session: Session = Depends(get_session)):
-    if not db_service.delete_transaction(session, transaction_id):
+async def delete_transaction(transaction_id: str, session: AsyncSession = Depends(get_session)):
+    if not await db_service.delete_transaction(session, transaction_id):
         raise HTTPException(status_code=404, detail="Transaction not found")
 
 @app.get("/api/portfolio/summary", response_model=PortfolioSummaryResponse)
-def get_portfolio_summary(session: Session = Depends(get_session)):
-    return portfolio_service.get_portfolio_summary(session)
+async def get_portfolio_summary(session: AsyncSession = Depends(get_session)):
+    return await portfolio_service.get_portfolio_summary(session)
 
 @app.get("/api/portfolio/allocation", response_model=PortfolioAllocationResponse)
-def get_portfolio_allocation(session: Session = Depends(get_session)):
-    return portfolio_service.get_portfolio_allocation(session)
+async def get_portfolio_allocation(session: AsyncSession = Depends(get_session)):
+    return await portfolio_service.get_portfolio_allocation(session)
 
 @app.get("/api/assets/{asset_id}/metrics", response_model=AssetMetricsResponse)
-def get_asset_metrics(asset_id: str, session: Session = Depends(get_session)):
-    return metrics_service.get_asset_metrics(asset_id, session)
+async def get_asset_metrics(asset_id: str, session: AsyncSession = Depends(get_session)):
+    return await metrics_service.get_asset_metrics(asset_id, session)
 
 if __name__ == "__main__":
     import uvicorn
@@ -229,6 +232,6 @@ def get_bitcoin_historical_prices():
 async def fetch_month_prices(
     year: int = Query(..., ge=2020, le=2099, description="Year (e.g., 2024)"),
     month: int = Query(..., ge=1, le=12, description="Month (1-12)"),
-    session: Session = Depends(get_session)
+    session: AsyncSession = Depends(get_session)
 ):
     return await process_monthly_prices(year, month, session)

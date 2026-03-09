@@ -1,15 +1,15 @@
 from fastapi import HTTPException
-from sqlmodel import Session
+from sqlmodel.ext.asyncio.session import AsyncSession
 from models import AssetMetricsResponse
 from services import db_service
 
-def get_asset_metrics(asset_id: str, session: Session) -> AssetMetricsResponse:
+async def get_asset_metrics(asset_id: str, session: AsyncSession) -> AssetMetricsResponse:
     """Get metrics for a specific asset"""
-    asset = db_service.get_asset_by_id(session, asset_id)
+    asset = await db_service.get_asset_by_id(session, asset_id)
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
 
-    history = db_service.get_history_by_asset(session, asset_id)
+    history = await db_service.get_history_by_asset(session, asset_id)
     if not history:
         return AssetMetricsResponse(
             asset_id=asset_id,

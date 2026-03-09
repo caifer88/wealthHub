@@ -13,3 +13,4 @@ cachetools==5.3.2
 sqlmodel==0.0.14
 psycopg2-binary==2.9.9
 apscheduler==3.10.4
+asyncpg>=0.28.0

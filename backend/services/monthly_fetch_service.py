@@ -6,7 +6,7 @@ from decimal import Decimal
 import uuid
 
 from fastapi import HTTPException, status
-from sqlmodel import Session
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from models import PriceData, FetchMonthResponse, HistoryEntry
 from utils import get_last_business_day, validate_month, format_date, format_datetime_iso
@@ -16,7 +16,7 @@ from services import db_service
 
 logger = logging.getLogger(__name__)
 
-async def process_monthly_prices(year: int, month: int, session: Session) -> FetchMonthResponse:
+async def process_monthly_prices(year: int, month: int, session: AsyncSession) -> FetchMonthResponse:
     logger.info(f"📊 Fetch-month request: {year}-{month:02d}")
 
     if not validate_month(year, month):
@@ -32,7 +32,7 @@ async def process_monthly_prices(year: int, month: int, session: Session) -> Fet
         last_business_day = get_last_business_day(year, month)
         logger.info(f"📅 Last business day: {format_date(last_business_day)}")
 
-        db_assets = db_service.get_all_assets(session)
+        db_assets = await db_service.get_all_assets(session)
         if not db_assets:
             return FetchMonthResponse(
                 success=False,
@@ -55,7 +55,7 @@ async def process_monthly_prices(year: int, month: int, session: Session) -> Fet
 
         for broker_asset in stocks_assets:
              broker_id = broker_asset.get("id")
-             active_tickers = db_service.get_asset_holdings(session, broker_id)
+             active_tickers = await db_service.get_asset_holdings(session, broker_id)
 
              broker_assets_dict[broker_asset.get("name")] = {
                  "name": broker_asset.get("name"),
@@ -184,7 +184,7 @@ async def process_monthly_prices(year: int, month: int, session: Session) -> Fet
              if asset_id in nav_mapping:
                  val = nav_mapping[asset_id]
 
-                 prev_history_all = db_service.get_history_by_asset(session, asset_id)
+                 prev_history_all = await db_service.get_history_by_asset(session, asset_id)
                  prev_history = [h for h in prev_history_all if h.snapshot_date < date_obj]
 
                  participations = (prev_history[0].participations
@@ -202,7 +202,7 @@ async def process_monthly_prices(year: int, month: int, session: Session) -> Fet
                  is_btc = asset.get("category") == "Crypto" and ("BTC" in str(asset.get("ticker", "")).upper() or "BITCOIN" in str(asset.get("name", "")).upper())
 
                  if is_btc:
-                     btc_holdings = db_service.get_total_btc_holdings(session, asset_id)
+                     btc_holdings = await db_service.get_total_btc_holdings(session, asset_id)
 
                      participations = Decimal(str(round(btc_holdings, 8)))
                      nav_val = Decimal(str(round(float(val) * btc_holdings, 2)))
@@ -226,7 +226,7 @@ async def process_monthly_prices(year: int, month: int, session: Session) -> Fet
                      participations=participations,
                      mean_cost=mean_cost
                  )
-                 db_service.create_history_entry(session, history_entry)
+                 await db_service.create_history_entry(session, history_entry)
                  saved_count += 1
 
         logger.info(f"💾 Saved {saved_count} history entries to database")

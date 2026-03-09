@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:3000,http://frontend:5173"
     
     # Database configuration
-    DATABASE_URL: str = "postgresql://wealthhub:wealthhub_password@localhost:5432/wealthhub"
+    DATABASE_URL: str = "postgresql+asyncpg://wealthhub:wealthhub_password@localhost:5432/wealthhub"
     
     # Price Fetcher Settings
     TIMEOUT: int = 30
