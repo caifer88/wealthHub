@@ -3,7 +3,7 @@ Data models for WealthHub Backend API
 Combined SQLModel (DB + Validation) and Pydantic models
 """
 from sqlmodel import Field, SQLModel
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 from pydantic.alias_generators import to_camel
 from sqlalchemy import Column, Numeric
 from typing import Optional, List, Dict
@@ -125,6 +125,68 @@ class FetchMonthResponse(BaseModel):
     last_business_day: str = Field(alias="lastBusinessDay")  # Date in YYYY-MM-DD format
     prices: List[PriceData]
     errors: List[str] = []
+
+
+class HistoryResponse(BaseModel):
+    """Response model for history entries"""
+    model_config = frontend_config
+
+    id: str
+    asset_id: Optional[str] = None
+    month: str
+    nav: float
+    contribution: float
+    participations: Optional[float] = None
+    liquid_nav_value: Optional[float] = None
+    mean_cost: Optional[float] = None
+
+    @model_validator(mode='before')
+    @classmethod
+    def map_history_entry(cls, data):
+        if not isinstance(data, dict):
+            return {
+                "id": data.id,
+                "asset_id": data.asset_id,
+                "month": data.snapshot_date.strftime("%Y-%m"),
+                "nav": float(data.nav) if data.nav is not None else 0.0,
+                "contribution": float(data.contribution) if data.contribution is not None else 0.0,
+                "participations": float(data.participations) if data.participations is not None else None,
+                "liquid_nav_value": float(data.liquid_nav_value) if data.liquid_nav_value is not None else None,
+                "mean_cost": float(data.mean_cost) if data.mean_cost is not None else None
+            }
+        return data
+
+
+class TransactionResponse(BaseModel):
+    """Response model for transactions"""
+    model_config = frontend_config
+
+    id: str
+    asset_id: Optional[str] = None
+    date: str
+    type: Optional[str] = None
+    ticker: Optional[str] = None
+    quantity: float
+    price_per_unit: float
+    fees: float
+    total_amount: float
+
+    @model_validator(mode='before')
+    @classmethod
+    def map_transaction(cls, data):
+        if not isinstance(data, dict):
+            return {
+                "id": data.id,
+                "asset_id": data.asset_id,
+                "date": data.transaction_date.strftime("%Y-%m-%d"),
+                "type": data.type,
+                "ticker": data.ticker,
+                "quantity": float(data.quantity) if data.quantity is not None else 0.0,
+                "price_per_unit": float(data.price_per_unit) if data.price_per_unit is not None else 0.0,
+                "fees": float(data.fees) if data.fees is not None else 0.0,
+                "total_amount": float(data.total_amount) if data.total_amount is not None else 0.0
+            }
+        return data
 
 
 class HealthResponse(BaseModel):
