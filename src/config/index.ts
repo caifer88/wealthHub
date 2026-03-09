@@ -4,7 +4,7 @@
  */
 
 const getBackendUrl = () => {
-  return import.meta.env.VITE_BACKEND_URL || (typeof window !== 'undefined'
+  return (typeof window !== 'undefined'
     ? `${window.location.protocol}//${window.location.hostname}:8000`
     : 'http://localhost:8000');
 };
