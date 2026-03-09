@@ -20,7 +20,7 @@ from models import (
 )
 from utils import (
     get_last_business_day, validate_month, format_date,
-    format_datetime_iso, merge_price_updates
+    format_datetime_iso
 )
 from services.price_fetcher import PriceFetcher
 from services.fund_scraper import FundScraper
