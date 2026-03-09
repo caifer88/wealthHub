@@ -57,6 +57,7 @@ class Asset(SQLModel, table=True):
     isin: Optional[str] = Field(default=None, max_length=50)
     ticker: Optional[str] = Field(default=None, max_length=50)
     description: Optional[str] = Field(default="")
+    parent_asset_id: Optional[str] = Field(default=None, foreign_key="asset.id")
 
 
 class HistoryEntry(SQLModel, table=True):
