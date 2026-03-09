@@ -86,12 +86,12 @@ Fetch prices for all assets for a given month. Automatically:
   "lastBusinessDay": "2024-02-29",
   "prices": [
     {
-      "assetId": "btc-usd",
-      "assetName": "Bitcoin",
+      "asset_id": "btc-usd",
+      "asset_name": "Bitcoin",
       "ticker": "BTC-EUR",
       "price": 42500.50,
       "currency": "EUR",
-      "fetchedAt": "2024-02-26T18:30:00Z",
+      "fetched_at": "2024-02-26T18:30:00Z",
       "source": "yfinance"
     }
   ],
@@ -114,11 +114,11 @@ POST /update-prices
 Content-Type: application/json
 
 [{
-  "assetId": "asset-1",
-  "assetName": "Asset Name",
+  "asset_id": "asset-1",
+  "asset_name": "Asset Name",
   "price": 1000.50,
   "currency": "EUR",
-  "fetchedAt": "2024-02-26T18:30:00Z",
+  "fetched_at": "2024-02-26T18:30:00Z",
   "source": "manual"
 }]
 ```
@@ -152,7 +152,7 @@ Prices are automatically persisted to Google Apps Script in the `history` array 
 ```json
 {
   "month": "2024-02",
-  "assetId": "asset-id",
+  "asset_id": "asset-id",
   "nav": 42500.50,
   "contribution": 42500.50,
   "source": "yfinance",

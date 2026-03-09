@@ -67,8 +67,8 @@ export const getMonthFromDate = (dateStr: string): string => {
 }
 
 // Obtiene las participaciones actuales (del último mes en el histórico)
-export const getCurrentParticipations = (assetId: string, history: any[]): number => {
-  const assetHistory = history.filter(h => h.assetId === assetId)
+export const getCurrentParticipations = (asset_id: string, history: any[]): number => {
+  const assetHistory = history.filter(h => h.asset_id === asset_id)
   
   if (assetHistory.length === 0) return 0
   
@@ -78,8 +78,8 @@ export const getCurrentParticipations = (assetId: string, history: any[]): numbe
 }
 
 // Calcula el coste medio correcto basado en el último registro del histórico del activo
-export const calculateMeanCost = (assetId: string, history: any[]): number => {
-  const assetHistory = history.filter(h => h.assetId === assetId)
+export const calculateMeanCost = (asset_id: string, history: any[]): number => {
+  const assetHistory = history.filter(h => h.asset_id === asset_id)
   
   if (assetHistory.length === 0) return 0
   
@@ -90,7 +90,7 @@ export const calculateMeanCost = (assetId: string, history: any[]): number => {
 }
 
 // Extrae el total invertido (sumando todas las aportaciones históricas)
-export const calculateTotalInvested = (assetId: string, history: any[]): number => {
-  const assetHistory = history.filter(h => h.assetId === assetId)
+export const calculateTotalInvested = (asset_id: string, history: any[]): number => {
+  const assetHistory = history.filter(h => h.asset_id === asset_id)
   return assetHistory.reduce((sum, h) => sum + (h.contribution || 0), 0)
 }

@@ -52,7 +52,7 @@ services:
     ports:
       - "8787:5173"
     environment:
-      - VITE_BACKEND_URL=http://backend:8000
+      - BACKEND_URL=http://backend:8000
     volumes:
       - ./src:/app/src
       - ./public:/app/public

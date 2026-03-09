@@ -106,7 +106,7 @@ export default function Bitcoin() {
   
   const assetLatestNAV = useMemo(() => {
     if (!btcAsset || !history) return 0
-    const assetHistory = history.filter(h => h.assetId === btcAsset.id)
+    const assetHistory = history.filter(h => h.asset_id === btcAsset.id)
     if (assetHistory.length === 0) return 0
     const sorted = [...assetHistory].sort((a, b) => b.month.localeCompare(a.month))
     return sorted[0].nav || 0

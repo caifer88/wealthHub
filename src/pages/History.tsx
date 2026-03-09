@@ -94,7 +94,7 @@ export default function History() {
         ? {
             id: h.id,
             month: editingEntry.month,
-            assetId: editingEntry.assetId,
+            asset_id: editingEntry.asset_id,
             participations: !isNaN(participations) ? participations : 0,
             liquidNavValue: !isNaN(liquidNavValue) ? liquidNavValue : 0,
             nav: !isNaN(nav) ? nav : 0,
@@ -211,14 +211,14 @@ export default function History() {
           const subEntriesMap: Record<string, Array<{entry: HistoryEntry, asset?: any, displayName: string}>> = {}
 
           monthEntries.forEach(entry => {
-            const asset = assets.find(a => a.id === entry.assetId)
+            const asset = assets.find(a => a.id === entry.asset_id)
             let isSub = false
             let parentId: string | null = null
             let displayName = asset ? asset.name : 'N/A'
 
             // Caso 1: Acciones sueltas reportadas por la sincronización (ej. ticker-AAPL)
-            if (entry.assetId.startsWith('ticker-')) {
-              const ticker = entry.assetId.replace('ticker-', '')
+            if (entry.asset_id.startsWith('ticker-')) {
+              const ticker = entry.asset_id.replace('ticker-', '')
               isSub = true
               displayName = ticker
 
@@ -260,7 +260,7 @@ export default function History() {
           
           const cashAsset = assets.find(a => a.name === 'Cash')
           const monthInvested = groupedEntries
-            .filter(item => !cashAsset || item.entry.assetId !== cashAsset.id)
+            .filter(item => !cashAsset || item.entry.asset_id !== cashAsset.id)
             .reduce((sum, item) => sum + item.entry.contribution, 0)
           
           const isCurrentMonthDisplayed = isCurrentMonth(month)
@@ -291,9 +291,9 @@ export default function History() {
                     </thead>
                     <tbody>
                       {groupedEntries.map(({ entry, asset, displayName }) => {
-                        const subEntries = subEntriesMap[entry.assetId] || []
+                        const subEntries = subEntriesMap[entry.asset_id] || []
                         const hasSubEntries = subEntries.length > 0
-                        const rowId = `${month}-${entry.assetId}`
+                        const rowId = `${month}-${entry.asset_id}`
                         const isExpanded = expandedRows[rowId]
 
                         return (
@@ -418,7 +418,7 @@ export default function History() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-lg">
               <p className="text-sm font-semibold dark:text-white mb-4">
-                {assets.find(a => a.id === editingEntry.assetId)?.name || editingEntry.assetId.replace('ticker-', '')}
+                {assets.find(a => a.id === editingEntry.asset_id)?.name || editingEntry.asset_id.replace('ticker-', '')}
               </p>
               
               <div className="space-y-3">

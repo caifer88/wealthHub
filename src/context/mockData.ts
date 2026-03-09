@@ -61,7 +61,7 @@ export const SAMPLE_DATA = {
     {
       id: 'hist-1',
       month: '2026-03',
-      assetId: 'asset-basalto',
+      asset_id: 'asset-basalto',
       participations: 3786.90437,
       liquidNavValue: 10.02,
       nav: 37931.26,
@@ -71,7 +71,7 @@ export const SAMPLE_DATA = {
     {
       id: 'hist-2',
       month: '2026-03',
-      assetId: 'asset-sp500',
+      asset_id: 'asset-sp500',
       participations: 181.47,
       liquidNavValue: 66.25,
       nav: 12022.38,
@@ -81,7 +81,7 @@ export const SAMPLE_DATA = {
     {
       id: 'hist-3',
       month: '2026-03',
-      assetId: 'asset-numantia',
+      asset_id: 'asset-numantia',
       participations: 603.156901,
       liquidNavValue: 25.97,
       nav: 15647.22,
@@ -91,7 +91,7 @@ export const SAMPLE_DATA = {
     {
       id: 'hist-4',
       month: '2026-03',
-      assetId: 'asset-numantia-pp',
+      asset_id: 'asset-numantia-pp',
       participations: 2056.8217,
       liquidNavValue: 12.99,
       nav: 26718.44,

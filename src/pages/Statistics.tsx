@@ -34,7 +34,7 @@ export default function Statistics() {
 
     // Find Cash asset ID
     const cashAsset = assets.find(a => a.name === 'Cash')
-    const cashAssetId = cashAsset?.id
+    const cashasset_id = cashAsset?.id
 
     // Group history by year
     const byYear: Record<number, Record<string, any[]>> = {}
@@ -44,19 +44,19 @@ export default function Statistics() {
       if (!byYear[year]) {
         byYear[year] = {}
       }
-      if (!byYear[year][entry.assetId]) {
-        byYear[year][entry.assetId] = []
+      if (!byYear[year][entry.asset_id]) {
+        byYear[year][entry.asset_id] = []
       }
-      byYear[year][entry.assetId].push(entry)
+      byYear[year][entry.asset_id].push(entry)
     })
 
     // Create a map of last NAV for each asset per month for reference
     const lastNavByAssetMonth: Record<string, Record<string, number>> = {}
     sortedHistory.forEach(entry => {
-      if (!lastNavByAssetMonth[entry.assetId]) {
-        lastNavByAssetMonth[entry.assetId] = {}
+      if (!lastNavByAssetMonth[entry.asset_id]) {
+        lastNavByAssetMonth[entry.asset_id] = {}
       }
-      lastNavByAssetMonth[entry.assetId][entry.month] = entry.nav
+      lastNavByAssetMonth[entry.asset_id][entry.month] = entry.nav
     })
 
     // Calculate metrics for each year
@@ -75,10 +75,10 @@ export default function Statistics() {
       const investmentByAsset: Record<string, { invested: number; nav: number; navAtStart: number; gainLoss: number; roi: number }> = {}
 
       // Get all assets in this year
-      const allAssetIds = new Set(Object.keys(yearData))
-      allAssetIds.forEach(assetId => {
-        const entries = yearData[assetId] || []
-        const isCash = assetId === cashAssetId
+      const allasset_ids = new Set(Object.keys(yearData))
+      allasset_ids.forEach(asset_id => {
+        const entries = yearData[asset_id] || []
+        const isCash = asset_id === cashasset_id
 
         if (entries.length > 0) {
           // Count months
@@ -98,8 +98,8 @@ export default function Statistics() {
           if (yearIndex > 0) {
             const prevYear = years[yearIndex - 1]
             const prevYearData = byYear[prevYear]
-            if (prevYearData && prevYearData[assetId] && prevYearData[assetId].length > 0) {
-              navStart = prevYearData[assetId][prevYearData[assetId].length - 1].nav
+            if (prevYearData && prevYearData[asset_id] && prevYearData[asset_id].length > 0) {
+              navStart = prevYearData[asset_id][prevYearData[asset_id].length - 1].nav
             }
           }
 
@@ -119,7 +119,7 @@ export default function Statistics() {
             totalGainLoss += assetGainLoss
           }
 
-          investmentByAsset[assetId] = {
+          investmentByAsset[asset_id] = {
             invested: yearInvested,
             nav: navEnd,
             navAtStart: navStart,
@@ -158,12 +158,12 @@ export default function Statistics() {
     const cumulative: Record<string, { total: number; yearStart: number; yearEnd: number }> = {}
 
     yearlyMetrics.forEach(year => {
-      Object.entries(year.investmentByAsset).forEach(([assetId, data]) => {
-        if (!cumulative[assetId]) {
-          cumulative[assetId] = { total: 0, yearStart: year.year, yearEnd: year.year }
+      Object.entries(year.investmentByAsset).forEach(([asset_id, data]) => {
+        if (!cumulative[asset_id]) {
+          cumulative[asset_id] = { total: 0, yearStart: year.year, yearEnd: year.year }
         }
-        cumulative[assetId].total += data.invested
-        cumulative[assetId].yearEnd = year.year
+        cumulative[asset_id].total += data.invested
+        cumulative[asset_id].yearEnd = year.year
       })
     })
 
@@ -277,16 +277,16 @@ export default function Statistics() {
             </thead>
             <tbody>
               {Object.entries(cumulativeInvestment)
-                .filter(([assetId]) => assetId !== assets.find(a => a.name === 'Cash')?.id)
+                .filter(([asset_id]) => asset_id !== assets.find(a => a.name === 'Cash')?.id)
                 .sort(([, a], [, b]) => b.total - a.total)
-                .map(([assetId, data]) => {
-                  const asset = assets.find(a => a.id === assetId)
+                .map(([asset_id, data]) => {
+                  const asset = assets.find(a => a.id === asset_id)
                   const percentage = metrics.totalInv > 0
                     ? (data.total / metrics.totalInv) * 100
                     : 0
 
                   return (
-                    <tr key={assetId} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900">
+                    <tr key={asset_id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900">
                       <td className="py-3 px-4 font-semibold dark:text-white">
                         <div className="flex items-center gap-2">
                           {asset && (
@@ -332,7 +332,7 @@ export default function Statistics() {
               {yearlyMetrics.map(year => {
                 const isExpanded = expandedYears.includes(year.year)
                 const assetCount = Object.keys(year.investmentByAsset).filter(
-                  assetId => assetId !== assets.find(a => a.name === 'Cash')?.id
+                  asset_id => asset_id !== assets.find(a => a.name === 'Cash')?.id
                 ).length
 
                 return (
@@ -367,14 +367,14 @@ export default function Statistics() {
 
                     {/* Expanded Asset Rows */}
                     {isExpanded && Object.entries(year.investmentByAsset)
-                      .filter(([assetId]) => assetId !== assets.find(a => a.name === 'Cash')?.id)
+                      .filter(([asset_id]) => asset_id !== assets.find(a => a.name === 'Cash')?.id)
                       .sort(([, a], [, b]) => b.invested - a.invested)
-                      .map(([assetId, data]) => {
-                        const asset = assets.find(a => a.id === assetId)
+                      .map(([asset_id, data]) => {
+                        const asset = assets.find(a => a.id === asset_id)
 
                         return (
                           <tr 
-                            key={`${year.year}-${assetId}`} 
+                            key={`${year.year}-${asset_id}`} 
                             className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/30 hover:bg-slate-100 dark:hover:bg-slate-800"
                           >
                             <td className="py-3 px-4"></td>

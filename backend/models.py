@@ -104,13 +104,13 @@ class PriceData(BaseModel):
     """Price data for an asset"""
     model_config = frontend_config
 
-    asset_id: str = Field(alias="assetId")
-    asset_name: str = Field(alias="assetName")
+    asset_id: str = Field(alias="asset_id")
+    asset_name: str = Field(alias="asset_name")
     ticker: Optional[str] = None
     isin: Optional[str] = None
     price: Decimal
     currency: str = "EUR"
-    fetched_at: str = Field(alias="fetchedAt")  # ISO format datetime
+    fetched_at: str = Field(alias="fetched_at")  # ISO format datetime
     source: str  # e.g., "yfinance", "morningstar", "ft_markets"
 
 

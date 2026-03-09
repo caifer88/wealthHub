@@ -15,7 +15,7 @@ export interface Asset {
 export interface HistoryEntry {
   id: string;
   month: string;
-  assetId: string;
+  asset_id: string;
   participations: number;  // Number of shares/participations
   liquidNavValue: number;  // Liquid asset value per share
   nav: number;  // Net Asset Value (participations * liquidNavValue)
@@ -60,13 +60,13 @@ export interface Metrics {
 }
 
 export interface PriceData {
-  assetId: string;
-  assetName: string;
+  asset_id: string;
+  asset_name: string;
   ticker?: string;
   isin?: string;
   price: number;
   currency: string;
-  fetchedAt: string;
+  fetched_at: string;
   source: string;
 }
 

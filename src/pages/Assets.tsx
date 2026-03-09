@@ -44,8 +44,8 @@ export default function Assets() {
   }
 
   // Calculate current NAV from latest history entry for each asset
-  const getAssetNAV = (assetId: string): number => {
-    const assetHistory = history.filter(h => h.assetId === assetId)
+  const getAssetNAV = (asset_id: string): number => {
+    const assetHistory = history.filter(h => h.asset_id === asset_id)
     if (assetHistory.length === 0) return 0
     // Get the last entry by date
     const sorted = [...assetHistory].sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())
@@ -53,17 +53,17 @@ export default function Assets() {
   }
 
   // Get NAV from the latest month, fallback to most recent if not available
-  const getAssetNAVFromLatestMonth = (assetId: string): number => {
+  const getAssetNAVFromLatestMonth = (asset_id: string): number => {
     const latestMonth = getLatestMonth()
     if (!latestMonth) return 0
     
-    const entryInLatestMonth = history.find(h => h.assetId === assetId && h.month === latestMonth)
+    const entryInLatestMonth = history.find(h => h.asset_id === asset_id && h.month === latestMonth)
     if (entryInLatestMonth) {
       return entryInLatestMonth.nav || 0
     }
     
     // Fallback to most recent if not in latest month
-    return getAssetNAV(assetId)
+    return getAssetNAV(asset_id)
   }
 
   const getSortedAssets = useCallback((assets: (Asset & { currentNAV: number })[], column: 'name' | 'category' | 'value' | 'percentage', direction: 'asc' | 'desc', totalNav: number) => {
@@ -350,14 +350,14 @@ export default function Assets() {
                     (a.name && a.name.trim().toUpperCase() === searchTicker)
                   )
                   
-                  // BUSCAR PRIMERO EN EL ACTIVO, SI NO, EN EL TICKER VIRTUAL (fakeAssetId)
+                  // BUSCAR PRIMERO EN EL ACTIVO, SI NO, EN EL TICKER VIRTUAL (fakeasset_id)
                   let lastHistory = null
                   if (tickerAsset) {
-                    lastHistory = history.filter(h => h.assetId === tickerAsset.id).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
+                    lastHistory = history.filter(h => h.asset_id === tickerAsset.id).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
                   }
                   if (!lastHistory) {
-                    const fakeAssetId = `ticker-${searchTicker}`
-                    lastHistory = history.filter(h => h.assetId === fakeAssetId).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
+                    const fakeasset_id = `ticker-${searchTicker}`
+                    lastHistory = history.filter(h => h.asset_id === fakeasset_id).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
                   }
                   
                   // --- AQUÍ FALTABA ESTO: CALCULAR EL PRECIO ACTUAL ---

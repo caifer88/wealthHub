@@ -39,7 +39,7 @@ export default function Stocks() {
   // Get the latest NAV for the stocks asset
   const assetLatestNAV = useMemo(() => {
     if (!stocksAsset || !history) return 0
-    const assetHistory = history.filter(h => h.assetId === stocksAsset.id)
+    const assetHistory = history.filter(h => h.asset_id === stocksAsset.id)
     if (assetHistory.length === 0) return 0
     // Sort by month and get the latest
     const sorted = [...assetHistory].sort((a, b) => b.month.localeCompare(a.month))
@@ -76,11 +76,11 @@ export default function Stocks() {
        // BUSCAR HISTORIAL INDIVIDUAL
        let lastHistory = null
        if (tickerAsset) {
-         lastHistory = history.filter(h => h.assetId === tickerAsset.id).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
+         lastHistory = history.filter(h => h.asset_id === tickerAsset.id).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
        }
        if (!lastHistory) {
-         const fakeAssetId = `ticker-${searchTicker}`
-         lastHistory = history.filter(h => h.assetId === fakeAssetId).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
+         const fakeasset_id = `ticker-${searchTicker}`
+         lastHistory = history.filter(h => h.asset_id === fakeasset_id).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
        }
        
        // --- AQUÍ FALTABA ESTO: CALCULAR EL PRECIO ACTUAL ---

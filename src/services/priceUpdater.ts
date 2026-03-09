@@ -3,7 +3,7 @@ import { formatCurrencyDecimals, generateUUID } from '../utils'
 import { config } from '../config'
 
 interface PriceResult {
-  assetId: string
+  asset_id: string
   price: number
   source: string
 }
@@ -53,11 +53,11 @@ export async function fetchAndUpdatePrices(
     }
 
     // Crear mapa de precios
-    const priceMap = new Map(result.prices.map((p: any) => [p.assetId, p]))
+    const priceMap = new Map(result.prices.map((p: any) => [p.asset_id, p]))
 
     // Helper: Obtener el última entrada anterior de un activo
-    const getLastEntry = (assetId: string, beforeMonth?: string) => {
-      let entries = history.filter(h => h.assetId === assetId)
+    const getLastEntry = (asset_id: string, beforeMonth?: string) => {
+      let entries = history.filter(h => h.asset_id === asset_id)
       if (beforeMonth) {
         entries = entries.filter(h => h.month < beforeMonth)
       }
@@ -107,12 +107,12 @@ export async function fetchAndUpdatePrices(
             }
           } else {
             // Si no existe activo, intentar usar el precio del ticker desde priceMap o historial
-            const fakeAssetId = `ticker-${ticker.trim().toUpperCase()}`
-            const fetchedPrice = priceMap.get(fakeAssetId) as any
+            const fakeasset_id = `ticker-${ticker.trim().toUpperCase()}`
+            const fetchedPrice = priceMap.get(fakeasset_id) as any
             if (fetchedPrice && fetchedPrice.price > 0) {
               tickerValue = data.shares * fetchedPrice.price
             } else {
-              const lastHistory = getLastEntry(fakeAssetId, monthStr)
+              const lastHistory = getLastEntry(fakeasset_id, monthStr)
               if (lastHistory && lastHistory.liquidNavValue > 0) {
                 tickerValue = data.shares * lastHistory.liquidNavValue
               } else {
@@ -140,7 +140,7 @@ export async function fetchAndUpdatePrices(
         const price = priceMap.get(asset.id) as any
 
         // Obtener la entrada existente para este mes
-        const existingEntry = history.find(h => h.month === monthStr && h.assetId === asset.id)
+        const existingEntry = history.find(h => h.month === monthStr && h.asset_id === asset.id)
 
         // Obtener la última entrada registrada de meses anteriores (excluyendo el mes actual)
         const lastEntry = getLastEntry(asset.id, monthStr)
@@ -263,7 +263,7 @@ export async function fetchAndUpdatePrices(
         return {
           id: existingEntry?.id || generateUUID(),
           month: monthStr,
-          assetId: asset.id,
+          asset_id: asset.id,
           participations: participations,
           liquidNavValue: liquidNavValue,
           nav: nav,
@@ -273,17 +273,17 @@ export async function fetchAndUpdatePrices(
       })
       
       // 🟢 FIX: Añadir precios de tickers individuales al historial para que la pestaña de Acciones pueda leerlos
-      const tickerPrices = result.prices.filter((p: any) => p.assetId && p.assetId.startsWith('ticker-'))
+      const tickerPrices = result.prices.filter((p: any) => p.asset_id && p.asset_id.startsWith('ticker-'))
       
       for (const p of tickerPrices) {
         if (p.price !== undefined && p.price !== null && !isNaN(p.price) && p.price > 0) {
-          const fakeAssetId = p.assetId
-          const existingEntry = history.find(h => h.month === monthStr && h.assetId === fakeAssetId)
+          const fakeasset_id = p.asset_id
+          const existingEntry = history.find(h => h.month === monthStr && h.asset_id === fakeasset_id)
           
           newHistoryEntries.push({
             id: existingEntry?.id || generateUUID(),
             month: monthStr,
-            assetId: fakeAssetId,
+            asset_id: fakeasset_id,
             participations: 1,
             liquidNavValue: p.price,
             nav: p.price,
@@ -300,10 +300,10 @@ export async function fetchAndUpdatePrices(
     // Update history (merge with existing)
     const updatedHistory = [...history]
     for (const newEntry of newHistoryEntries) {
-      const asset = assets.find(a => a.id === newEntry.assetId)
+      const asset = assets.find(a => a.id === newEntry.asset_id)
 
       const existingIndex = updatedHistory.findIndex(
-        h => h.month === newEntry.month && h.assetId === newEntry.assetId
+        h => h.month === newEntry.month && h.asset_id === newEntry.asset_id
       )
 
       let oldValue = existingIndex >= 0 ? updatedHistory[existingIndex].nav : 0
@@ -318,7 +318,7 @@ export async function fetchAndUpdatePrices(
       // Build detail string for this asset
       if (asset) {
         const identifier = asset.ticker || asset.isin || asset.name
-        const priceData = result.prices.find((p: PriceResult) => p.assetId === newEntry.assetId)
+        const priceData = result.prices.find((p: PriceResult) => p.asset_id === newEntry.asset_id)
         const source = priceData?.source || 'unknown'
         const sourceLabels: Record<string, string> = {
           'yfinance': '📈 Yahoo Finance',

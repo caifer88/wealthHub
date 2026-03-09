@@ -72,6 +72,8 @@ frontend_urls = [
     url.strip() for url in settings.FRONTEND_URL.split(',') if url.strip()
 ]
 
+frontend_urls.append("http://localhost:8787")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=frontend_urls,
@@ -138,7 +140,7 @@ def get_history(session: Session = Depends(get_session)):
     history = db_service.get_all_history(session)
     return [{
         "id": h.id,
-        "assetId": h.asset_id,
+        "asset_id": h.asset_id,
         "month": h.snapshot_date.strftime("%Y-%m"), # Convertimos 2020-01-01 a "2020-01"
         "nav": float(h.nav) if h.nav else 0,
         "contribution": float(h.contribution) if h.contribution else 0,
@@ -179,7 +181,7 @@ def get_transactions(session: Session = Depends(get_session)):
     transactions = db_service.get_all_transactions(session)
     return [{
         "id": t.id,
-        "assetId": t.asset_id,
+        "asset_id": t.asset_id,
         "date": t.transaction_date.strftime("%Y-%m-%d"),
         "type": t.type,
         "ticker": t.ticker,

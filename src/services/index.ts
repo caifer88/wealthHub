@@ -57,7 +57,7 @@ export const exportService = {
         yPos = 20
       }
       // Obtener NAV del mes actual del historial
-      const assetHistory = history.filter(h => h.assetId === asset.id)
+      const assetHistory = history.filter(h => h.asset_id === asset.id)
       const nav = assetHistory.length > 0 
         ? assetHistory[assetHistory.length - 1].nav 
         : 0

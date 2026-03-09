@@ -27,7 +27,6 @@ const sanitizeBitcoinTransactions = (txs: any[]): BitcoinTransaction[] => {
   })
 }
 
-// // @ts-ignore
 export const sanitizeStockTransactions = (txs: any[]): StockTransaction[] => {
   if (!Array.isArray(txs)) return []
   return txs.map((tx: any) => {
@@ -52,7 +51,6 @@ export const sanitizeStockTransactions = (txs: any[]): StockTransaction[] => {
 }
 
 interface WealthContextType {
-  // State
   assets: Asset[]
   history: HistoryEntry[]
   bitcoinTransactions: BitcoinTransaction[]
@@ -60,14 +58,11 @@ interface WealthContextType {
   syncState: SyncState
   darkMode: boolean
   metrics: Metrics | null
-
-  // Actions
   setAssets: (assets: Asset[]) => void
   setHistory: (history: HistoryEntry[]) => void
   setBitcoinTransactions: (txs: BitcoinTransaction[]) => void
   setStockTransactions: (txs: StockTransaction[]) => void
   setDarkMode: (mode: boolean) => void
-
 }
 
 const WealthContext = createContext<WealthContextType | undefined>(undefined)
@@ -84,8 +79,9 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   })
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('wm_theme') === 'dark')
   const [metrics, setMetrics] = useState<Metrics | null>(null)
+  
+  // Referencias para controlar cargas
   const isFirstRender = useRef(true)
-
   const [isDataLoaded, setIsDataLoaded] = useState(false)
 
   // Cargar datos iniciales desde la Base de Datos
@@ -95,7 +91,7 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         const fetchFromDatabase = async () => {
             try {
-                // Hacemos las llamadas a la API de FastAPI
+                // ✅ CORRECCIÓN 1: Traemos summaryRes en el Promise.all
                 const [assetsRes, historyRes, txsRes, summaryRes] = await Promise.all([
                     fetch(`${config.backendUrl}/api/assets`),
                     fetch(`${config.backendUrl}/api/history`),
@@ -103,9 +99,8 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     fetch(`${config.backendUrl}/api/portfolio/summary`)
                 ]);
 
-                // ✅ 1. Comprobamos TODOS los endpoints críticos
                 if (!assetsRes.ok || !historyRes.ok || !txsRes.ok) {
-                    throw new Error("Fallo al conectar con la API principal");
+                    throw new Error("Fallo al conectar con la API");
                 }
 
                 const dbAssets = await assetsRes.json();
@@ -113,37 +108,34 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 const dbTxs = await txsRes.json();
                 const dbSummary = summaryRes.ok ? await summaryRes.json() : null;
 
-                // Aplicamos los datos aunque la base de datos esté vacía
-                setAssets(dbAssets);
-                setHistory(dbHistory);
+                setAssets(dbAssets || []);
+                setHistory(dbHistory || []);
 
-                // Separar transacciones unificadas en Crypto y Acciones
                 const btcTxs: any[] = [];
                 const stockTxs: any[] = [];
 
                 if (Array.isArray(dbTxs)) {
                     dbTxs.forEach((tx: any) => {
-                        // ✅ 2. Evitamos el crash de toLowerCase() si type es null
-                        const txType = (tx.type || 'buy').toLowerCase(); 
-
-                        // Identificamos las de Bitcoin
-                        if (tx.assetId === 'a4' || tx.ticker === 'BTC') {
+                        // ✅ CORRECCIÓN 2: Protegemos contra nulos
+                        const safeType = (tx.type || 'buy').toLowerCase();
+                        
+                        if (tx.asset_id === 'a4' || tx.ticker === 'BTC') {
                             btcTxs.push({
                                 id: tx.id,
                                 date: tx.date,
-                                type: txType,
+                                type: safeType,
                                 amountBTC: tx.quantity,
                                 meanPrice: tx.pricePerUnit,
                                 totalCost: tx.totalAmount,
                                 amount: tx.totalAmount
                             });
                         } else {
-                            const brokerAsset = dbAssets.find((a: any) => a.id === tx.assetId);
+                            const brokerAsset = dbAssets.find((a: any) => a.id === tx.asset_id);
                             stockTxs.push({
                                 id: tx.id,
                                 ticker: tx.ticker,
                                 date: tx.date,
-                                type: txType,
+                                type: safeType,
                                 shares: tx.quantity,
                                 pricePerShare: tx.pricePerUnit,
                                 fees: tx.fees,
@@ -160,60 +152,23 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
                 if (dbSummary) {
                     setMetrics({
-                        totalNAV: dbSummary.total_value,
-                        totalInv: dbSummary.total_invested,
-                        totalProfit: dbSummary.absolute_roi,
-                        roi: dbSummary.percentage_roi,
-                        cash: dbSummary.cash_value
+                        totalNAV: dbSummary.totalValue || 0,
+                        totalInv: dbSummary.totalInvested || 0,
+                        totalProfit: dbSummary.absoluteRoi || 0,
+                        roi: dbSummary.percentageRoi || 0,
+                        cash: dbSummary.cashValue || 0
                     });
                 }
-                
-                setIsDataLoaded(true); // ✅ Avisar que terminó de cargar ok
-                return;
+
+                setIsDataLoaded(true); // ✅ Avisamos que cargó correctamente
                 
             } catch (error) {
                 console.error("Error cargando de BD, usando fallback localStorage:", error);
                 
-                // Fallback a localStorage si el backend falla
                 const localAssets = JSON.parse(localStorage.getItem('wm_assets_v4') || '[]')
                 const localHistory = JSON.parse(localStorage.getItem('wm_history_v4') || '[]')
                 const localBitcoin = JSON.parse(localStorage.getItem('wm_bitcoinTransactions_v4') || '[]')
                 const localStocks = JSON.parse(localStorage.getItem('wm_stockTransactions_v4') || '[]')
-
-                // (Misma función de cálculo que tenías...)
-                const calculateFallbackMetrics = (assets: Asset[], history: HistoryEntry[], stockTxs: StockTransaction[]) => {
-                    const activeAssets = assets.filter(a => !a.archived)
-                    const cashAsset = activeAssets.find(a => a.name === 'Cash')
-                    let cash = 0
-                    if (cashAsset) {
-                        const cashHistory = history.filter(h => h.assetId === cashAsset.id).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())
-                        cash = cashHistory.length > 0 ? cashHistory[0].nav || 0 : 0
-                    }
-
-                    let totalNAV = 0
-                    let totalInvested = 0
-                    let totalProfit = 0
-
-                    activeAssets.forEach(asset => {
-                        if (asset.name === 'Cash') return
-                        const isIBActive = activeAssets.some(a => a.name === 'Interactive Brokers')
-                        const isStockInIB = isIBActive && asset.ticker && stockTxs.some(tx => tx.broker === 'Interactive Brokers' && tx.ticker === asset.ticker)
-                        const isComponent = activeAssets.some(parent => parent.name && asset.name && parent.name.length > asset.name.length && parent.name.includes(asset.name) && parent.id !== asset.id)
-
-                        if (isStockInIB || isComponent) return
-
-                        const assetHistory = history.filter(h => h.assetId === asset.id).sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime())
-                        if (assetHistory.length > 0) {
-                            totalNAV += assetHistory[assetHistory.length - 1].nav
-                            totalInvested += assetHistory.reduce((sum, h) => sum + (h.contribution || 0), 0)
-                        }
-                    })
-
-                    totalProfit = totalNAV - totalInvested
-                    const roi = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0
-
-                    return { totalNAV, totalInv: totalInvested, totalProfit, roi, cash }
-                }
 
                 if (localAssets.length > 0) {
                     setAssets(localAssets)
@@ -221,17 +176,15 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     setBitcoinTransactions(sanitizeBitcoinTransactions(localBitcoin))
                     setStockTransactions(sanitizeStockTransactions(localStocks))
                     setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }))
-                    setMetrics(calculateFallbackMetrics(localAssets, localHistory, sanitizeStockTransactions(localStocks)))
                 } else {
                     setAssets(SAMPLE_DATA.assets)
                     setHistory(SAMPLE_DATA.history)
                     setBitcoinTransactions(SAMPLE_DATA.bitcoinTransactions)
                     setStockTransactions(SAMPLE_DATA.stockTransactions)
                     setSyncState(prev => ({ ...prev, syncError: 'Usando datos de muestra' }))
-                    setMetrics({ totalNAV: 0, totalInv: 0, totalProfit: 0, roi: 0, cash: 0 })
                 }
                 
-                setIsDataLoaded(true); // ✅ Avisar que terminó de cargar ok
+                setIsDataLoaded(true); // ✅ Avisamos que cargó (vía fallback)
             }
         };
 
@@ -239,69 +192,9 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [])
 
-  // Calcular métricas de forma reactiva llamando al backend
-  useEffect(() => {
-    if (isFirstRender.current || assets.length === 0) return
-
-    const calculateFallbackMetrics = (assetsList: Asset[], historyList: HistoryEntry[], stockTxs: StockTransaction[]) => {
-      const activeAssets = assetsList.filter(a => !a.archived)
-      const cashAsset = activeAssets.find(a => a.name === 'Cash')
-      let cash = 0
-      if (cashAsset) {
-        const cashHistory = historyList.filter(h => h.assetId === cashAsset.id).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())
-        cash = cashHistory.length > 0 ? cashHistory[0].nav || 0 : 0
-      }
-
-      let totalNAV = 0
-      let totalInvested = 0
-      let totalProfit = 0
-
-      activeAssets.forEach(asset => {
-        if (asset.name === 'Cash') return
-        const isIBActive = activeAssets.some(a => a.name === 'Interactive Brokers')
-        const isStockInIB = isIBActive && asset.ticker && stockTxs.some(tx => tx.broker === 'Interactive Brokers' && tx.ticker === asset.ticker)
-        const isComponent = activeAssets.some(parent => parent.name && asset.name && parent.name.length > asset.name.length && parent.name.includes(asset.name) && parent.id !== asset.id)
-
-        if (isStockInIB || isComponent) return
-
-        const assetHistory = historyList.filter(h => h.assetId === asset.id).sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime())
-        if (assetHistory.length > 0) {
-            totalNAV += assetHistory[assetHistory.length - 1].nav
-            totalInvested += assetHistory.reduce((sum, h) => sum + (h.contribution || 0), 0)
-        }
-      })
-
-      totalProfit = totalNAV - totalInvested
-      const roi = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0
-
-      return { totalNAV, totalInv: totalInvested, totalProfit, roi, cash }
-    }
-
-    const fetchMetrics = async () => {
-      try {
-        const res = await fetch(`${config.backendUrl}/api/portfolio/summary`)
-        if (res.ok) {
-          const dbSummary = await res.json()
-          setMetrics({
-            totalNAV: dbSummary.total_value,
-            totalInv: dbSummary.total_invested,
-            totalProfit: dbSummary.absolute_roi,
-            roi: dbSummary.percentage_roi,
-            cash: dbSummary.cash_value
-          })
-        } else {
-          setMetrics(calculateFallbackMetrics(assets, history, stockTransactions))
-        }
-      } catch (e) {
-        setMetrics(calculateFallbackMetrics(assets, history, stockTransactions))
-      }
-    }
-    fetchMetrics()
-  }, [assets, history, stockTransactions])
-
   // Guardar en localStorage
   useEffect(() => {
-    // ✅ 3. Solo guardar cuando ya han cargado los datos iniciales
+    // ✅ CORRECCIÓN 3: Evitar borrar el localStorage en el primer render
     if (!isDataLoaded) {
       return
     }
@@ -313,7 +206,7 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     document.documentElement.classList.toggle('dark', darkMode)
     localStorage.setItem('wm_theme', darkMode ? 'dark' : 'light')
-  }, [assets, history, bitcoinTransactions, stockTransactions, darkMode, isDataLoaded]) // <-- Añadir isDataLoaded a dependencias
+  }, [assets, history, bitcoinTransactions, stockTransactions, darkMode, isDataLoaded])
 
   const value: WealthContextType = {
     assets,

@@ -20,7 +20,7 @@ export const useROIMetrics = (assets: Asset[], history: HistoryEntry[]) => {
     const activeAssets = getActiveAssets(assets)
     return activeAssets.map(asset => {
       const assetHistory = history
-        .filter(h => h.assetId === asset.id)
+        .filter(h => h.asset_id === asset.id)
         .sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime())
       
       if (assetHistory.length === 0) {
@@ -51,9 +51,9 @@ export const useCumulativeReturn = (history: HistoryEntry[], assets: Asset[]) =>
       let totalInvested = 0
 
       activeAssets.forEach(asset => {
-        const entry = entries.find(e => e.assetId === asset.id)
+        const entry = entries.find(e => e.asset_id === asset.id)
         if (entry) {
-          const allEntries = history.filter(h => h.assetId === asset.id && h.month <= month)
+          const allEntries = history.filter(h => h.asset_id === asset.id && h.month <= month)
           const navValue = entry.nav
           // Sumamos lo aportado hasta este mes específico
           const invested = allEntries.reduce((sum, h) => sum + (h.contribution || 0), 0)
@@ -84,12 +84,12 @@ export const useEvolutionData = (history: HistoryEntry[], assets: Asset[]) => {
       let monthCumulativeInvested = 0
 
       activeAssets.forEach(asset => {
-        const allEntriesUpToMonth = history.filter(h => h.assetId === asset.id && h.month <= month)
+        const allEntriesUpToMonth = history.filter(h => h.asset_id === asset.id && h.month <= month)
         monthCumulativeInvested += allEntriesUpToMonth.reduce((sum, h) => sum + (h.contribution || 0), 0)
       })
 
       activeAssets.forEach(asset => {
-        const entry = entries.find(e => e.assetId === asset.id)
+        const entry = entries.find(e => e.asset_id === asset.id)
         if (entry) {
           monthData[asset.name] = entry.nav
           totalNav += entry.nav

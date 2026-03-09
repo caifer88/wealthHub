@@ -43,7 +43,7 @@ async def process_monthly_prices(year: int, month: int, session: Session) -> Fet
                 message="No assets available in the database.",
                 year=year,
                 month=month,
-                lastBusinessDay=format_date(last_business_day),
+                last_business_day=format_date(last_business_day), 
                 prices=[],
                 errors=["No assets available"]
             )
@@ -176,7 +176,7 @@ async def process_monthly_prices(year: int, month: int, session: Session) -> Fet
                 message="No prices fetched",
                 year=year,
                 month=month,
-                lastBusinessDay=format_date(last_business_day),
+                last_business_day=format_date(last_business_day),
                 prices=[],
                 errors=errors
             )
@@ -250,7 +250,7 @@ async def process_monthly_prices(year: int, month: int, session: Session) -> Fet
             message=f"Successfully fetched and saved {len(prices)} prices",
             year=year,
             month=month,
-            lastBusinessDay=format_date(last_business_day),
+            last_business_day=format_date(last_business_day),
             prices=prices,
             errors=errors
         )
