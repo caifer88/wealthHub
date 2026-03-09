@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react'
+import React, { useState, useMemo, useCallback, useEffect } from 'react'
 import { Trash2, Plus, Edit3, ArrowUp, ArrowDown } from 'lucide-react'
 import { useWealth } from '../context/WealthContext'
 import { Card } from '../components/ui/Card'
@@ -9,6 +9,18 @@ import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { formatCurrency, formatDate, generateUUID, isCurrentMonth, getMonthFromDate } from '../utils'
 import type { BitcoinTransaction } from '../types'
+import {
+  ResponsiveContainer,
+  ComposedChart,
+  Line,
+  Scatter,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  Legend,
+  ZAxis
+} from 'recharts'
 
 interface FormData {
   date: string
@@ -31,25 +43,74 @@ export default function Bitcoin() {
   const [sortColumn, setSortColumn] = useState<'date' | 'type' | 'amount' | 'cost' | 'meanPrice'>('date')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [formData, setFormData] = useState<FormData>(INITIAL_FORM_DATA)
+  
+  // Estado para el gráfico
+  const [historicalPrices, setHistoricalPrices] = useState<{date: string, price: number}[]>([])
+  const [isLoadingChart, setIsLoadingChart] = useState(false)
 
   const validTransactions = bitcoinTransactions
 
-  // Encontrar el activo de Bitcoin para obtener su NAV del historial
+  // Obtener precios históricos al montar el componente
+  useEffect(() => {
+    const fetchPrices = async () => {
+      try {
+        setIsLoadingChart(true)
+        const res = await fetch('http://localhost:8000/api/bitcoin/historical-prices')
+        if (res.ok) {
+          const data = await res.json()
+          setHistoricalPrices(data)
+        }
+      } catch (error) {
+        console.error('Error fetching historical BTC prices', error)
+      } finally {
+        setIsLoadingChart(false)
+      }
+    }
+    fetchPrices()
+  }, [])
+
+  // Preparar datos fusionados para el ComposedChart (Línea de precio + Puntos de compra)
+  const chartData = useMemo(() => {
+    const data: any[] = []
+    
+    // 1. Añadir el historial de precios
+    historicalPrices.forEach(hp => {
+      data.push({
+        time: new Date(hp.date).getTime(),
+        dateStr: hp.date,
+        price: hp.price,
+      })
+    })
+
+    // 2. Añadir las compras como puntos sueltos
+    validTransactions.filter(tx => tx.type === 'buy').forEach(tx => {
+      if (!tx.date || !tx.amountBTC) return
+      data.push({
+        time: new Date(tx.date).getTime(),
+        dateStr: tx.date,
+        buyPrice: tx.meanPrice,
+        amountBTC: tx.amountBTC,
+        cost: tx.totalCost || tx.amount
+      })
+    })
+
+    // Ordenar cronológicamente todo el conjunto
+    return data.sort((a, b) => a.time - b.time)
+  }, [historicalPrices, validTransactions])
+
+
   const btcAsset = useMemo(() => {
     return assets.find(a => a.name.toLowerCase().includes('bitcoin') || a.category === 'Crypto')
   }, [assets])
   
-  // Obtener el último NAV para el activo de Bitcoin
   const assetLatestNAV = useMemo(() => {
     if (!btcAsset || !history) return 0
     const assetHistory = history.filter(h => h.assetId === btcAsset.id)
     if (assetHistory.length === 0) return 0
-    // Ordenar por mes (descendente) y obtener el último
     const sorted = [...assetHistory].sort((a, b) => b.month.localeCompare(a.month))
     return sorted[0].nav || 0
   }, [btcAsset, history])
   
-  // Portfolio calculations con coste base real
   let currentBtcShares = 0
   let currentBtcCost = 0
   
@@ -74,7 +135,6 @@ export default function Bitcoin() {
     
   const unrealizedGain = currentBTCValue - totalInvested
 
-  // Función para ordenar transacciones
   const getSortedTransactions = useCallback((txs: BitcoinTransaction[], column: 'date' | 'type' | 'amount' | 'cost' | 'meanPrice', direction: 'asc' | 'desc') => {
     const sorted = [...txs]
     const isAsc = direction === 'asc'
@@ -133,13 +193,11 @@ export default function Bitcoin() {
     e.preventDefault()
     if (formData.amountEUR <= 0 || formData.meanPrice <= 0) return
 
-    // Validación: solo permitir editar transacciones del mes actual
     if (editingTransaction && !isCurrentMonth(getMonthFromDate(editingTransaction.date || ''))) {
       alert('No se pueden editar transacciones de meses anteriores')
       return
     }
     
-    // Si no estamos editando, solo permitir crear transacciones del mes actual
     if (!editingTransaction && !isCurrentMonth(getMonthFromDate(formData.date))) {
       alert('Solo se pueden crear transacciones del mes actual')
       return
@@ -156,10 +214,9 @@ export default function Bitcoin() {
     setIsModalOpen(false)
     setEditingTransaction(null)
     setFormData(INITIAL_FORM_DATA)
-  }, [formData, editingTransaction, bitcoinTransactions, createTransaction])
+  }, [formData, editingTransaction, bitcoinTransactions, createTransaction, setBitcoinTransactions])
 
   const handleOpenModal = useCallback((transaction?: BitcoinTransaction) => {
-    // Solo permitir editar transacciones del mes actual
     if (transaction && !isCurrentMonth(getMonthFromDate(transaction.date || ''))) {
       return
     }
@@ -182,7 +239,6 @@ export default function Bitcoin() {
   const handleDelete = useCallback((id: string) => {
     const transaction = bitcoinTransactions.find(t => t.id === id)
     
-    // Solo permitir eliminar transacciones del mes actual
     if (transaction && !isCurrentMonth(getMonthFromDate(transaction.date || ''))) {
       alert('No se pueden eliminar transacciones de meses anteriores')
       return
@@ -248,6 +304,88 @@ export default function Bitcoin() {
           color={unrealizedGain >= 0 ? 'text-emerald-500' : 'text-rose-500'}
         />
       </div>
+
+      {/* Gráfico Temporal */}
+      <Card title="Evolución y Compras (Últimos 5 años)">
+        <div className="h-[400px] w-full mt-4">
+          {isLoadingChart ? (
+            <div className="h-full flex items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+            </div>
+          ) : chartData.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={chartData} margin={{ top: 10, right: 10, bottom: 10, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
+                <XAxis 
+                  dataKey="time" 
+                  type="number" 
+                  scale="time"
+                  domain={['dataMin', 'dataMax']} 
+                  tickFormatter={(tick) => {
+                    return new Date(tick).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
+                  }}
+                  stroke="#888888"
+                  fontSize={12}
+                  tickMargin={10}
+                />
+                <YAxis 
+                  yAxisId="price"
+                  domain={['auto', 'auto']}
+                  tickFormatter={(val) => `€${(val/1000).toFixed(0)}k`}
+                  stroke="#888888"
+                  fontSize={12}
+                  tickMargin={10}
+                />
+                {/* ZAxis controla el tamaño del punto entre el rango mínimo y máximo de área [30, 600] */}
+                <ZAxis dataKey="amountBTC" range={[30, 800]} />
+                
+                <RechartsTooltip 
+                  labelFormatter={(label) => new Date(label).toLocaleDateString()}
+                  formatter={(value: number, name: string, props: any) => {
+                    if (name === 'Precio BTC (€)') return [formatCurrency(value), name]
+                    if (name === 'Compra') {
+                      const p = props.payload
+                      return [
+                        `${formatCurrency(value)} (${p.amountBTC.toFixed(4)} BTC = ${formatCurrency(p.cost)})`, 
+                        name
+                      ]
+                    }
+                    return [value, name]
+                  }}
+                  contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.9)', border: 'none', borderRadius: '8px', color: '#fff' }}
+                  itemStyle={{ color: '#fff' }}
+                />
+                <Legend />
+                
+                <Line 
+                  yAxisId="price"
+                  type="monotone" 
+                  dataKey="price" 
+                  stroke="#f59e0b" 
+                  strokeWidth={2}
+                  dot={false} 
+                  name="Precio BTC (€)" 
+                  connectNulls={true}
+                />
+                <Scatter 
+                  yAxisId="price"
+                  dataKey="buyPrice" 
+                  fill="#10b981" 
+                  name="Compra" 
+                  shape="circle"
+                  fillOpacity={0.8}
+                  stroke="#fff"
+                  strokeWidth={1}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-full flex items-center justify-center text-slate-500">
+              No hay datos históricos disponibles
+            </div>
+          )}
+        </div>
+      </Card>
 
       {/* Tabla de Transacciones */}
       <Card title="Historial de Transacciones">

@@ -6,6 +6,7 @@ Main FastAPI application with endpoints for fetching asset prices and managing d
 import logging
 import asyncio
 from datetime import datetime
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from typing import List, Optional
 from fastapi import FastAPI, Query, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,6 +26,8 @@ from services.price_fetcher import PriceFetcher
 from services.fund_scraper import FundScraper
 from services import db_service
 import db_models
+from cachetools import cached, TTLCache
+import yfinance as yf
 
 # Configure logging
 logging.basicConfig(
@@ -32,6 +35,22 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+scheduler = AsyncIOScheduler()
+
+async def scheduled_update_nav():
+    """Tarea que se ejecutará automáticamente"""
+    logger.info("⏰ Ejecutando cron job diario de actualización de NAV...")
+    now = datetime.now()
+    
+    # Abrimos una sesión de base de datos específica para esta tarea en segundo plano
+    with Session(engine) as session:
+        try:
+            # Reutilizamos la lógica de tu endpoint pasándole el mes y año actual
+            await fetch_month_prices(year=now.year, month=now.month, session=session)
+            logger.info("✅ Cron job de actualización completado con éxito.")
+        except Exception as e:
+            logger.error(f"❌ Error en el cron job de NAV: {e}")
 
 # Create Database engine
 engine = create_engine(settings.DATABASE_URL or "sqlite:///./wealthhub.db", echo=settings.DEBUG)
@@ -64,9 +83,14 @@ app.add_middleware(
 logger.info(f"🔧 CORS configured for: {', '.join(frontend_urls)}")
 
 @app.on_event("startup")
-def on_startup():
+async def on_startup():
     SQLModel.metadata.create_all(engine)
     logger.info("📦 Database tables created or verified")
+    
+    # Programar la actualización para que corra todos los días a las 09:00
+    scheduler.add_job(scheduled_update_nav, 'cron', hour=9, minute=00)
+    scheduler.start()
+    logger.info("🕒 Scheduler iniciado. Actualización de NAV programada a las 9:00 AM.")
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
@@ -352,6 +376,29 @@ if __name__ == "__main__":
         port=8000,
         log_level="info"
     )
+
+# Caché de 24 horas (86400 segundos) para no saturar la API
+@cached(cache=TTLCache(maxsize=1, ttl=86400))
+def fetch_btc_history():
+    ticker = yf.Ticker("BTC-EUR")
+    hist = ticker.history(period="5y", interval="1wk")
+    result = []
+    for index, row in hist.iterrows():
+        if str(row['Close']) != 'nan':
+            result.append({
+                "date": index.strftime("%Y-%m-%d"),
+                "price": round(float(row['Close']), 2)
+            })
+    return result
+
+@app.get("/api/bitcoin/historical-prices")
+def get_bitcoin_historical_prices():
+    """Get historical weekly prices for Bitcoin"""
+    try:
+        return fetch_btc_history()
+    except Exception as e:
+        logger.error(f"Error fetching historical BTC prices: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/fetch-month", response_model=FetchMonthResponse)
 async def fetch_month_prices(

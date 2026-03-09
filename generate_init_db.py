@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS Asset (
     id VARCHAR(50) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     category VARCHAR(50) NOT NULL,
+    currency VARCHAR(10) DEFAULT 'EUR',
     color VARCHAR(20),
     is_archived BOOLEAN DEFAULT false,
     risk_level VARCHAR(50),
@@ -59,10 +60,18 @@ CREATE TABLE IF NOT EXISTS Transaction (
     transaction_date DATE NOT NULL,
     type VARCHAR(20),
     ticker VARCHAR(50),
+    currency VARCHAR(10) DEFAULT 'EUR',
     quantity NUMERIC(18, 8),
     price_per_unit NUMERIC(18, 8),
     fees NUMERIC(10, 4),
     total_amount NUMERIC(15, 4)
+);
+
+CREATE TABLE IF NOT EXISTS exchange_rates (
+    id INTEGER PRIMARY KEY,
+    date DATE NOT NULL,
+    currency_pair VARCHAR(20) NOT NULL,
+    rate NUMERIC(18, 8) DEFAULT 0
 );
 \n""")
 
@@ -71,12 +80,12 @@ CREATE TABLE IF NOT EXISTS Transaction (
             assets = data.get('assets', [])
             for a in assets:
                 vals = [
-                    a.get('id'), a.get('name'), a.get('category'), a.get('color'),
+                    a.get('id'), a.get('name'), a.get('category'), a.get('currency', 'EUR'), a.get('color'),
                     a.get('archived', False), a.get('riskLevel'), a.get('isin'),
                     a.get('ticker'), a.get('description', '')
                 ]
                 val_str = ", ".join(map(format_sql_value, vals))
-                out.write(f"INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ({val_str}) ON CONFLICT (id) DO NOTHING;\n")
+                out.write(f"INSERT INTO Asset (id, name, category, currency, color, is_archived, risk_level, isin, ticker, description) VALUES ({val_str}) ON CONFLICT (id) DO NOTHING;\n")
 
             # --- 3. MIGRAR HISTORIAL ---
             out.write("\n-- 3. INSERCIÓN DE HISTORIAL MENSUAL\n")
@@ -102,21 +111,21 @@ CREATE TABLE IF NOT EXISTS Transaction (
             for tx in btc_txs:
                 vals = [
                     tx.get('id'), 'a4', tx.get('date'), str(tx.get('type', '')).upper(),
-                    'BTC', tx.get('amountBTC'), tx.get('meanPrice'), 0, tx.get('totalCost')
+                    'BTC', tx.get('currency', 'EUR'), tx.get('amountBTC'), tx.get('meanPrice'), 0, tx.get('totalCost')
                 ]
                 val_str = ", ".join(map(format_sql_value, vals))
-                out.write(f"INSERT INTO Transaction (id, asset_id, transaction_date, type, ticker, quantity, price_per_unit, fees, total_amount) VALUES ({val_str}) ON CONFLICT (id) DO NOTHING;\n")
+                out.write(f"INSERT INTO Transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount) VALUES ({val_str}) ON CONFLICT (id) DO NOTHING;\n")
 
             # 4.b Acciones
             stock_txs = data.get('stockTransactions', [])
             for tx in stock_txs:
                 vals = [
                     tx.get('id'), 'a9', tx.get('date'), str(tx.get('type', '')).upper(),
-                    tx.get('ticker'), tx.get('shares'), tx.get('pricePerShare'),
+                    tx.get('ticker'), tx.get('currency', 'EUR'), tx.get('shares'), tx.get('pricePerShare'),
                     tx.get('fees', 0), tx.get('totalAmount')
                 ]
                 val_str = ", ".join(map(format_sql_value, vals))
-                out.write(f"INSERT INTO Transaction (id, asset_id, transaction_date, type, ticker, quantity, price_per_unit, fees, total_amount) VALUES ({val_str}) ON CONFLICT (id) DO NOTHING;\n")
+                out.write(f"INSERT INTO Transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount) VALUES ({val_str}) ON CONFLICT (id) DO NOTHING;\n")
 
             out.write("\nCOMMIT;\n")
             
