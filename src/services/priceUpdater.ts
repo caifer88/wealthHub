@@ -271,6 +271,27 @@ export async function fetchAndUpdatePrices(
           meanCost: meanCost
         }
       })
+      
+      // 🟢 FIX: Añadir precios de tickers individuales al historial para que la pestaña de Acciones pueda leerlos
+      const tickerPrices = result.prices.filter((p: any) => p.assetId && p.assetId.startsWith('ticker-'))
+      
+      for (const p of tickerPrices) {
+        if (p.price !== undefined && p.price !== null && !isNaN(p.price) && p.price > 0) {
+          const fakeAssetId = p.assetId
+          const existingEntry = history.find(h => h.month === monthStr && h.assetId === fakeAssetId)
+          
+          newHistoryEntries.push({
+            id: existingEntry?.id || generateUUID(),
+            month: monthStr,
+            assetId: fakeAssetId,
+            participations: 1,
+            liquidNavValue: p.price,
+            nav: p.price,
+            contribution: 0, // No aplica aportación individual, está agregada en el Broker
+            meanCost: p.price
+          })
+        }
+      }
     
     // Build detailed message with updated assets info
     const successLines: string[] = []
