@@ -2,7 +2,6 @@
 Data models for WealthHub Backend API
 Combined SQLModel (DB + Validation) and Pydantic models
 """
-
 from sqlmodel import Field, SQLModel
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
@@ -10,8 +9,7 @@ from sqlalchemy import Column, Numeric
 from typing import Optional, List, Dict
 from enum import Enum
 from decimal import Decimal
-from datetime import date, datetime
-
+from datetime import date as DateType, datetime
 
 class AssetCategory(str, Enum):
     """Asset category types"""
@@ -68,7 +66,7 @@ class HistoryEntry(SQLModel, table=True):
 
     id: str = Field(primary_key=True, max_length=100)
     asset_id: Optional[str] = Field(default=None, foreign_key="asset.id", max_length=50, index=True)
-    snapshot_date: date = Field(index=True)
+    snapshot_date: DateType = Field(index=True)
     nav: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
     contribution: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
     participations: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
@@ -83,7 +81,7 @@ class Transaction(SQLModel, table=True):
 
     id: str = Field(primary_key=True, max_length=100)
     asset_id: Optional[str] = Field(default=None, foreign_key="asset.id", max_length=50, index=True)
-    transaction_date: date
+    transaction_date: DateType
     type: Optional[str] = Field(default=None)
     ticker: Optional[str] = Field(default=None, max_length=50, index=True)
     currency: Optional[str] = Field(default="EUR", max_length=10)
@@ -97,7 +95,7 @@ class ExchangeRate(SQLModel, table=True):
     __tablename__ = "exchange_rates"
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    date: date = Field(index=True)
+    date: DateType = Field(index=True)
     currency_pair: str = Field(max_length=20, index=True)
     rate: Decimal = Field(default=0, sa_column=Column(Numeric(18, 8)))
 
