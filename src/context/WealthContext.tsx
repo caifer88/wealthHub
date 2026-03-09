@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react'
+import React, { createContext, useContext, useState, useRef, useEffect } from 'react'
 import { Asset, HistoryEntry, BitcoinTransaction, StockTransaction, SyncState, Metrics } from '../types'
 import { generateUUID } from '../utils'
 
@@ -221,8 +221,6 @@ interface WealthContextType {
   setStockTransactions: (txs: StockTransaction[]) => void
   setDarkMode: (mode: boolean) => void
 
-  // Sync
-  downloadBackup: (assets: Asset[], history: HistoryEntry[], bitcoinTxs: BitcoinTransaction[], stockTxs: StockTransaction[]) => void
 }
 
 const WealthContext = createContext<WealthContextType | undefined>(undefined)
@@ -419,32 +417,6 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     })
   }, [assets, history])
 
-  const downloadBackup = useCallback((
-    assetsToBackup: Asset[],
-    historyToBackup: HistoryEntry[],
-    bitcoinTxsToBackup: BitcoinTransaction[],
-    stockTxsToBackup: StockTransaction[]
-  ) => {
-    const backupData = {
-      assets: assetsToBackup,
-      history: historyToBackup,
-      bitcoinTransactions: bitcoinTxsToBackup,
-      stockTransactions: stockTxsToBackup,
-      exportedAt: new Date().toISOString()
-    }
-
-    const dataStr = JSON.stringify(backupData, null, 2)
-    const dataBlob = new Blob([dataStr], { type: 'application/json' })
-    const url = URL.createObjectURL(dataBlob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `wealthhub_backup_${new Date().toISOString().split('T')[0]}.json`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-  }, [])
-
   const value: WealthContextType = {
     assets,
     history,
@@ -457,8 +429,7 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setHistory,
     setBitcoinTransactions,
     setStockTransactions,
-    setDarkMode,
-    downloadBackup
+    setDarkMode
   }
 
   return <WealthContext.Provider value={value}>{children}</WealthContext.Provider>
