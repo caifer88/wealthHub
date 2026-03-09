@@ -3,8 +3,9 @@ Data models for WealthHub Backend API
 Combined SQLModel (DB + Validation) and Pydantic models
 """
 from sqlmodel import Field, SQLModel
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 from pydantic.alias_generators import to_camel
+from typing import Any
 from sqlalchemy import Column, Numeric
 from typing import Optional, List, Dict
 from enum import Enum
@@ -72,6 +73,70 @@ class HistoryEntry(SQLModel, table=True):
     participations: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
     liquid_nav_value: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
     mean_cost: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
+
+
+class HistoryResponseDTO(BaseModel):
+    """Data Transfer Object for returning history entries from the API"""
+    model_config = frontend_config
+
+    id: str
+    asset_id: Optional[str] = Field(default=None, alias="asset_id")
+    month: str
+    nav: float
+    contribution: float
+    participations: Optional[float] = None
+    liquid_nav_value: Optional[float] = Field(default=None, alias="liquidNavValue")
+    mean_cost: Optional[float] = Field(default=None, alias="meanCost")
+
+    @model_validator(mode='before')
+    @classmethod
+    def format_attributes(cls, obj: Any) -> Any:
+        if isinstance(obj, dict):
+            return obj
+
+        return {
+            "id": obj.id,
+            "asset_id": obj.asset_id,
+            "month": obj.snapshot_date.strftime("%Y-%m") if hasattr(obj, "snapshot_date") else getattr(obj, "month", ""),
+            "nav": float(obj.nav) if getattr(obj, "nav", None) is not None else 0.0,
+            "contribution": float(obj.contribution) if getattr(obj, "contribution", None) is not None else 0.0,
+            "participations": float(obj.participations) if getattr(obj, "participations", None) is not None else None,
+            "liquidNavValue": float(obj.liquid_nav_value) if getattr(obj, "liquid_nav_value", None) is not None else None,
+            "meanCost": float(obj.mean_cost) if getattr(obj, "mean_cost", None) is not None else None,
+        }
+
+
+class TransactionResponseDTO(BaseModel):
+    """Data Transfer Object for returning transactions from the API"""
+    model_config = frontend_config
+
+    id: str
+    asset_id: Optional[str] = Field(default=None, alias="asset_id")
+    date: str
+    type: Optional[str] = None
+    ticker: Optional[str] = None
+    quantity: float
+    price_per_unit: float = Field(alias="pricePerUnit")
+    fees: float
+    total_amount: float = Field(alias="totalAmount")
+
+    @model_validator(mode='before')
+    @classmethod
+    def format_attributes(cls, obj: Any) -> Any:
+        if isinstance(obj, dict):
+            return obj
+
+        return {
+            "id": obj.id,
+            "asset_id": obj.asset_id,
+            "date": obj.transaction_date.strftime("%Y-%m-%d") if hasattr(obj, "transaction_date") else getattr(obj, "date", ""),
+            "type": obj.type,
+            "ticker": obj.ticker,
+            "quantity": float(obj.quantity) if getattr(obj, "quantity", None) is not None else 0.0,
+            "pricePerUnit": float(obj.price_per_unit) if getattr(obj, "price_per_unit", None) is not None else 0.0,
+            "fees": float(obj.fees) if getattr(obj, "fees", None) is not None else 0.0,
+            "totalAmount": float(obj.total_amount) if getattr(obj, "total_amount", None) is not None else 0.0,
+        }
 
 
 class Transaction(SQLModel, table=True):
