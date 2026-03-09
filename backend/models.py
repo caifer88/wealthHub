@@ -146,6 +146,7 @@ class PortfolioSummaryResponse(BaseModel):
     total_invested: float
     absolute_roi: float
     percentage_roi: float
+    cash_value: float = 0.0
 
 
 class PortfolioAllocationResponse(BaseModel):
