@@ -8,10 +8,7 @@ from sqlalchemy import func, case
 from typing import List, Optional
 import logging
 
-from db_models import Asset, AssetHistory, Transaction
-from models import Asset as PydanticAsset
-from models import HistoryEntry as PydanticHistoryEntry
-from models import Transaction as PydanticTransaction
+from models import Asset, HistoryEntry as AssetHistory, Transaction
 
 logger = logging.getLogger(__name__)
 
@@ -27,15 +24,14 @@ def get_asset_by_id(session: Session, asset_id: str) -> Optional[Asset]:
     """Retrieve an asset by ID"""
     return session.get(Asset, asset_id)
 
-def create_asset(session: Session, asset_data: PydanticAsset) -> Asset:
+def create_asset(session: Session, asset: Asset) -> Asset:
     """Create a new asset"""
-    asset = Asset(**asset_data.model_dump())
     session.add(asset)
     session.commit()
     session.refresh(asset)
     return asset
 
-def update_asset(session: Session, asset_id: str, asset_data: PydanticAsset) -> Optional[Asset]:
+def update_asset(session: Session, asset_id: str, asset_data: Asset) -> Optional[Asset]:
     """Update an existing asset"""
     asset = session.get(Asset, asset_id)
     if not asset:
@@ -73,15 +69,14 @@ def get_history_by_asset(session: Session, asset_id: str) -> List[AssetHistory]:
     results = session.exec(statement)
     return results.all()
 
-def create_history_entry(session: Session, history_data: PydanticHistoryEntry) -> AssetHistory:
+def create_history_entry(session: Session, entry: AssetHistory) -> AssetHistory:
     """Create a new history entry"""
-    entry = AssetHistory(**history_data.model_dump())
     session.add(entry)
     session.commit()
     session.refresh(entry)
     return entry
 
-def update_history_entry(session: Session, history_id: str, history_data: PydanticHistoryEntry) -> Optional[AssetHistory]:
+def update_history_entry(session: Session, history_id: str, history_data: AssetHistory) -> Optional[AssetHistory]:
     """Update an existing history entry"""
     entry = session.get(AssetHistory, history_id)
     if not entry:
@@ -166,15 +161,14 @@ def get_total_btc_holdings(session: Session, asset_id: str) -> float:
     result = session.exec(statement).first()
     return float(result) if result else 0.0
 
-def create_transaction(session: Session, transaction_data: PydanticTransaction) -> Transaction:
+def create_transaction(session: Session, transaction: Transaction) -> Transaction:
     """Create a new transaction"""
-    transaction = Transaction(**transaction_data.model_dump())
     session.add(transaction)
     session.commit()
     session.refresh(transaction)
     return transaction
 
-def update_transaction(session: Session, transaction_id: str, transaction_data: PydanticTransaction) -> Optional[Transaction]:
+def update_transaction(session: Session, transaction_id: str, transaction_data: Transaction) -> Optional[Transaction]:
     """Update an existing transaction"""
     transaction = session.get(Transaction, transaction_id)
     if not transaction:

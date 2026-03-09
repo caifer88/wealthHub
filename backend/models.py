@@ -1,12 +1,16 @@
 """
 Data models for WealthHub Backend API
+Combined SQLModel (DB + Validation) and Pydantic models
 """
 
-from pydantic import BaseModel, Field
+from sqlmodel import Field, SQLModel
+from pydantic import BaseModel, ConfigDict
+from pydantic.alias_generators import to_camel
+from sqlalchemy import Column, Numeric
 from typing import Optional, List, Dict
 from enum import Enum
 from decimal import Decimal
-from datetime import date
+from datetime import date, datetime
 
 
 class AssetCategory(str, Enum):
@@ -26,163 +30,129 @@ class RiskLevel(str, Enum):
     HIGH = "Alto"
 
 
-class Asset(BaseModel):
+# Base configuration for models to serialize snake_case to camelCase for the frontend
+frontend_config = ConfigDict(
+    alias_generator=to_camel,
+    populate_by_name=True,
+    from_attributes=True
+)
+
+
+class Asset(SQLModel, table=True):
     """Asset model with DB fields"""
-    id: str
-    name: str
-    category: str
-    currency: Optional[str] = "EUR"
-    color: Optional[str] = None
-    is_archived: bool = False
-    risk_level: Optional[str] = None
-    isin: Optional[str] = None  # ISIN for funds and some assets
-    ticker: Optional[str] = None  # Ticker for stocks and crypto
-    description: Optional[str] = ""
-    # Fields that were in previous model but not in DB might be computed
-    # or passed as separate DTO fields if needed.
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "id": "a1",
-                "name": "Basalto USA",
-                "category": "Fund",
-                "currency": "EUR",
-                "color": "#102cb7",
-                "is_archived": False,
-                "risk_level": "Moderado",
-                "isin": "ES0164691083",
-                "ticker": None,
-                "description": ""
-            }
-        }
+    __tablename__ = "asset"
+    model_config = frontend_config
+
+    id: str = Field(primary_key=True, max_length=50)
+    name: str = Field(max_length=255)
+    category: str = Field(max_length=50)
+    currency: Optional[str] = Field(default="EUR", max_length=10)
+    color: Optional[str] = Field(default=None, max_length=20)
+    is_archived: bool = Field(default=False)
+    risk_level: Optional[str] = Field(default=None, max_length=50)
+    isin: Optional[str] = Field(default=None, max_length=50)
+    ticker: Optional[str] = Field(default=None, max_length=50)
+    description: Optional[str] = Field(default="")
 
 
-class HistoryEntry(BaseModel):
-    """History entry model corresponding to Asset_History"""
-    id: str
-    asset_id: Optional[str] = None
-    snapshot_date: date
-    nav: Optional[Decimal] = None
-    contribution: Optional[Decimal] = None
-    participations: Optional[Decimal] = None
-    liquid_nav_value: Optional[Decimal] = None
-    mean_cost: Optional[Decimal] = None
+class HistoryEntry(SQLModel, table=True):
+    """History entry model corresponding to asset_history"""
+    __tablename__ = "asset_history"
+    model_config = frontend_config
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "id": "h-2020-01-a5",
-                "asset_id": "a5",
-                "snapshot_date": "2020-01-01",
-                "nav": 15000.0,
-                "contribution": 0.0,
-                "participations": None,
-                "liquid_nav_value": None,
-                "mean_cost": None
-            }
-        }
+    id: str = Field(primary_key=True, max_length=100)
+    asset_id: Optional[str] = Field(default=None, foreign_key="asset.id", max_length=50, index=True)
+    snapshot_date: date = Field(index=True)
+    nav: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
+    contribution: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
+    participations: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
+    liquid_nav_value: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
+    mean_cost: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
 
 
-class Transaction(BaseModel):
+class Transaction(SQLModel, table=True):
     """Unified transaction model for Crypto and Stocks"""
-    id: str
-    asset_id: Optional[str] = None
-    transaction_date: date
-    type: Optional[str] = None
-    ticker: Optional[str] = None
-    currency: Optional[str] = "EUR"
-    quantity: Optional[Decimal] = None
-    price_per_unit: Optional[Decimal] = None
-    fees: Optional[Decimal] = None
-    total_amount: Optional[Decimal] = None
+    __tablename__ = "transaction"
+    model_config = frontend_config
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "id": "tx-btc-056",
-                "asset_id": "a4",
-                "transaction_date": "2026-02-19",
-                "type": "BUY",
-                "ticker": "BTC",
-                "currency": "EUR",
-                "quantity": 0.00603547,
-                "price_per_unit": 57493.4512,
-                "fees": 0.0,
-                "total_amount": 347.0
-            }
-        }
+    id: str = Field(primary_key=True, max_length=100)
+    asset_id: Optional[str] = Field(default=None, foreign_key="asset.id", max_length=50, index=True)
+    transaction_date: date
+    type: Optional[str] = Field(default=None, max_length=20)
+    ticker: Optional[str] = Field(default=None, max_length=50, index=True)
+    currency: Optional[str] = Field(default="EUR", max_length=10)
+    quantity: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
+    price_per_unit: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
+    fees: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
+    total_amount: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
+
+
+class ExchangeRate(SQLModel, table=True):
+    __tablename__ = "exchange_rates"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    date: date = Field(index=True)
+    currency_pair: str = Field(max_length=20, index=True)
+    rate: Decimal = Field(default=0, sa_column=Column(Numeric(18, 8)))
 
 
 class PriceData(BaseModel):
     """Price data for an asset"""
-    assetId: str
-    assetName: str
+    model_config = frontend_config
+
+    asset_id: str = Field(alias="assetId")
+    asset_name: str = Field(alias="assetName")
     ticker: Optional[str] = None
     isin: Optional[str] = None
     price: Decimal
     currency: str = "EUR"
-    fetchedAt: str  # ISO format datetime
+    fetched_at: str = Field(alias="fetchedAt")  # ISO format datetime
     source: str  # e.g., "yfinance", "morningstar", "ft_markets"
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "assetId": "asset-1",
-                "assetName": "Bitcoin",
-                "ticker": "BTC-EUR",
-                "isin": None,
-                "price": 42500.50,
-                "currency": "EUR",
-                "fetchedAt": "2024-02-26T18:30:00Z",
-                "source": "yfinance"
-            }
-        }
 
 
 class FetchMonthResponse(BaseModel):
     """Response model for /fetch-month endpoint"""
+    model_config = frontend_config
+
     success: bool
     message: str
     year: int
     month: int
-    lastBusinessDay: str  # Date in YYYY-MM-DD format
+    last_business_day: str = Field(alias="lastBusinessDay")  # Date in YYYY-MM-DD format
     prices: List[PriceData]
     errors: List[str] = []
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "success": True,
-                "message": "Precios obtenidos exitosamente",
-                "year": 2024,
-                "month": 2,
-                "lastBusinessDay": "2024-02-29",
-                "prices": [],
-                "errors": []
-            }
-        }
 
 
 class HealthResponse(BaseModel):
     """Health check response"""
+    model_config = frontend_config
+
     status: str
     message: str
     version: str
 
+
 class PortfolioSummaryResponse(BaseModel):
     """Response model for portfolio summary endpoint"""
+    model_config = frontend_config
+
     total_value: float
     total_invested: float
     absolute_roi: float
     percentage_roi: float
 
+
 class PortfolioAllocationResponse(BaseModel):
     """Response model for portfolio allocation endpoint"""
+    model_config = frontend_config
+
     allocations: Dict[str, float]
+
 
 class AssetMetricsResponse(BaseModel):
     """Response model for individual asset metrics endpoint"""
+    model_config = frontend_config
+
     asset_id: str
     total_contributed: float
     current_value: float
