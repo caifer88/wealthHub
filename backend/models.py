@@ -85,8 +85,8 @@ class HistoryResponseDTO(BaseModel):
     nav: float
     contribution: float
     participations: Optional[float] = None
-    liquid_nav_value: Optional[float] = Field(default=None, alias="liquidNavValue")
-    mean_cost: Optional[float] = Field(default=None, alias="meanCost")
+    liquid_nav_value: Optional[float] = None
+    mean_cost: Optional[float] = None
 
     @model_validator(mode='before')
     @classmethod
@@ -101,8 +101,8 @@ class HistoryResponseDTO(BaseModel):
             "nav": float(obj.nav) if getattr(obj, "nav", None) is not None else 0.0,
             "contribution": float(obj.contribution) if getattr(obj, "contribution", None) is not None else 0.0,
             "participations": float(obj.participations) if getattr(obj, "participations", None) is not None else None,
-            "liquidNavValue": float(obj.liquid_nav_value) if getattr(obj, "liquid_nav_value", None) is not None else None,
-            "meanCost": float(obj.mean_cost) if getattr(obj, "mean_cost", None) is not None else None,
+            "liquid_nav_value": float(obj.liquid_nav_value) if getattr(obj, "liquid_nav_value", None) is not None else None,
+            "mean_cost": float(obj.mean_cost) if getattr(obj, "mean_cost", None) is not None else None,
         }
 
 
@@ -116,9 +116,9 @@ class TransactionResponseDTO(BaseModel):
     type: Optional[str] = None
     ticker: Optional[str] = None
     quantity: float
-    price_per_unit: float = Field(alias="pricePerUnit")
+    price_per_unit: float
     fees: float
-    total_amount: float = Field(alias="totalAmount")
+    total_amount: float
 
     @model_validator(mode='before')
     @classmethod
@@ -133,9 +133,9 @@ class TransactionResponseDTO(BaseModel):
             "type": obj.type,
             "ticker": obj.ticker,
             "quantity": float(obj.quantity) if getattr(obj, "quantity", None) is not None else 0.0,
-            "pricePerUnit": float(obj.price_per_unit) if getattr(obj, "price_per_unit", None) is not None else 0.0,
+            "price_per_unit": float(obj.price_per_unit) if getattr(obj, "price_per_unit", None) is not None else 0.0,
             "fees": float(obj.fees) if getattr(obj, "fees", None) is not None else 0.0,
-            "totalAmount": float(obj.total_amount) if getattr(obj, "total_amount", None) is not None else 0.0,
+            "total_amount": float(obj.total_amount) if getattr(obj, "total_amount", None) is not None else 0.0,
         }
 
 
