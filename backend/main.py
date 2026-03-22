@@ -21,10 +21,6 @@ from models import (
     PortfolioAllocationResponse, AssetMetricsResponse,
     HistoryResponseDTO, TransactionResponseDTO
 )
-from utils import (
-    get_last_business_day, validate_month, format_date,
-    format_datetime_iso
-)
 from services.price_fetcher import PriceFetcher
 from services.fund_scraper import FundScraper
 from services import db_service, portfolio_service, metrics_service
