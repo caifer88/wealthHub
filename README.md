@@ -22,9 +22,11 @@ Una aplicación web de gestión y visualización de activos financieros (Fondos,
     - `src/context/`: Gestión de estado de la aplicación.
     - `src/utils/`: Funciones de formateo (DRY formatters).
 - `backend/`: API Backend en FastAPI.
-    - `models.py`: Modelos Pydantic.
-    - `services/gas_service.py`: Lógica de sincronización delegada con Google Apps Script.
-    - `main.py`: Rutas principales de la aplicación.
+    - `models.py`: Modelos Pydantic y definiciones de base de datos SQLModel.
+    - `database.py`: Configuración de base de datos SQLite y dependencias de sesión.
+    - `routes/`: Endpoints modulares de la API agrupados por dominio administrativo.
+    - `services/`: Lógica de negocio (price fetchers, scrappers, histórico).
+    - `main.py`: Punto de entrada unificado para FastAPI.
 
 ## Instalación y Desarrollo
 

@@ -1,5 +1,4 @@
 import yfinance as yf
-import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 from typing import Optional, Dict, List, Tuple

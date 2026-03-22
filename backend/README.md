@@ -16,10 +16,7 @@ FastAPI backend for WealthHub wealth management application. Automates fetching 
 cp .env.example .env
 ```
 
-2. Configure `.env` with your Google Apps Script URL:
-```
-GAS_URL=https://script.google.com/macros/d/<YOUR_DEPLOYMENT_ID>/usercache
-```
+2. The database is automatically configured to use SQLite (`wealthhub.db`). Ensure `DATABASE_URL` is set in your `.env` if you want to use a different database.
 
 3. Install dependencies:
 ```bash
