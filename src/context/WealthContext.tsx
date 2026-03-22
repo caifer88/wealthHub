@@ -119,7 +119,10 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         // ✅ CORRECCIÓN 2: Protegemos contra nulos
                         const safeType = (tx.type || 'buy').toLowerCase();
                         
-                        if (tx.asset_id === 'a4' || tx.ticker === 'BTC') {
+                        const asset = dbAssets.find((a: any) => a.id === tx.asset_id);
+                        const isCrypto = asset?.category?.toUpperCase() === 'CRYPTO' || tx.ticker === 'BTC';
+                        
+                        if (isCrypto) {
                             btcTxs.push({
                                 id: tx.id,
                                 date: tx.date,

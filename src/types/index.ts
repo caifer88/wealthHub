@@ -1,3 +1,11 @@
+export enum AssetCategory {
+  CRYPTO = 'CRYPTO',
+  FUND = 'FUND',
+  STOCK = 'STOCK',
+  PENSION = 'PENSION',
+  CASH = 'CASH'
+}
+
 // Types for WealthHub application
 export interface Asset {
   id: string;
@@ -6,6 +14,7 @@ export interface Asset {
   color: string;
   archived: boolean;
   riskLevel?: string;
+  parent_asset_id?: string;
   isin?: string;  // ISIN for mutual funds
   ticker?: string;  // Ticker for stocks and crypto
   participations: number;  // Number of shares/participations
