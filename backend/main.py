@@ -42,7 +42,7 @@ async def scheduled_update_nav():
     
     async with AsyncSession(engine) as session:
         try:
-            await fetch_month_prices(year=now.year, month=now.month, session=session)
+            await process_monthly_prices(year=now.year, month=now.month, session=session)
             logger.info("✅ NAV update cron job completed successfully.")
         except Exception as e:
             logger.error(f"❌ Error in NAV cron job: {e}")
@@ -205,10 +205,15 @@ async def get_bitcoin_historical_prices(): # <-- Hazla async
         logger.error(f"Error fetching historical BTC prices: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/fetch-month", response_model=FetchMonthResponse)
-async def fetch_month_prices(
-    year: int = Query(..., ge=2020, le=2099, description="Year (e.g., 2024)"),
-    month: int = Query(..., ge=1, le=12, description="Month (1-12)"),
+@app.post("/api/portfolio/sync-month", response_model=FetchMonthResponse)
+async def sync_month_prices(
+    year: int = Query(None, ge=2020, le=2099, description="Year (e.g., 2024)"),
+    month: int = Query(None, ge=1, le=12, description="Month (1-12)"),
     session: AsyncSession = Depends(get_session)
 ):
+    now = datetime.now()
+    if year is None:
+        year = now.year
+    if month is None:
+        month = now.month
     return await process_monthly_prices(year, month, session)
