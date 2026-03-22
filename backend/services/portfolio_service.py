@@ -12,13 +12,8 @@ async def get_portfolio_summary(session: AsyncSession) -> PortfolioSummaryRespon
     total_invested = 0.0
     cash_value = 0.0
 
-    # Pre-fetch all history to avoid N+1 queries
-    all_history = await db_service.get_all_history(session)
-    history_by_asset = {}
-    for h in all_history:
-        if h.asset_id not in history_by_asset:
-            history_by_asset[h.asset_id] = []
-        history_by_asset[h.asset_id].append(h)
+    # Pre-fetch total invested per asset to avoid N+1 queries
+    assets_total_invested = await db_service.get_assets_total_invested(session)
 
     from models import AssetCategory
 
@@ -35,9 +30,11 @@ async def get_portfolio_summary(session: AsyncSession) -> PortfolioSummaryRespon
             if asset.parent_asset_id is not None:
                 continue
 
-            # We calculate total invested as the sum of all historical contributions
-            asset_history_entries = history_by_asset.get(asset.id, [])
-            invested = sum([float(h.contribution) if h.contribution else 0.0 for h in asset_history_entries])
+            # We calculate total invested using transactions. If no transactions exist, fallback to latest contribution.
+            if asset.id in assets_total_invested:
+                invested = assets_total_invested[asset.id]
+            else:
+                invested = float(history.contribution) if history.contribution else 0.0
 
             total_value += nav
             total_invested += invested
