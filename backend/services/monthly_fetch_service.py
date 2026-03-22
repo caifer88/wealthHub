@@ -8,7 +8,7 @@ import uuid
 from fastapi import HTTPException, status
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from models import PriceData, FetchMonthResponse, HistoryEntry
+from models import PriceData, FetchMonthResponse, HistoryEntry, AssetCategory
 from utils import get_last_business_day, validate_month, format_date, format_datetime_iso
 from services.price_fetcher import PriceFetcher
 from services.fund_scraper import FundScraper
@@ -47,11 +47,11 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
         assets = [asset.model_dump() for asset in db_assets]
         active_assets = [a for a in assets if not a.get("is_archived", False)]
 
-        crypto_assets = [a for a in active_assets if a.get("category") == "Crypto" and ("BTC" in str(a.get("ticker", "")).upper() or "BITCOIN" in str(a.get("name", "")).upper())]
-        fund_assets = [a for a in active_assets if a.get("category") == "Fund"]
+        crypto_assets = [a for a in active_assets if a.get("category") == AssetCategory.CRYPTO.value and ("BTC" in str(a.get("ticker", "")).upper() or "BITCOIN" in str(a.get("name", "")).upper())]
+        fund_assets = [a for a in active_assets if a.get("category") == AssetCategory.FUND.value]
 
         broker_assets_dict = {}
-        stocks_assets = [a for a in active_assets if a.get("category") == "Stocks"]
+        stocks_assets = [a for a in active_assets if a.get("category") == AssetCategory.STOCK.value]
 
         for broker_asset in stocks_assets:
              broker_id = broker_asset.get("id")
@@ -207,14 +207,14 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                 participations = prev_participations
                 mean_cost = prev_mean_cost
 
-                is_btc = asset.get("category") == "Crypto" and ("BTC" in str(asset.get("ticker", "")).upper() or "BITCOIN" in str(asset.get("name", "")).upper())
+                is_btc = asset.get("category") == AssetCategory.CRYPTO.value and ("BTC" in str(asset.get("ticker", "")).upper() or "BITCOIN" in str(asset.get("name", "")).upper())
 
                 if is_btc:
                     btc_holdings = await db_service.get_total_btc_holdings(session, asset_id)
                     participations = Decimal(str(round(btc_holdings, 8)))
                     nav_val = Decimal(str(round(float(val) * btc_holdings, 2)))
                     liquid_nav = Decimal(str(val))
-                elif asset.get("category") == "Stocks":
+                elif asset.get("category") == AssetCategory.STOCK.value:
                     nav_val = Decimal(str(val))
                     liquid_nav = Decimal("1.0") if float(val) > 0 else Decimal("0.0")
                 else:
@@ -226,7 +226,7 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                 participations = prev_participations
                 mean_cost = prev_mean_cost
 
-                is_btc = asset.get("category") == "Crypto" and ("BTC" in str(asset.get("ticker", "")).upper() or "BITCOIN" in str(asset.get("name", "")).upper())
+                is_btc = asset.get("category") == AssetCategory.CRYPTO.value and ("BTC" in str(asset.get("ticker", "")).upper() or "BITCOIN" in str(asset.get("name", "")).upper())
 
                 if is_btc:
                     btc_holdings = await db_service.get_total_btc_holdings(session, asset_id)
@@ -239,7 +239,7 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                     else:
                         nav_val = Decimal("0.0")
                         liquid_nav = Decimal("0.0")
-                elif asset.get("category") == "Stocks":
+                elif asset.get("category") == AssetCategory.STOCK.value:
                     # For stocks that were not fetched (maybe fetch failed or API error),
                     # we should calculate the value based on currently open holdings
                     # multiplied by their last known individual prices.

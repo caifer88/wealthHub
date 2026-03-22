@@ -41,15 +41,15 @@ CREATE TABLE IF NOT EXISTS Transaction (
 );
 
 -- 2. INSERCIÓN DE ACTIVOS
-INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a1', 'Basalto USA ', 'Fund', '#102cb7', false, 'Moderado', 'ES0164691083', NULL, NULL) ON CONFLICT (id) DO NOTHING;
-INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a2', 'Numantia Pensiones PP', 'Fund', '#e8f075', false, 'Moderado', '0P0001NBRZ', NULL, NULL) ON CONFLICT (id) DO NOTHING;
-INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a3', 'Vanguard SP500 Stock index', 'Fund', '#f26464', false, 'Moderado', 'IE0032126645', NULL, NULL) ON CONFLICT (id) DO NOTHING;
-INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a4', 'Bitcoin', 'Crypto', '#f59e0b', false, 'Medio', NULL, 'BTC-EUR', NULL) ON CONFLICT (id) DO NOTHING;
-INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a5', 'Cash', 'Cash', '#33a340', false, 'Moderado', NULL, NULL, NULL) ON CONFLICT (id) DO NOTHING;
-INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a6', 'Founds old', 'Funds', '#fca5a5', true, 'Medio', NULL, NULL, NULL) ON CONFLICT (id) DO NOTHING;
-INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a7', 'Broker DeGiro', 'Stocks', '#60a5fa', true, 'Medio', NULL, NULL, NULL) ON CONFLICT (id) DO NOTHING;
-INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a8', 'Numantia Patrimonio', 'Fund', '#b2b512', false, 'Moderado', 'ES0173311103', NULL, NULL) ON CONFLICT (id) DO NOTHING;
-INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a9', 'Interactive Brokers', 'Stocks', '#3b82f6', false, 'Medio', NULL, NULL, 'Cartera de acciones individuales') ON CONFLICT (id) DO NOTHING;
+INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a1', 'Basalto USA ', 'FUND', '#102cb7', false, 'Moderado', 'ES0164691083', NULL, NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a2', 'Numantia Pensiones PP', 'PENSION', '#e8f075', false, 'Moderado', '0P0001NBRZ', NULL, NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a3', 'Vanguard SP500 Stock index', 'FUND', '#f26464', false, 'Moderado', 'IE0032126645', NULL, NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a4', 'Bitcoin', 'CRYPTO', '#f59e0b', false, 'Medio', NULL, 'BTC-EUR', NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a5', 'Cash', 'CASH', '#33a340', false, 'Moderado', NULL, NULL, NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a6', 'Founds old', 'FUND', '#fca5a5', true, 'Medio', NULL, NULL, NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a7', 'Broker DeGiro', 'STOCK', '#60a5fa', true, 'Medio', NULL, NULL, NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a8', 'Numantia Patrimonio', 'FUND', '#b2b512', false, 'Moderado', 'ES0173311103', NULL, NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a9', 'Interactive Brokers', 'STOCK', '#3b82f6', false, 'Medio', NULL, NULL, 'Cartera de acciones individuales') ON CONFLICT (id) DO NOTHING;
 -- 3. INSERCIÓN DE HISTORIAL MENSUAL
 INSERT INTO Asset_History (id, asset_id, snapshot_date, nav, contribution, participations, liquid_nav_value, mean_cost) VALUES ('h-2020-01-a5', 'a5', '2020-01-01', 15000, 0, NULL, NULL, NULL) ON CONFLICT (id) DO NOTHING;
 INSERT INTO Asset_History (id, asset_id, snapshot_date, nav, contribution, participations, liquid_nav_value, mean_cost) VALUES ('h-2020-01-a6', 'a6', '2020-01-01', 0, 0, NULL, NULL, NULL) ON CONFLICT (id) DO NOTHING;

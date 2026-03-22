@@ -14,12 +14,12 @@ from datetime import date as DateType, datetime
 
 class AssetCategory(str, Enum):
     """Asset category types"""
-    CRYPTO = "Crypto"
-    FUND = "Fund"
-    STOCK = "Stock"
-    PENSION = "Pension Plan"
-    CASH = "Cash"
-    OTHER = "Other"
+    CRYPTO = "CRYPTO"
+    FUND = "FUND"
+    STOCK = "STOCK"
+    PENSION = "PENSION"
+    CASH = "CASH"
+    OTHER = "OTHER"
 
 
 class RiskLevel(str, Enum):
@@ -99,11 +99,11 @@ class HistoryResponseDTO(BaseModel):
             "id": obj.id,
             "asset_id": obj.asset_id,
             "month": obj.snapshot_date.strftime("%Y-%m") if hasattr(obj, "snapshot_date") else getattr(obj, "month", ""),
-            "nav": float(obj.nav) if getattr(obj, "nav", None) is not None else 0.0,
-            "contribution": float(obj.contribution) if getattr(obj, "contribution", None) is not None else 0.0,
-            "participations": float(obj.participations) if getattr(obj, "participations", None) is not None else None,
-            "liquid_nav_value": float(obj.liquid_nav_value) if getattr(obj, "liquid_nav_value", None) is not None else None,
-            "mean_cost": float(obj.mean_cost) if getattr(obj, "mean_cost", None) is not None else None,
+            "nav": str(obj.nav) if getattr(obj, "nav", None) is not None else "0.0",
+            "contribution": str(obj.contribution) if getattr(obj, "contribution", None) is not None else "0.0",
+            "participations": str(obj.participations) if getattr(obj, "participations", None) is not None else None,
+            "liquid_nav_value": str(obj.liquid_nav_value) if getattr(obj, "liquid_nav_value", None) is not None else None,
+            "mean_cost": str(obj.mean_cost) if getattr(obj, "mean_cost", None) is not None else None,
         }
 
 
@@ -133,10 +133,10 @@ class TransactionResponseDTO(BaseModel):
             "date": obj.transaction_date.strftime("%Y-%m-%d") if hasattr(obj, "transaction_date") else getattr(obj, "date", ""),
             "type": obj.type,
             "ticker": obj.ticker,
-            "quantity": float(obj.quantity) if getattr(obj, "quantity", None) is not None else 0.0,
-            "price_per_unit": float(obj.price_per_unit) if getattr(obj, "price_per_unit", None) is not None else 0.0,
-            "fees": float(obj.fees) if getattr(obj, "fees", None) is not None else 0.0,
-            "total_amount": float(obj.total_amount) if getattr(obj, "total_amount", None) is not None else 0.0,
+            "quantity": str(obj.quantity) if getattr(obj, "quantity", None) is not None else "0.0",
+            "price_per_unit": str(obj.price_per_unit) if getattr(obj, "price_per_unit", None) is not None else "0.0",
+            "fees": str(obj.fees) if getattr(obj, "fees", None) is not None else "0.0",
+            "total_amount": str(obj.total_amount) if getattr(obj, "total_amount", None) is not None else "0.0",
         }
 
 
