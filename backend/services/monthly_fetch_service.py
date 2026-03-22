@@ -180,54 +180,166 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
         date_obj = datetime.strptime(month_str, "%Y-%m-%d").date()
 
         for asset in active_assets:
-             asset_id = asset["id"]
-             if asset_id in nav_mapping:
-                 val = nav_mapping[asset_id]
+            asset_id = asset["id"]
 
-                 prev_history_all = await db_service.get_history_by_asset(session, asset_id)
-                 prev_history = [h for h in prev_history_all if h.snapshot_date < date_obj]
+            # Retrieve previous history to fallback or compute values
+            prev_history_all = await db_service.get_history_by_asset(session, asset_id)
+            prev_history = [h for h in prev_history_all if h.snapshot_date < date_obj]
 
-                 participations = (prev_history[0].participations
-                                if prev_history and prev_history[0].participations is not None
-                                else Decimal("0.0"))
+            # Default previous values
+            prev_participations = Decimal("0.0")
+            prev_mean_cost = Decimal("0.0")
+            prev_nav = Decimal("0.0")
+            prev_liquid_nav = Decimal("0.0")
 
-                 contribution = (prev_history[0].contribution
-                                if prev_history and prev_history[0].contribution is not None
-                                else Decimal("0.0"))
+            if prev_history:
+                prev_entry = prev_history[0]
+                prev_participations = prev_entry.participations if prev_entry.participations is not None else Decimal("0.0")
+                prev_mean_cost = prev_entry.mean_cost if prev_entry.mean_cost is not None else Decimal("0.0")
+                prev_nav = prev_entry.nav if prev_entry.nav is not None else Decimal("0.0")
+                prev_liquid_nav = prev_entry.liquid_nav_value if prev_entry.liquid_nav_value is not None else Decimal("0.0")
 
-                 mean_cost = (prev_history[0].mean_cost
-                            if prev_history and prev_history[0].mean_cost is not None
-                            else Decimal("0.0"))
+            # Contributions are always 0 for a new month generated automatically
+            contribution = Decimal("0.0")
 
-                 is_btc = asset.get("category") == "Crypto" and ("BTC" in str(asset.get("ticker", "")).upper() or "BITCOIN" in str(asset.get("name", "")).upper())
+            if asset_id in nav_mapping:
+                val = nav_mapping[asset_id]
+                participations = prev_participations
+                mean_cost = prev_mean_cost
 
-                 if is_btc:
-                     btc_holdings = await db_service.get_total_btc_holdings(session, asset_id)
+                is_btc = asset.get("category") == "Crypto" and ("BTC" in str(asset.get("ticker", "")).upper() or "BITCOIN" in str(asset.get("name", "")).upper())
 
-                     participations = Decimal(str(round(btc_holdings, 8)))
-                     nav_val = Decimal(str(round(float(val) * btc_holdings, 2)))
-                     liquid_nav = Decimal(str(val))
+                if is_btc:
+                    btc_holdings = await db_service.get_total_btc_holdings(session, asset_id)
+                    participations = Decimal(str(round(btc_holdings, 8)))
+                    nav_val = Decimal(str(round(float(val) * btc_holdings, 2)))
+                    liquid_nav = Decimal(str(val))
+                elif asset.get("category") == "Stocks":
+                    nav_val = Decimal(str(val))
+                    liquid_nav = Decimal("1.0") if float(val) > 0 else Decimal("0.0")
+                else:
+                    nav_val = Decimal(str(round(float(val) * float(participations), 2)))
+                    liquid_nav = Decimal(str(val))
 
-                 elif asset.get("category") == "Stocks":
-                     nav_val = Decimal(str(val))
-                     liquid_nav = Decimal("1.0") if float(val) > 0 else Decimal("0.0")
+            else:
+                # Fallback for missing assets, like "Cash" or failed fetches
+                participations = prev_participations
+                mean_cost = prev_mean_cost
 
-                 else:
-                     nav_val = Decimal(str(round(float(val) * float(participations), 2)))
-                     liquid_nav = Decimal(str(val))
+                is_btc = asset.get("category") == "Crypto" and ("BTC" in str(asset.get("ticker", "")).upper() or "BITCOIN" in str(asset.get("name", "")).upper())
 
-                 history_entry = HistoryEntry(
-                     id=str(uuid.uuid4()),
-                     asset_id=asset_id,
-                     snapshot_date=date_obj,
-                     liquid_nav_value=liquid_nav,
-                     nav=nav_val,
-                     contribution=contribution,
-                     participations=participations,
-                     mean_cost=mean_cost
-                 )
-                 await db_service.create_history_entry(session, history_entry)
-                 saved_count += 1
+                if is_btc:
+                    btc_holdings = await db_service.get_total_btc_holdings(session, asset_id)
+                    participations = Decimal(str(round(btc_holdings, 8)))
+
+                    if prev_participations > 0 and prev_liquid_nav > 0:
+                        val = prev_liquid_nav
+                        nav_val = Decimal(str(round(float(val) * float(participations), 2)))
+                        liquid_nav = val
+                    else:
+                        nav_val = Decimal("0.0")
+                        liquid_nav = Decimal("0.0")
+                elif asset.get("category") == "Stocks":
+                    # For stocks that were not fetched (maybe fetch failed or API error),
+                    # we should calculate the value based on currently open holdings
+                    # multiplied by their last known individual prices.
+                    active_tickers = await db_service.get_asset_holdings(session, asset_id)
+                    total_broker_value = 0.0
+
+                    for ticker, shares in active_tickers.items():
+                        if shares > 0:
+                            ticker_asset_id = f"ticker-{ticker}"
+                            ticker_val = 0.0
+
+                            # First check if we managed to fetch THIS specific ticker's price
+                            if ticker_asset_id in nav_mapping:
+                                ticker_val = float(nav_mapping[ticker_asset_id])
+                            else:
+                                # Look up the last known price for this ticker
+                                ticker_prev_history = await db_service.get_history_by_asset(session, ticker_asset_id)
+                                valid_prev = [h for h in ticker_prev_history if h.snapshot_date < date_obj]
+                                if valid_prev and valid_prev[0].liquid_nav_value is not None and valid_prev[0].liquid_nav_value > 0:
+                                    ticker_val = float(valid_prev[0].liquid_nav_value)
+                                elif valid_prev and valid_prev[0].mean_cost is not None and valid_prev[0].mean_cost > 0:
+                                    ticker_val = float(valid_prev[0].mean_cost)
+
+                            total_broker_value += ticker_val * shares
+
+                    if active_tickers:
+                        nav_val = Decimal(str(round(total_broker_value, 2)))
+                        liquid_nav = Decimal("1.0") if total_broker_value > 0 else Decimal("0.0")
+                    else:
+                        nav_val = prev_nav
+                        liquid_nav = prev_liquid_nav
+                else:
+                    # For standard funds, cash, or missing fetches
+                    nav_val = prev_nav
+                    liquid_nav = prev_liquid_nav
+
+            # Ensure we don't save duplicates if we're re-running the same month
+            existing_entries = [h for h in prev_history_all if h.snapshot_date == date_obj]
+            if existing_entries:
+                history_entry = existing_entries[0]
+                history_entry.liquid_nav_value = liquid_nav
+                history_entry.nav = nav_val
+                history_entry.contribution = contribution
+                history_entry.participations = participations
+                history_entry.mean_cost = mean_cost
+                await db_service.update_history_entry(session, history_entry.id, history_entry)
+            else:
+                history_entry = HistoryEntry(
+                    id=str(uuid.uuid4()),
+                    asset_id=asset_id,
+                    snapshot_date=date_obj,
+                    liquid_nav_value=liquid_nav,
+                    nav=nav_val,
+                    contribution=contribution,
+                    participations=participations,
+                    mean_cost=mean_cost
+                )
+                await db_service.create_history_entry(session, history_entry)
+            saved_count += 1
+
+        # Also, create entries for the individual stock tickers under broker assets
+        # that were fetched and placed in nav_mapping.
+        # Note: They have asset_id like "ticker-AAPL" in nav_mapping but they might not be in active_assets.
+        for asset_id, val in nav_mapping.items():
+            if asset_id.startswith("ticker-"):
+                prev_history_all = await db_service.get_history_by_asset(session, asset_id)
+                prev_history = [h for h in prev_history_all if h.snapshot_date < date_obj]
+
+                prev_mean_cost = Decimal("0.0")
+                if prev_history and prev_history[0].mean_cost is not None:
+                    prev_mean_cost = prev_history[0].mean_cost
+
+                nav_val = Decimal(str(val))
+                liquid_nav = Decimal(str(val))
+                participations = Decimal("1.0")
+                contribution = Decimal("0.0")
+                mean_cost = prev_mean_cost
+
+                existing_entries = [h for h in prev_history_all if h.snapshot_date == date_obj]
+                if existing_entries:
+                    history_entry = existing_entries[0]
+                    history_entry.liquid_nav_value = liquid_nav
+                    history_entry.nav = nav_val
+                    history_entry.contribution = contribution
+                    history_entry.participations = participations
+                    history_entry.mean_cost = mean_cost
+                    await db_service.update_history_entry(session, history_entry.id, history_entry)
+                else:
+                    history_entry = HistoryEntry(
+                        id=str(uuid.uuid4()),
+                        asset_id=asset_id,
+                        snapshot_date=date_obj,
+                        liquid_nav_value=liquid_nav,
+                        nav=nav_val,
+                        contribution=contribution,
+                        participations=participations,
+                        mean_cost=mean_cost
+                    )
+                    await db_service.create_history_entry(session, history_entry)
+                saved_count += 1
 
         logger.info(f"💾 Saved {saved_count} history entries to database")
 
