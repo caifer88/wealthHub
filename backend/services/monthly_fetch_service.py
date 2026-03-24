@@ -145,13 +145,13 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
             type_ = result[0]
             if type_ == "btc":
                 _, asset, btc_data = result
-                if btc_data:
+                if btc_data and float(btc_data.price) > 0:
                     prices.append(btc_data)
                     nav_mapping[btc_data.asset_id] = btc_data.price
                 else: errors.append("Failed to fetch Bitcoin price")
             elif type_ == "fund":
                 _, fund, price_data = result
-                if price_data:
+                if price_data and float(price_data.price) > 0:
                     prices.append(price_data)
                     nav_mapping[price_data.asset_id] = price_data.price
                 else: errors.append(f"Failed to fetch price for {fund.get('name')}")

@@ -141,40 +141,20 @@ async def get_total_btc_holdings(session: AsyncSession, asset_id: str) -> float:
     return float(result) if result else 0.0
 
 
-async def get_assets_total_invested(session: AsyncSession) -> dict:
+async def get_all_assets_total_contributions(session: AsyncSession) -> dict:
     statement = select(
-        Transaction.asset_id,
-        func.sum(
-            case(
-                (Transaction.type == TransactionType.BUY, Transaction.total_amount),
-                (Transaction.type == TransactionType.SELL, -Transaction.total_amount),
-                else_=0
-            )
-        ).label('total_invested')
-    ).group_by(Transaction.asset_id)
+        AssetHistory.asset_id,
+        func.sum(AssetHistory.contribution).label('total_contributed')
+    ).group_by(AssetHistory.asset_id)
 
     results = (await session.exec(statement)).all()
-    return {asset_id: float(invested) if invested is not None else 0.0 for asset_id, invested in results}
+    return {asset_id: float(contributed) if contributed is not None else 0.0 for asset_id, contributed in results}
 
-async def get_asset_total_invested(session: AsyncSession, asset_id: str) -> Optional[float]:
-    # First, check if there are ANY transactions for this asset to distinguish "0 invested" from "no transactions at all"
-    count_statement = select(func.count(Transaction.id)).where(Transaction.asset_id == asset_id)
-    count = (await session.exec(count_statement)).first()
-    if count == 0:
-        return None
-
-    statement = select(
-        func.sum(
-            case(
-                (Transaction.type == TransactionType.BUY, Transaction.total_amount),
-                (Transaction.type == TransactionType.SELL, -Transaction.total_amount),
-                else_=0
-            )
-        )
-    ).where(Transaction.asset_id == asset_id)
-
+async def get_asset_total_contributed(session: AsyncSession, asset_id: str) -> float:
+    statement = select(func.sum(AssetHistory.contribution)).where(AssetHistory.asset_id == asset_id)
     result = (await session.exec(statement)).first()
     return float(result) if result is not None else 0.0
+
 
 async def create_transaction(session: AsyncSession, transaction: Transaction) -> Transaction:
     session.add(transaction)

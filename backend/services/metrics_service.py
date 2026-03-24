@@ -27,17 +27,10 @@ async def get_asset_metrics(asset_id: str, session: AsyncSession) -> AssetMetric
 
     current_value = float(latest.nav) if latest.nav else 0.0
 
-    # We calculate total invested using transactions. If no transactions exist, fallback to historical data.
-    asset_total_invested = await db_service.get_asset_total_invested(session, asset_id)
-    if asset_total_invested is not None:
-        total_contributed = asset_total_invested
-    else:
-        mean_cost = float(latest.mean_cost) if latest.mean_cost else 0.0
-        participations = float(latest.participations) if latest.participations else 0.0
-        if participations > 0 and mean_cost > 0:
-            total_contributed = mean_cost * participations
-        else:
-            total_contributed = float(latest.contribution) if latest.contribution else 0.0
+    # Calculate total invested using the sum of all historical contributions!
+    total_contributed_db = await db_service.get_asset_total_contributed(session, asset_id)
+    total_contributed = total_contributed_db if total_contributed_db is not None else 0.0
+
 
     absolute_return = current_value - total_contributed
     percentage_return = (absolute_return / total_contributed * 100) if total_contributed > 0 else 0.0

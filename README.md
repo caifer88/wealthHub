@@ -58,7 +58,7 @@ npm run dev # o bun run dev
 Ejecuta los siguientes comandos para levantar tanto el frontend como el backend:
 
 \`\`\`bash
-docker-compose up -d --build
+docker compose up -d --build
 \`\`\`
 
 Esto expondrá la aplicación Frontend en el puerto definido y el Backend localmente para que la app se conecte.

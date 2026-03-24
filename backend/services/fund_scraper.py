@@ -189,6 +189,10 @@ class FundScraper:
                 
             price_value = float(price_clean)
             
+            if price_value <= 0:
+                logger.warning(f"⚠️ Scraped price for {isin} is <= 0 ({price_value}). Ignoring it to prevent zeroing NAV")
+                return None
+            
             return PriceData(
                 asset_id=asset_id,
                 asset_name=name,

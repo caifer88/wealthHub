@@ -12,8 +12,8 @@ async def get_portfolio_summary(session: AsyncSession) -> PortfolioSummaryRespon
     total_invested = 0.0
     cash_value = 0.0
 
-    # Pre-fetch total invested per asset to avoid N+1 queries
-    assets_total_invested = await db_service.get_assets_total_invested(session)
+    # Pre-fetch total invested per asset leveraging history contributions
+    assets_total_invested = await db_service.get_all_assets_total_contributions(session)
 
     from models import AssetCategory
 
@@ -26,15 +26,10 @@ async def get_portfolio_summary(session: AsyncSession) -> PortfolioSummaryRespon
                 cash_value += nav
                 continue
 
-            # Check if it's a sub-component (i.e. has a parent_asset_id)
-            if asset.parent_asset_id is not None:
-                continue
-
-            # We calculate total invested using transactions. If no transactions exist, fallback to latest contribution.
             if asset.id in assets_total_invested:
                 invested = assets_total_invested[asset.id]
             else:
-                invested = float(history.contribution) if history.contribution else 0.0
+                invested = 0.0
 
             total_value += nav
             total_invested += invested
