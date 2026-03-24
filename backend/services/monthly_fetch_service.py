@@ -184,20 +184,34 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
 
             # Retrieve previous history to fallback or compute values
             prev_history_all = await db_service.get_history_by_asset(session, asset_id)
+            
+            existing_entries = [h for h in prev_history_all if h.snapshot_date == date_obj]
+            current_entry = existing_entries[0] if existing_entries else None
+            
             prev_history = [h for h in prev_history_all if h.snapshot_date < date_obj]
+            prev_entry = prev_history[0] if prev_history else None
 
-            # Default previous values
-            prev_participations = Decimal("0.0")
-            prev_mean_cost = Decimal("0.0")
-            prev_nav = Decimal("0.0")
-            prev_liquid_nav = Decimal("0.0")
+            # Base values prioritizing current entry if existent, else strictly previous month
+            base_participations = Decimal("0.0")
+            base_mean_cost = Decimal("0.0")
+            base_nav = Decimal("0.0")
+            base_liquid_nav = Decimal("0.0")
 
-            if prev_history:
-                prev_entry = prev_history[0]
-                prev_participations = prev_entry.participations if prev_entry.participations is not None else Decimal("0.0")
-                prev_mean_cost = prev_entry.mean_cost if prev_entry.mean_cost is not None else Decimal("0.0")
-                prev_nav = prev_entry.nav if prev_entry.nav is not None else Decimal("0.0")
-                prev_liquid_nav = prev_entry.liquid_nav_value if prev_entry.liquid_nav_value is not None else Decimal("0.0")
+            if current_entry and current_entry.nav is not None and current_entry.nav > 0:
+                base_participations = current_entry.participations if current_entry.participations is not None else Decimal("0.0")
+                base_mean_cost = current_entry.mean_cost if current_entry.mean_cost is not None else Decimal("0.0")
+                base_nav = current_entry.nav
+                base_liquid_nav = current_entry.liquid_nav_value if current_entry.liquid_nav_value is not None else Decimal("0.0")
+            elif prev_entry:
+                base_participations = prev_entry.participations if prev_entry.participations is not None else Decimal("0.0")
+                base_mean_cost = prev_entry.mean_cost if prev_entry.mean_cost is not None else Decimal("0.0")
+                base_nav = prev_entry.nav if prev_entry.nav is not None else Decimal("0.0")
+                base_liquid_nav = prev_entry.liquid_nav_value if prev_entry.liquid_nav_value is not None else Decimal("0.0")
+
+            prev_participations = base_participations
+            prev_mean_cost = base_mean_cost
+            prev_nav = base_nav
+            prev_liquid_nav = base_liquid_nav
 
             # Contributions are always 0 for a new month generated automatically
             contribution = Decimal("0.0")
@@ -218,7 +232,13 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                     nav_val = Decimal(str(val))
                     liquid_nav = Decimal("1.0") if float(val) > 0 else Decimal("0.0")
                 else:
-                    nav_val = Decimal(str(round(float(val) * float(participations), 2)))
+                    fund_holdings = await db_service.get_asset_total_quantity(session, asset_id)
+                    participations = Decimal(str(round(fund_holdings, 8))) if fund_holdings > 0 else prev_participations
+                    
+                    if participations > 0:
+                        nav_val = Decimal(str(round(float(val) * float(participations), 2)))
+                    else:
+                        nav_val = prev_nav
                     liquid_nav = Decimal(str(val))
 
             else:
@@ -273,8 +293,15 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                         liquid_nav = prev_liquid_nav
                 else:
                     # For standard funds, cash, or missing fetches
-                    nav_val = prev_nav
-                    liquid_nav = prev_liquid_nav
+                    fund_holdings = await db_service.get_asset_total_quantity(session, asset_id)
+                    participations = Decimal(str(round(fund_holdings, 8))) if fund_holdings > 0 else prev_participations
+
+                    if participations > 0 and prev_liquid_nav > 0:
+                        nav_val = Decimal(str(round(float(prev_liquid_nav) * float(participations), 2)))
+                        liquid_nav = prev_liquid_nav
+                    else:
+                        nav_val = prev_nav
+                        liquid_nav = prev_liquid_nav
 
             # Ensure we don't save duplicates if we're re-running the same month
             existing_entries = [h for h in prev_history_all if h.snapshot_date == date_obj]

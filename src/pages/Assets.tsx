@@ -408,9 +408,16 @@ export default function Assets() {
               >
                 {/* Header compacto */}
                 <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800">
-                  <h3 className={`text-base font-bold truncate ${asset.archived ? 'line-through text-slate-400' : 'dark:text-white'}`}>
-                    {asset.name}
-                  </h3>
+                  <div className="flex justify-between items-center">
+                    <h3 className={`text-base font-bold truncate flex-1 flex items-center gap-2 ${asset.archived ? 'line-through text-slate-400' : 'dark:text-white'}`}>
+                      {asset.name}
+                    </h3>
+                    {asset.archived && (
+                      <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400 ml-2 whitespace-nowrap">
+                        Archivado
+                      </span>
+                    )}
+                  </div>
                   {(asset.isin || asset.ticker) && (
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
                       {asset.isin || asset.ticker}

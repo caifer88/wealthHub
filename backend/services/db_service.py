@@ -140,6 +140,19 @@ async def get_total_btc_holdings(session: AsyncSession, asset_id: str) -> float:
     result = (await session.exec(statement)).first()
     return float(result) if result else 0.0
 
+async def get_asset_total_quantity(session: AsyncSession, asset_id: str) -> float:
+    statement = select(
+        func.sum(
+            case(
+                (Transaction.type == TransactionType.BUY, Transaction.quantity),
+                (Transaction.type == TransactionType.SELL, -Transaction.quantity),
+                else_=0
+            )
+        )
+    ).where(Transaction.asset_id == asset_id)
+    result = (await session.exec(statement)).first()
+    return float(result) if result else 0.0
+
 
 async def get_all_assets_total_contributions(session: AsyncSession) -> dict:
     statement = select(
