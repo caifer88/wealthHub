@@ -9,9 +9,10 @@ import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { formatCurrency, generateUUID, calculateMeanCost, calculateTotalInvested, getCurrentParticipations, formatCurrencyDecimals } from '../utils'
 import type { Asset } from '../types'
+import { api } from '../services/api'
 
 export default function Assets() {
-  const { assets, setAssets, history, stockTransactions, bitcoinTransactions } = useWealth()
+  const { metrics, assets, refetchData, history, stockTransactions, bitcoinTransactions } = useWealth()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null)
   const [sortColumn] = useState<'name' | 'category' | 'value' | 'percentage'>('name')
@@ -22,7 +23,7 @@ export default function Assets() {
     category: 'Fund',
     color: '#6366f1',
     riskLevel: 'Medio',
-    archived: false,
+    isArchived: false,
     isin: '',
     ticker: '',
     participations: 0,
@@ -34,8 +35,8 @@ export default function Assets() {
   const riskLevels = ['Bajo', 'Medio', 'Alto']
 
   // Show active assets if showArchived is false, otherwise show all
-  const displayedAssets = showArchived ? assets : assets.filter(a => !a.archived)
-  
+  const displayedAssets = showArchived ? assets : assets.filter(a => !a.isArchived)
+
   // Get the latest month from history
   const getLatestMonth = (): string | null => {
     if (history.length === 0) return null
@@ -56,12 +57,12 @@ export default function Assets() {
   const getAssetNAVFromLatestMonth = (asset_id: string): number => {
     const latestMonth = getLatestMonth()
     if (!latestMonth) return 0
-    
+
     const entryInLatestMonth = history.find(h => h.asset_id === asset_id && h.month === latestMonth)
     if (entryInLatestMonth) {
       return entryInLatestMonth.nav || 0
     }
-    
+
     // Fallback to most recent if not in latest month
     return getAssetNAV(asset_id)
   }
@@ -69,7 +70,7 @@ export default function Assets() {
   const getSortedAssets = useCallback((assets: (Asset & { currentNAV: number })[], column: 'name' | 'category' | 'value' | 'percentage', direction: 'asc' | 'desc', totalNav: number) => {
     const sorted = [...assets]
     const isAsc = direction === 'asc'
-    
+
     switch (column) {
       case 'name':
         return sorted.sort((a, b) => isAsc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name))
@@ -90,15 +91,15 @@ export default function Assets() {
 
   // Función para calcular el NAV correcto de un activo considerando componentes, usando el último mes
   const getAssetValueWithComponents = (asset: Asset): number => {
-    const componentAssets = assets.filter(a => 
+    const componentAssets = assets.filter(a =>
       a.name && asset.name && a.name.length < asset.name.length && asset.name.includes(a.name) && a.id !== asset.id
     )
-    
+
     if (componentAssets.length > 0) {
       // Si tiene componentes, retornar la suma
       return componentAssets.reduce((sum, comp) => sum + getAssetNAVFromLatestMonth(comp.id), 0)
     }
-    
+
     // Si no tiene componentes, retornar su NAV directo del último mes
     return getAssetNAVFromLatestMonth(asset.id)
   }
@@ -108,17 +109,20 @@ export default function Assets() {
     currentNAV: getAssetValueWithComponents(a)
   }))
 
-  const totalNAV = assetValues.filter(a => !a.archived).reduce((sum, a) => {
+  const totalNAV = assetValues.filter(a => !a.isArchived).reduce((sum, a) => {
     const isIBActive = assets.some(parent => parent.name === 'Interactive Brokers')
     const isStockInIB = isIBActive && a.ticker && stockTransactions.some(tx => tx.broker === 'Interactive Brokers' && tx.ticker === a.ticker)
     const isComponent = assets.some(parent => parent.name && a.name && parent.name.length > a.name.length && parent.name.includes(a.name) && parent.id !== a.id)
-    
+
     if (isStockInIB || isComponent) return sum
     return sum + a.currentNAV
   }, 0)
+
+  const displayedAssetValues = assetValues.filter(showArchived ? () => true : a => !a.isArchived)
   
-  const displayedAssetValues = assetValues.filter(showArchived ? () => true : a => !a.archived)
-  const sortedAssetValues = getSortedAssets(displayedAssetValues, sortColumn, sortDirection, totalNAV)
+  // Use backend metrics for global Total NAV if available
+  const globalTotalNAV = metrics?.totalNAV ?? totalNAV;
+  const sortedAssetValues = getSortedAssets(displayedAssetValues, sortColumn, sortDirection, globalTotalNAV)
 
   const handleOpenModal = (asset?: Asset) => {
     if (asset) {
@@ -128,7 +132,7 @@ export default function Assets() {
         category: asset.category,
         color: asset.color,
         riskLevel: asset.riskLevel || 'Medio',
-        archived: asset.archived || false,
+        isArchived: asset.isArchived || false,
         isin: asset.isin || '',
         ticker: asset.ticker || '',
         participations: asset.participations || 0,
@@ -141,7 +145,7 @@ export default function Assets() {
         category: 'Fund',
         color: '#6366f1',
         riskLevel: 'Medio',
-        archived: false,
+        isArchived: false,
         isin: '',
         ticker: '',
         participations: 0,
@@ -154,62 +158,76 @@ export default function Assets() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!formData.name.trim()) return
+    const runUpdate = async () => {
+      if (!formData.name.trim()) return;
 
-    if (editingAsset) {
-      const updatedAssets = assets.map(a =>
-        a.id === editingAsset.id
-          ? { 
-              ...a, 
-              name: formData.name,
-              category: formData.category,
-              color: formData.color,
-              riskLevel: formData.riskLevel,
-              archived: formData.archived,
-              isin: formData.isin || undefined,
-              ticker: formData.ticker || undefined,
-              participations: formData.participations,
-              meanCost: formData.meanCost
-            }
-          : a
-      )
-      setAssets(updatedAssets)
-    } else {
-      const newAsset: Asset = {
-        id: generateUUID(),
-        name: formData.name,
-        category: formData.category,
-        color: formData.color,
-        riskLevel: formData.riskLevel,
-        archived: false,
-        isin: formData.isin || undefined,
-        ticker: formData.ticker || undefined,
-        participations: formData.participations,
-        meanCost: formData.meanCost
+      try {
+        const payload = {
+            name: formData.name,
+            category: formData.category,
+            color: formData.color,
+            riskLevel: formData.riskLevel,
+            isArchived: formData.isArchived,
+            isin: formData.isin || null,
+            ticker: formData.ticker || null
+        } as any;
+
+        if (editingAsset) {
+          await api.updateAsset(editingAsset.id, payload);
+          // Omitimos participations y meanCost porque en backend no existen en el Asset directamente.
+        } else {
+          await api.createAsset({
+            id: generateUUID(),
+            ...payload
+          } as any);
+        }
+
+        await refetchData();
+
+        setIsModalOpen(false);
+        setEditingAsset(null);
+      } catch (error) {
+        console.error("Error saving asset", error);
+        alert("Error guardando el activo");
       }
-      setAssets([...assets, newAsset])
-    }
-
-    setIsModalOpen(false)
-    setEditingAsset(null)
+    };
+    
+    runUpdate();
   }
 
   const handleDelete = (id: string) => {
-    if (confirm('¿Está seguro de que desea eliminar este activo?')) {
-      const updatedAssets = assets.map(a => a.id === id ? { ...a, archived: true } : a)
-      setAssets(updatedAssets)
+    if (confirm('¿Está seguro de que desea archivar este activo?')) {
+      const runDelete = async () => {
+        try {
+          await api.updateAsset(id, { isArchived: true } as any);
+          await refetchData();
+        } catch (error) {
+          console.error("Error archiving asset", error);
+          alert("Error archivando el activo");
+        }
+      };
+      runDelete();
     }
   }
 
   const handleToggleArchived = (id: string) => {
-    const updatedAssets = assets.map(a => 
-      a.id === id ? { ...a, archived: !a.archived } : a
-    )
-    setAssets(updatedAssets)
+    const asset = assets.find(a => a.id === id);
+    if (!asset) return;
+    
+    const runToggle = async () => {
+      try {
+        await api.updateAsset(id, { isArchived: !asset.isArchived } as any);
+        await refetchData();
+      } catch (error) {
+        console.error("Error toggling archive status", error);
+        alert("Error cambiando estado");
+      }
+    };
+    runToggle();
   }
 
   const getArchivedCount = (): number => {
-    return assets.filter(a => a.archived).length
+    return assets.filter(a => a.isArchived).length
   }
 
   return (
@@ -235,7 +253,7 @@ export default function Assets() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <MetricCard
           title="Total Patrimonio"
-          value={formatCurrency(Math.round(totalNAV))}
+          value={formatCurrency(Math.round(globalTotalNAV))}
           subtitle="Valor actual NAV"
         />
         <MetricCard
@@ -248,7 +266,7 @@ export default function Assets() {
       {/* Botón para mostrar/ocultar archivados */}
       {getArchivedCount() > 0 && (
         <div className="flex gap-2">
-          <Button 
+          <Button
             variant={showArchived ? "primary" : "secondary"}
             onClick={() => setShowArchived(!showArchived)}
           >
@@ -286,7 +304,7 @@ export default function Assets() {
             let participations = getCurrentParticipations(asset.id, history)
             let meanCost = calculateMeanCost(asset.id, history)
             let invested = calculateTotalInvested(asset.id, history)
-            
+
             // 🟢 FIX 1: Si es Bitcoin/Crypto, sobreescribir con los datos de sus transacciones reales
             if (asset.category === 'Crypto' || asset.name.toLowerCase().includes('bitcoin')) {
               let btcShares = 0
@@ -308,7 +326,7 @@ export default function Assets() {
 
             const currentValue = asset.currentNAV
             const liquidNavValue = participations > 0 ? currentValue / participations : 0
-            
+
             // Activo especial: Cash - mostrar solo valor
             if (asset.name === 'Cash') {
               // ... (mantenlo igual)
@@ -321,15 +339,15 @@ export default function Assets() {
                 </Card>
               )
             }
-            
-            let positionsData: Array<{ticker: string; nav: number; shares: number; avgPrice: number}> = []
-            
+
+            let positionsData: Array<{ ticker: string; nav: number; shares: number; avgPrice: number }> = []
+
             if (asset.name === 'Interactive Brokers') {
               const ibTransactions = stockTransactions.filter(tx => tx.broker === 'Interactive Brokers')
-              const tickerMap = new Map<string, {shares: number; totalCost: number}>()
-              
+              const tickerMap = new Map<string, { shares: number; totalCost: number }>()
+
               for (const tx of ibTransactions) {
-                const existing = tickerMap.get(tx.ticker) || {shares: 0, totalCost: 0}
+                const existing = tickerMap.get(tx.ticker) || { shares: 0, totalCost: 0 }
                 if (tx.type === 'buy') {
                   existing.shares += tx.shares
                   existing.totalCost += tx.totalAmount
@@ -341,15 +359,15 @@ export default function Assets() {
                 }
                 tickerMap.set(tx.ticker, existing)
               }
-              
+
               for (const [ticker, data] of tickerMap.entries()) {
                 if (data.shares > 0) {
                   const searchTicker = ticker.trim().toUpperCase()
-                  const tickerAsset = assets.find(a => 
-                    (a.ticker && a.ticker.trim().toUpperCase() === searchTicker) || 
+                  const tickerAsset = assets.find(a =>
+                    (a.ticker && a.ticker.trim().toUpperCase() === searchTicker) ||
                     (a.name && a.name.trim().toUpperCase() === searchTicker)
                   )
-                  
+
                   // BUSCAR PRIMERO EN EL ACTIVO, SI NO, EN EL TICKER VIRTUAL (fakeasset_id)
                   let lastHistory = null
                   if (tickerAsset) {
@@ -359,10 +377,10 @@ export default function Assets() {
                     const fakeasset_id = `ticker-${searchTicker}`
                     lastHistory = history.filter(h => h.asset_id === fakeasset_id).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
                   }
-                  
+
                   // --- AQUÍ FALTABA ESTO: CALCULAR EL PRECIO ACTUAL ---
                   let currentPrice = data.totalCost / data.shares
-                  
+
                   if (lastHistory) {
                     if (lastHistory.liquidNavValue > 0) {
                       currentPrice = lastHistory.liquidNavValue
@@ -373,16 +391,16 @@ export default function Assets() {
                     }
                   }
                   // ---------------------------------------------------
-                  
+
                   const nav = data.shares * currentPrice
                   const avgPrice = data.totalCost / data.shares
-                  
+
                   positionsData.push({ ticker, nav, shares: data.shares, avgPrice })
                 }
               }
             } else {
               // Para otros activos, buscar por nombre
-              const componentAssets = assets.filter(a => 
+              const componentAssets = assets.filter(a =>
                 a.name && asset.name && a.name.length < asset.name.length && asset.name.includes(a.name) && a.id !== asset.id
               )
               positionsData = componentAssets.map(comp => ({
@@ -392,32 +410,25 @@ export default function Assets() {
                 avgPrice: calculateMeanCost(comp.id, history)
               }))
             }
-            
+
             const hasPositions = positionsData.length > 0
 
-            
+
             // Usamos el currentValue (que viene directamente del Historial actualizado) 
             const valueToDisplay = currentValue
             const gainToDisplay = valueToDisplay - invested
             const gainPercentDisplay = invested > 0 ? (gainToDisplay / invested) * 100 : 0
-            
+
             return (
-              <Card 
+              <Card
                 key={asset.id}
-                className={`overflow-hidden transition-all hover:shadow-lg ${asset.archived ? 'opacity-50' : ''}`}
+                className={`overflow-hidden transition-all hover:shadow-lg ${asset.isArchived ? 'opacity-50' : ''}`}
               >
                 {/* Header compacto */}
                 <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800">
-                  <div className="flex justify-between items-center">
-                    <h3 className={`text-base font-bold truncate flex-1 flex items-center gap-2 ${asset.archived ? 'line-through text-slate-400' : 'dark:text-white'}`}>
-                      {asset.name}
-                    </h3>
-                    {asset.archived && (
-                      <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400 ml-2 whitespace-nowrap">
-                        Archivado
-                      </span>
-                    )}
-                  </div>
+                  <h3 className={`text-base font-bold truncate ${asset.isArchived ? 'line-through text-slate-400' : 'dark:text-white'}`}>
+                    {asset.name}
+                  </h3>
                   {(asset.isin || asset.ticker) && (
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
                       {asset.isin || asset.ticker}
@@ -449,7 +460,7 @@ export default function Assets() {
                         const positionInvested = position.shares * position.avgPrice
                         const positionGain = position.nav - positionInvested
                         const positionGainPercent = positionInvested > 0 ? (positionGain / positionInvested) * 100 : 0
-                        
+
                         return (
                           <div key={position.ticker} className="flex justify-between items-center p-2 bg-slate-50 dark:bg-slate-900/50 rounded">
                             <div className="flex-1">
@@ -493,7 +504,7 @@ export default function Assets() {
                 )}
 
                 {/* Porcentaje de cartera */}
-                {!asset.archived && totalNAV > 0 && (
+                {!asset.isArchived && totalNAV > 0 && (
                   <div className="px-5 py-2 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center text-xs">
                     <p className="text-slate-600 dark:text-slate-400">% Cartera</p>
                     <p className="font-bold text-indigo-600">
@@ -514,9 +525,9 @@ export default function Assets() {
                   <button
                     onClick={() => handleToggleArchived(asset.id)}
                     className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-800 rounded transition-colors"
-                    title={asset.archived ? "Desarchizar" : "Archivar"}
+                    title={asset.isArchived ? "Desarchizar" : "Archivar"}
                   >
-                    {asset.archived ? (
+                    {asset.isArchived ? (
                       <ArchiveX size={14} className="text-blue-500" />
                     ) : (
                       <Archive size={14} className="text-amber-500" />
@@ -569,9 +580,8 @@ export default function Assets() {
                   key={color}
                   type="button"
                   onClick={() => setFormData({ ...formData, color })}
-                  className={`w-8 h-8 rounded-full border-2 ${
-                    formData.color === color ? 'border-slate-900 dark:border-white' : 'border-slate-300'
-                  }`}
+                  className={`w-8 h-8 rounded-full border-2 ${formData.color === color ? 'border-slate-900 dark:border-white' : 'border-slate-300'
+                    }`}
                   style={{ backgroundColor: color }}
                 />
               ))}
@@ -591,7 +601,7 @@ export default function Assets() {
               label="Número de Participaciones"
               type="number"
               value={formData.participations}
-              onChange={(e) => setFormData({ ...formData, participations: parseFloat(e.target.value) || 0})}
+              onChange={(e) => setFormData({ ...formData, participations: parseFloat(e.target.value) || 0 })}
               step="0.00001"
               min="0"
               placeholder="Ej: 100.5"
@@ -601,7 +611,7 @@ export default function Assets() {
               label="Coste Medio por Participación (€)"
               type="number"
               value={formData.meanCost}
-              onChange={(e) => setFormData({ ...formData, meanCost: parseFloat(e.target.value) || 0})}
+              onChange={(e) => setFormData({ ...formData, meanCost: parseFloat(e.target.value) || 0 })}
               step="0.01"
               min="0"
               placeholder="Ej: 25.50"
@@ -629,8 +639,8 @@ export default function Assets() {
             <label className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"
-                checked={formData.archived}
-                onChange={(e) => setFormData({ ...formData, archived: e.target.checked })}
+                checked={formData.isArchived}
+                onChange={(e) => setFormData({ ...formData, isArchived: e.target.checked })}
                 className="w-4 h-4 rounded cursor-pointer"
               />
               <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">

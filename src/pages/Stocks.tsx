@@ -10,9 +10,10 @@ import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { formatCurrency, formatDate, generateUUID } from '../utils'
 import type { StockTransaction } from '../types'
+import { api } from '../services/api'
 
 export default function Stocks() {
-  const { stockTransactions, setStockTransactions, assets, history } = useWealth()
+  const { stockTransactions, refetchData, assets, history } = useWealth()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingTransaction, setEditingTransaction] = useState<StockTransaction | null>(null)
   const [sortColumn, setSortColumn] = useState<'date' | 'ticker' | 'type' | 'shares' | 'price' | 'fees' | 'total'>('date')
@@ -152,51 +153,59 @@ export default function Stocks() {
 
     if (!formData.ticker.trim()) return
 
-    const totalAmount = formData.shares * formData.pricePerShare + formData.fees
+    const runUpdate = async () => {
+      try {
+        const totalAmount = formData.shares * formData.pricePerShare + formData.fees;
+        
+        // Find asset id
+        const searchTicker = formData.ticker.trim().toUpperCase();
+        const tickerAsset = assets.find(a => 
+          (a.ticker && a.ticker.trim().toUpperCase() === searchTicker) || 
+          (a.name && a.name.trim().toUpperCase() === searchTicker)
+        );
+        const fbAsset = assets.find(a => a.name === 'Interactive Brokers' || a.category === 'Stocks');
+        const assetId = tickerAsset ? tickerAsset.id : (fbAsset ? fbAsset.id : undefined);
 
-    if (editingTransaction) {
-      setStockTransactions(
-        stockTransactions.map(tx =>
-          tx.id === editingTransaction.id
-            ? {
-                id: tx.id,
-                ticker: formData.ticker.toUpperCase(),
-                date: formData.date,
-                type: formData.type,
-                shares: formData.shares,
-                pricePerShare: formData.pricePerShare,
-                fees: formData.fees,
-                totalAmount
-              }
-            : tx
-        )
-      )
-    } else {
-      const newTx: StockTransaction = {
-        id: generateUUID(),
-        ticker: formData.ticker.toUpperCase(),
-        date: formData.date,
-        type: formData.type,
-        shares: formData.shares,
-        pricePerShare: formData.pricePerShare,
-        fees: formData.fees,
-        totalAmount
+        const txData = {
+          ticker: searchTicker,
+          transactionDate: formData.date,
+          type: formData.type,
+          quantity: formData.shares,
+          pricePerUnit: formData.pricePerShare,
+          fees: formData.fees,
+          totalAmount: totalAmount,
+          asset_id: assetId
+        };
+
+        if (editingTransaction) {
+          await api.updateTransaction(editingTransaction.id, txData);
+        } else {
+          await api.createTransaction({
+            id: generateUUID(),
+            ...txData
+          });
+        }
+
+        await refetchData();
+
+        setIsModalOpen(false);
+        setEditingTransaction(null);
+        setFormData({
+          ticker: '',
+          date: new Date().toISOString().split('T')[0],
+          type: 'buy',
+          shares: 0,
+          pricePerShare: 0,
+          fees: 0,
+          totalAmount: 0
+        });
+      } catch (error) {
+        console.error("Error saving stock transaction", error);
+        alert("Error guardando la transacción");
       }
-
-      setStockTransactions([...stockTransactions, newTx])
-    }
-
-    setIsModalOpen(false)
-    setEditingTransaction(null)
-    setFormData({
-      ticker: '',
-      date: new Date().toISOString().split('T')[0],
-      type: 'buy',
-      shares: 0,
-      pricePerShare: 0,
-      fees: 0,
-      totalAmount: 0
-    })
+    };
+    
+    runUpdate();
   }
 
   const handleOpenModal = (transaction?: StockTransaction) => {
@@ -227,7 +236,18 @@ export default function Stocks() {
   }
 
   const handleDelete = (id: string) => {
-    setStockTransactions(stockTransactions.filter(tx => tx.id !== id))
+    if (confirm('¿Está seguro de que desea eliminar esta transacción?')) {
+      const runDelete = async () => {
+        try {
+          await api.deleteTransaction(id);
+          await refetchData();
+        } catch (error) {
+          console.error("Error deleting stock transaction", error);
+          alert("Error eliminando la transacción");
+        }
+      };
+      runDelete();
+    }
   }
 
   return (

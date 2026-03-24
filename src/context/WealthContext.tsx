@@ -63,6 +63,7 @@ interface WealthContextType {
   setBitcoinTransactions: (txs: BitcoinTransaction[]) => void
   setStockTransactions: (txs: StockTransaction[]) => void
   setDarkMode: (mode: boolean) => void
+  refetchData: () => Promise<void>
 }
 
 const WealthContext = createContext<WealthContextType | undefined>(undefined)
@@ -84,13 +85,8 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const isFirstRender = useRef(true)
   const [isDataLoaded, setIsDataLoaded] = useState(false)
 
-  // Cargar datos iniciales desde la Base de Datos
-  useEffect(() => {
-    if (isFirstRender.current) {
-        isFirstRender.current = false
-
-        const fetchFromDatabase = async () => {
-            try {
+  const fetchFromDatabase = async () => {
+      try {
                 // ✅ CORRECCIÓN 1: Traemos summaryRes en el Promise.all
                 const [assetsRes, historyRes, txsRes, summaryRes] = await Promise.all([
                     fetch(`${config.backendUrl}/api/assets`),
@@ -191,6 +187,10 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
         };
 
+  // Cargar datos iniciales desde la Base de Datos
+  useEffect(() => {
+    if (isFirstRender.current) {
+        isFirstRender.current = false
         fetchFromDatabase();
     }
   }, [])
@@ -223,7 +223,8 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setHistory,
     setBitcoinTransactions,
     setStockTransactions,
-    setDarkMode
+    setDarkMode,
+    refetchData: fetchFromDatabase
   }
 
   return <WealthContext.Provider value={value}>{children}</WealthContext.Provider>

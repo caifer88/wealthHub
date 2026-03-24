@@ -196,3 +196,86 @@ async def delete_transaction(session: AsyncSession, transaction_id: str) -> bool
     await session.delete(transaction)
     await session.commit()
     return True
+
+
+async def upsert_history_from_transactions(session: AsyncSession, asset_id: str, month_date) -> None:
+    """
+    After saving a transaction, recalculate and upsert the asset_history entry
+    for the corresponding month. This keeps contribution and participations in sync
+    without touching the NAV/price data set during monthly syncs.
+    """
+    from decimal import Decimal
+    from datetime import date
+    import uuid
+
+    # month_date is the first day of the month of the transaction
+    year = month_date.year
+    month = month_date.month
+    month_start = date(year, month, 1)
+
+    # Next month start for range filter
+    if month == 12:
+        month_end = date(year + 1, 1, 1)
+    else:
+        month_end = date(year, month + 1, 1)
+
+    # Get all transactions for this asset in the transaction's month
+    all_asset_txs = await get_all_transactions(session)
+    month_txs = [
+        tx for tx in all_asset_txs
+        if (tx.asset_id == asset_id or (tx.ticker == 'BTC' and asset_id is not None))
+        and tx.transaction_date is not None
+        and month_start <= tx.transaction_date < month_end
+    ]
+
+    # Sum contributions for the month (only BUY type transactions, total_amount)
+    monthly_contribution = Decimal("0.0")
+    for tx in month_txs:
+        if tx.transaction_date is None:
+            continue
+        if str(tx.type).upper() == 'BUY':
+            monthly_contribution += Decimal(str(tx.total_amount or 0))
+
+    # Calculate running participations for the asset up to end of this month
+    all_txs_up_to_month = [
+        tx for tx in all_asset_txs
+        if (tx.asset_id == asset_id or (tx.ticker == 'BTC' and asset_id is not None))
+        and tx.transaction_date is not None
+        and tx.transaction_date < month_end
+    ]
+
+    running_qty = Decimal("0.0")
+    for tx in all_txs_up_to_month:
+        qty = Decimal(str(tx.quantity or 0))
+        if str(tx.type).upper() == 'BUY':
+            running_qty += qty
+        elif str(tx.type).upper() == 'SELL':
+            running_qty -= qty
+
+    running_qty = max(running_qty, Decimal("0.0"))
+
+    # Get existing history entry for this month
+    existing_all = await get_history_by_asset(session, asset_id)
+    existing_list = [h for h in existing_all if h.snapshot_date == month_start]
+    existing = existing_list[0] if existing_list else None
+
+    if existing:
+        existing.contribution = monthly_contribution
+        existing.participations = running_qty
+        session.add(existing)
+        await session.commit()
+    else:
+        # No history entry for this month yet — create one with 0 NAV/price
+        # (the NAV will be filled in on next NAV sync)
+        new_entry = AssetHistory(
+            id=str(uuid.uuid4()),
+            asset_id=asset_id,
+            snapshot_date=month_start,
+            contribution=monthly_contribution,
+            participations=running_qty,
+            nav=Decimal("0.0"),
+            liquid_nav_value=Decimal("0.0"),
+            mean_cost=Decimal("0.0")
+        )
+        session.add(new_entry)
+        await session.commit()

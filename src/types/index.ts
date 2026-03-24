@@ -12,7 +12,7 @@ export interface Asset {
   name: string;
   category: string;
   color: string;
-  archived: boolean;
+  isArchived: boolean;
   riskLevel?: string;
   parent_asset_id?: string;
   isin?: string;  // ISIN for mutual funds

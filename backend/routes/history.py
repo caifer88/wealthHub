@@ -17,10 +17,17 @@ async def get_asset_history(asset_id: str, session: AsyncSession = Depends(get_s
 
 @router.post("", response_model=HistoryEntry, status_code=status.HTTP_201_CREATED)
 async def create_history(entry: HistoryEntry, session: AsyncSession = Depends(get_session)):
+    if isinstance(entry.snapshot_date, str):
+        from datetime import datetime
+        # snapshot_date from frontend comes as YYYY-MM-DD
+        entry.snapshot_date = datetime.strptime(entry.snapshot_date, "%Y-%m-%d").date()
     return await db_service.create_history_entry(session, entry)
 
 @router.put("/{history_id}", response_model=HistoryEntry)
 async def update_history(history_id: str, entry: HistoryEntry, session: AsyncSession = Depends(get_session)):
+    if isinstance(entry.snapshot_date, str):
+        from datetime import datetime
+        entry.snapshot_date = datetime.strptime(entry.snapshot_date, "%Y-%m-%d").date()
     updated = await db_service.update_history_entry(session, history_id, entry)
     if not updated:
         raise HTTPException(status_code=404, detail="History entry not found")

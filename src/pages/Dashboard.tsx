@@ -26,7 +26,7 @@ export default function Dashboard() {
   })
 
   // Include archived assets in historical calculations, but keep active-only for UI filters
-  const activeAssets = useMemo(() => assets.filter(a => !a.archived), [assets])
+  const activeAssets = useMemo(() => assets.filter(a => !a.isArchived), [assets])
   const allAssetsForHistory = useMemo(() => assets.filter(a => a.name !== 'Cash'), [assets])
   
   const evolutionData = useEvolutionData(history, allAssetsForHistory)
@@ -331,9 +331,9 @@ export default function Dashboard() {
                           visibleAssets[asset.id]
                             ? 'bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300'
                             : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-                        } ${asset.archived ? 'opacity-60' : ''}`}
+                        } ${asset.isArchived ? 'opacity-60' : ''}`}
                       >
-                        {asset.name} {asset.archived ? '📦' : ''}
+                        {asset.name} {asset.isArchived ? '📦' : ''}
                       </button>
                     ))}
                 </div>
@@ -387,12 +387,12 @@ export default function Dashboard() {
                           type="monotone"
                           dataKey={`ROI_${asset.name}`}
                           stroke={asset.color}
-                          strokeWidth={asset.archived ? 1.5 : 2}
-                          strokeOpacity={asset.archived ? 0.4 : 0.7}
-                          strokeDasharray={asset.archived ? '5 5' : 'none'}
+                          strokeWidth={asset.isArchived ? 1.5 : 2}
+                          strokeOpacity={asset.isArchived ? 0.4 : 0.7}
+                          strokeDasharray={asset.isArchived ? '5 5' : 'none'}
                           dot={false}
                           activeDot={{ r: 6, fill: asset.color, strokeWidth: 2, stroke: 'white' }}
-                          name={`ROI ${asset.name}${asset.archived ? ' (archivado)' : ''}`}
+                          name={`ROI ${asset.name}${asset.isArchived ? ' (archivado)' : ''}`}
                           connectNulls={true}
                         />
                       ))}
@@ -419,28 +419,28 @@ export default function Dashboard() {
                       .filter(m => m.asset.name !== 'Cash')
                       .map(metric => (
                         <tr key={metric.asset.id} className={`border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 ${
-                          metric.asset.archived ? 'bg-slate-50 dark:bg-slate-900 opacity-60' : ''
+                          metric.asset.isArchived ? 'bg-slate-50 dark:bg-slate-900 opacity-60' : ''
                         }`}>
-                          <td className={`py-3 px-4 font-semibold ${metric.asset.archived ? 'text-slate-500 dark:text-slate-500' : 'dark:text-white'}`}>
+                          <td className={`py-3 px-4 font-semibold ${metric.asset.isArchived ? 'text-slate-500 dark:text-slate-500' : 'dark:text-white'}`}>
                             <div className="flex items-center gap-2">
                               <div className="w-3 h-3 rounded-full" style={{ backgroundColor: metric.asset.color }}></div>
                               {metric.asset.name}
-                              {metric.asset.archived && <span className="text-xs ml-2 px-2 py-1 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 rounded">Archivado</span>}
+                              {metric.asset.isArchived && <span className="text-xs ml-2 px-2 py-1 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 rounded">Archivado</span>}
                             </div>
                           </td>
-                          <td className={`py-3 px-4 text-right font-bold ${metric.asset.archived ? 'text-slate-500 dark:text-slate-500' : 'dark:text-white'}`}>
+                          <td className={`py-3 px-4 text-right font-bold ${metric.asset.isArchived ? 'text-slate-500 dark:text-slate-500' : 'dark:text-white'}`}>
                             {formatCurrency(Math.round(metric.nav))}
                           </td>
-                          <td className={`py-3 px-4 text-right font-bold ${metric.asset.archived ? 'text-slate-400 dark:text-slate-500' : 'text-slate-600 dark:text-slate-400'}`}>
+                          <td className={`py-3 px-4 text-right font-bold ${metric.asset.isArchived ? 'text-slate-400 dark:text-slate-500' : 'text-slate-600 dark:text-slate-400'}`}>
                             {formatCurrency(Math.round(metric.totalInvested))}
                           </td>
                           <td className={`py-3 px-4 text-right font-bold ${
                             metric.totalProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'
-                          } ${metric.asset.archived ? 'opacity-60' : ''}`}>
+                          } ${metric.asset.isArchived ? 'opacity-60' : ''}`}>
                             {formatCurrency(metric.totalProfit)}
                           </td>
                           <td className={`py-3 px-4 text-right font-bold ${
-                            metric.asset.archived ? 'text-slate-500 dark:text-slate-500' : 'text-indigo-600'
+                            metric.asset.isArchived ? 'text-slate-500 dark:text-slate-500' : 'text-indigo-600'
                           }`}>
                             {metric.roi.toFixed(2)}%
                           </td>

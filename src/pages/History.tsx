@@ -8,9 +8,10 @@ import { Input } from '../components/ui/Input'
 import { formatCurrency, isCurrentMonth, formatCurrencyDecimals } from '../utils'
 import { fetchAndUpdatePrices } from '../services/priceUpdater'
 import type { HistoryEntry } from '../types'
+import { api } from '../services/api'
 
 export default function History() {
-  const { assets, history, setHistory, stockTransactions, bitcoinTransactions } = useWealth()
+  const { assets, history, refetchData, stockTransactions, bitcoinTransactions } = useWealth()
   const [selectedYear, setSelectedYear] = useState<string | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingEntry, setEditingEntry] = useState<HistoryEntry | null>(null)
@@ -83,29 +84,37 @@ export default function History() {
     
     if (!editingEntry) return
 
-    const nav = parseFloat(formData.nav || '0') || 0
-    const contribution = parseFloat(formData.contribution || '0') || 0
-    const participations = parseFloat(formData.participations || '0') || editingEntry.participations || 0
-    const liquidNavValue = parseFloat(formData.liquidNavValue || '0') || 0
-    const meanCost = parseFloat(formData.meanCost || '0') || editingEntry.meanCost || 0
-    
-    setHistory(history.map(h =>
-      h.id === editingEntry.id
-        ? {
-            id: h.id,
-            month: editingEntry.month,
-            asset_id: editingEntry.asset_id,
-            participations: !isNaN(participations) ? participations : 0,
-            liquidNavValue: !isNaN(liquidNavValue) ? liquidNavValue : 0,
-            nav: !isNaN(nav) ? nav : 0,
-            contribution: !isNaN(contribution) ? contribution : 0,
-            meanCost: !isNaN(meanCost) ? meanCost : 0
-          }
-        : h
-    ))
+    const runUpdate = async () => {
+      try {
+        const nav = parseFloat(formData.nav || '0') || 0
+        const contribution = parseFloat(formData.contribution || '0') || 0
+        const participations = parseFloat(formData.participations || '0') || editingEntry.participations || 0
+        const liquidNavValue = parseFloat(formData.liquidNavValue || '0') || 0
+        const meanCost = parseFloat(formData.meanCost || '0') || editingEntry.meanCost || 0
+        
+        await api.updateHistory(editingEntry.id, {
+          id: editingEntry.id,
+          month: editingEntry.month,
+          asset_id: editingEntry.asset_id,
+          participations: !isNaN(participations) ? participations : 0,
+          liquid_nav_value: !isNaN(liquidNavValue) ? liquidNavValue : 0,
+          nav: !isNaN(nav) ? nav : 0,
+          contribution: !isNaN(contribution) ? contribution : 0,
+          mean_cost: !isNaN(meanCost) ? meanCost : 0,
+          snapshot_date: `${editingEntry.month}-01`
+        });
 
-    setIsModalOpen(false)
-    setEditingEntry(null)
+        await refetchData();
+
+        setIsModalOpen(false);
+        setEditingEntry(null);
+      } catch (error) {
+        console.error("Error updating history", error);
+        alert("Error actualizando el historial");
+      }
+    };
+    
+    runUpdate();
   }
 
   const handleDelete = (id: string) => {
@@ -117,7 +126,16 @@ export default function History() {
     }
     
     if (confirm('¿Está seguro de que desea eliminar este registro?')) {
-      setHistory(history.filter(entry => entry.id !== id))
+      const runDelete = async () => {
+        try {
+          await api.deleteHistory(id);
+          await refetchData();
+        } catch (error) {
+          console.error("Error deleting history", error);
+          alert("Error eliminando registro");
+        }
+      };
+      runDelete();
     }
   }
 
@@ -129,7 +147,7 @@ export default function History() {
       const result = await fetchAndUpdatePrices(assets, history, stockTransactions, bitcoinTransactions)
       
       if (result.success) {
-        setHistory(result.updatedHistory)
+        await refetchData();
         setFetchMessage(result.message)
       } else {
         setFetchMessage(`❌ ERROR EN LA ACTUALIZACIÓN\n╔════════════════════════════════════════╗\n\n${result.message}\n\n╚════════════════════════════════════════╝`)

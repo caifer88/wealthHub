@@ -10,6 +10,7 @@ import { Select } from '../components/ui/Select'
 import { formatCurrency, formatDate, generateUUID, isCurrentMonth, getMonthFromDate } from '../utils'
 import type { BitcoinTransaction } from '../types'
 import { config } from '../config'
+import { api } from '../services/api'
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -38,7 +39,7 @@ const INITIAL_FORM_DATA: FormData = {
 }
 
 export default function Bitcoin() {
-  const { bitcoinTransactions, setBitcoinTransactions, assets, history } = useWealth()
+  const { bitcoinTransactions, refetchData, assets, history } = useWealth()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingTransaction, setEditingTransaction] = useState<BitcoinTransaction | null>(null)
   const [sortColumn, setSortColumn] = useState<'date' | 'type' | 'amount' | 'cost' | 'meanPrice'>('date')
@@ -204,18 +205,46 @@ export default function Bitcoin() {
       return
     }
 
-    if (editingTransaction) {
-      setBitcoinTransactions(bitcoinTransactions.map(t =>
-        t.id === editingTransaction.id ? { ...createTransaction(formData), id: t.id } : t
-      ))
-    } else {
-      setBitcoinTransactions([...bitcoinTransactions, createTransaction(formData)])
-    }
+    const runUpdate = async () => {
+      try {
+        const txData = createTransaction(formData);
+        
+        const btcAsset = assets.find(a => a.name.toLowerCase().includes('bitcoin') || a.category === 'Crypto')
+        const assetId = btcAsset ? btcAsset.id : undefined;
+
+        const backendPayload = {
+            transactionDate: txData.date,
+            type: txData.type,
+            ticker: 'BTC',
+            quantity: txData.amountBTC,
+            pricePerUnit: txData.meanPrice,
+            fees: 0,
+            totalAmount: txData.totalCost,
+            asset_id: assetId,
+        };
+
+        if (editingTransaction) {
+          await api.updateTransaction(editingTransaction.id, backendPayload);
+        } else {
+          await api.createTransaction({
+            id: txData.id,
+            ...backendPayload
+          });
+        }
+        
+        await refetchData();
+        
+        setIsModalOpen(false);
+        setEditingTransaction(null);
+        setFormData(INITIAL_FORM_DATA);
+      } catch (error) {
+        console.error("Error saving transaction", error);
+        alert("Error guardando la transacción");
+      }
+    };
     
-    setIsModalOpen(false)
-    setEditingTransaction(null)
-    setFormData(INITIAL_FORM_DATA)
-  }, [formData, editingTransaction, bitcoinTransactions, createTransaction, setBitcoinTransactions])
+    runUpdate();
+  }, [formData, editingTransaction, createTransaction, refetchData, assets])
 
   const handleOpenModal = useCallback((transaction?: BitcoinTransaction) => {
     if (transaction && !isCurrentMonth(getMonthFromDate(transaction.date || ''))) {
@@ -246,9 +275,18 @@ export default function Bitcoin() {
     }
     
     if (confirm('¿Está seguro de que desea eliminar esta transacción?')) {
-      setBitcoinTransactions(bitcoinTransactions.filter(t => t.id !== id))
+      const runDelete = async () => {
+        try {
+          await api.deleteTransaction(id);
+          await refetchData();
+        } catch (error) {
+          console.error("Error deleting transaction", error);
+          alert("Error eliminando la transacción");
+        }
+      };
+      runDelete();
     }
-  }, [bitcoinTransactions, setBitcoinTransactions])
+  }, [bitcoinTransactions, refetchData])
 
   const handleCloseModal = useCallback(() => {
     setIsModalOpen(false)
