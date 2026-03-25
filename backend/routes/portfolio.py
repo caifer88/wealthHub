@@ -32,3 +32,25 @@ async def sync_month_prices(
     if month is None:
         month = now.month
     return await process_monthly_prices(year, month, session)
+
+
+@router.get("/exchange-rate")
+async def get_exchange_rate(session: AsyncSession = Depends(get_session)):
+    """Get the latest EUR/USD exchange rate. Tries DB first, then live fetch."""
+    from services import db_service
+    from services.price_fetcher import PriceFetcher
+    import asyncio
+
+    # Try DB first
+    rate = await db_service.get_latest_exchange_rate(session, "EUR/USD")
+    if rate and rate > 0:
+        return {"pair": "EUR/USD", "rate": rate, "source": "database"}
+
+    # Fallback: live fetch
+    live_rate = await asyncio.to_thread(PriceFetcher.fetch_eur_usd_rate)
+    if live_rate and live_rate > 0:
+        return {"pair": "EUR/USD", "rate": live_rate, "source": "live"}
+
+    # Ultimate fallback
+    return {"pair": "EUR/USD", "rate": 1.08, "source": "fallback"}
+

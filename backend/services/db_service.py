@@ -279,3 +279,39 @@ async def upsert_history_from_transactions(session: AsyncSession, asset_id: str,
         )
         session.add(new_entry)
         await session.commit()
+
+
+async def save_exchange_rate(session: AsyncSession, rate_date, pair: str, rate_value: float) -> None:
+    """Save or update an exchange rate for a given date and currency pair."""
+    from models import ExchangeRate
+    from decimal import Decimal
+
+    statement = select(ExchangeRate).where(
+        ExchangeRate.date == rate_date,
+        ExchangeRate.currency_pair == pair
+    )
+    existing = (await session.exec(statement)).first()
+
+    if existing:
+        existing.rate = Decimal(str(rate_value))
+        session.add(existing)
+    else:
+        entry = ExchangeRate(
+            date=rate_date,
+            currency_pair=pair,
+            rate=Decimal(str(rate_value))
+        )
+        session.add(entry)
+    await session.commit()
+
+
+async def get_latest_exchange_rate(session: AsyncSession, pair: str) -> float:
+    """Get the latest exchange rate for a given currency pair."""
+    from models import ExchangeRate
+
+    statement = select(ExchangeRate).where(
+        ExchangeRate.currency_pair == pair
+    ).order_by(ExchangeRate.date.desc())
+    result = (await session.exec(statement)).first()
+    return float(result.rate) if result else 0.0
+

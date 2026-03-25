@@ -82,6 +82,41 @@ class PriceFetcher:
         return None
 
     @staticmethod
+    @cached(cache=TTLCache(maxsize=1, ttl=3600))  # 1 hour cache
+    def fetch_eur_usd_rate() -> Optional[float]:
+        """Fetch EUR/USD exchange rate (1 EUR = X USD). Used to convert USD stock prices to EUR."""
+        # Attempt 1: yfinance
+        try:
+            ticker = yf.Ticker("EURUSD=X")
+            hist = ticker.history(period="5d")
+            if not hist.empty:
+                close_value = hist['Close'].iloc[-1]
+                rate = float(close_value.item() if hasattr(close_value, 'item') else close_value)
+                if rate > 0:
+                    logger.info(f"✅ EUR/USD rate: {rate:.4f} (source: yfinance)")
+                    return round(rate, 6)
+        except Exception as e:
+            logger.warning(f"⚠️ yfinance failed for EUR/USD: {e}")
+
+        # Attempt 2: Yahoo Finance direct API
+        try:
+            url = "https://query2.finance.yahoo.com/v8/finance/chart/EURUSD=X?range=1d&interval=1d"
+            res = requests.get(url, headers=PriceFetcher.HEADERS, timeout=10)
+            if res.status_code == 200:
+                chart_data = res.json()
+                if chart_data.get('chart', {}).get('result'):
+                    result = chart_data['chart']['result'][0]
+                    rate = float(result['meta']['regularMarketPrice'])
+                    if rate > 0:
+                        logger.info(f"✅ EUR/USD rate: {rate:.4f} (source: yahoo_api_direct)")
+                        return round(rate, 6)
+        except Exception as e:
+            logger.warning(f"⚠️ Yahoo API direct failed for EUR/USD: {e}")
+
+        logger.error("❌ Failed to fetch EUR/USD rate from all sources")
+        return None
+
+    @staticmethod
     @cached(cache=TTLCache(maxsize=50, ttl=14400), key=lambda tickers, date: str(tickers) + str(date))  # 4 hours cache
     def fetch_multiple_stocks(tickers: Dict[str, Tuple[str, str]], date: datetime) -> List[PriceData]:
         prices = []

@@ -8,12 +8,12 @@ import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
-import { formatCurrency, formatDate, generateUUID } from '../utils'
+import { formatCurrency, formatUSD, formatDate, generateUUID } from '../utils'
 import type { StockTransaction } from '../types'
 import { api } from '../services/api'
 
 export default function Stocks() {
-  const { stockTransactions, refetchData, assets, history } = useWealth()
+  const { stockTransactions, refetchData, assets, history, eurUsdRate } = useWealth()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingTransaction, setEditingTransaction] = useState<StockTransaction | null>(null)
   const [sortColumn, setSortColumn] = useState<'date' | 'ticker' | 'type' | 'shares' | 'price' | 'fees' | 'total'>('date')
@@ -28,6 +28,9 @@ export default function Stocks() {
     totalAmount: 0
   })
   
+  // EUR/USD rate for converting transaction amounts (stored in USD) to EUR
+  const fxRate = eurUsdRate > 0 ? eurUsdRate : 1.08 // fallback
+
   // Find the Stocks/Acciones or Interactive Brokers asset to get its NAV from history
   const stocksAsset = useMemo(() => {
     return assets.find(a => 
@@ -37,34 +40,43 @@ export default function Stocks() {
     )
   }, [assets])
   
-  // Get the latest NAV for the stocks asset
+  // Get the latest NAV for the stocks asset (already in EUR after backend conversion)
   const assetLatestNAV = useMemo(() => {
     if (!stocksAsset || !history) return 0
     const assetHistory = history.filter(h => h.asset_id === stocksAsset.id)
     if (assetHistory.length === 0) return 0
-    // Sort by month and get the latest
     const sorted = [...assetHistory].sort((a, b) => b.month.localeCompare(a.month))
     return sorted[0].nav || 0
   }, [stocksAsset, history])
 
-  // Calcular métricas de cartera reales (uniendo Stocks y el NAV actual del Historial)
+  // Portfolio metrics: investment costs converted from USD to EUR, current values in EUR from history
   const portfolioMetrics = useMemo(() => {
-    const tickerMap: Record<string, { shares: number; cost: number; avgPrice: number; lastPrice: number; currentValue: number; unrealizedGain: number; unrealizedGainPercent: number }> = {}
+    const tickerMap: Record<string, { 
+      shares: number; costUSD: number; costEUR: number; avgPriceUSD: number; avgPriceEUR: number; 
+      lastPrice: number; currentValue: number; unrealizedGain: number; unrealizedGainPercent: number 
+    }> = {}
 
     stockTransactions.forEach(tx => {
       if (!tickerMap[tx.ticker]) {
-        tickerMap[tx.ticker] = { shares: 0, cost: 0, avgPrice: 0, lastPrice: 0, currentValue: 0, unrealizedGain: 0, unrealizedGainPercent: 0 }
+        tickerMap[tx.ticker] = { 
+          shares: 0, costUSD: 0, costEUR: 0, avgPriceUSD: 0, avgPriceEUR: 0,
+          lastPrice: 0, currentValue: 0, unrealizedGain: 0, unrealizedGainPercent: 0 
+        }
       }
 
       if (tx.type === 'buy') {
         tickerMap[tx.ticker].shares += tx.shares
-        tickerMap[tx.ticker].cost += tx.totalAmount
+        tickerMap[tx.ticker].costUSD += tx.totalAmount
+        tickerMap[tx.ticker].costEUR += tx.totalAmount / fxRate
       } else {
-        const avgPrice = tickerMap[tx.ticker].shares > 0 ? tickerMap[tx.ticker].cost / tickerMap[tx.ticker].shares : 0
+        const avgPriceUSD = tickerMap[tx.ticker].shares > 0 ? tickerMap[tx.ticker].costUSD / tickerMap[tx.ticker].shares : 0
+        const avgPriceEUR = tickerMap[tx.ticker].shares > 0 ? tickerMap[tx.ticker].costEUR / tickerMap[tx.ticker].shares : 0
         tickerMap[tx.ticker].shares -= tx.shares
-        tickerMap[tx.ticker].cost -= (tx.shares * avgPrice)
+        tickerMap[tx.ticker].costUSD -= (tx.shares * avgPriceUSD)
+        tickerMap[tx.ticker].costEUR -= (tx.shares * avgPriceEUR)
       }
-      tickerMap[tx.ticker].avgPrice = tickerMap[tx.ticker].shares > 0 ? tickerMap[tx.ticker].cost / tickerMap[tx.ticker].shares : 0
+      tickerMap[tx.ticker].avgPriceUSD = tickerMap[tx.ticker].shares > 0 ? tickerMap[tx.ticker].costUSD / tickerMap[tx.ticker].shares : 0
+      tickerMap[tx.ticker].avgPriceEUR = tickerMap[tx.ticker].shares > 0 ? tickerMap[tx.ticker].costEUR / tickerMap[tx.ticker].shares : 0
     })
 
     const tickers = Object.entries(tickerMap).filter(([_, data]) => data.shares > 0).map(([ticker, data]) => {
@@ -74,7 +86,7 @@ export default function Stocks() {
          (a.name && a.name.trim().toUpperCase() === searchTicker)
        )
        
-       // BUSCAR HISTORIAL INDIVIDUAL
+       // Look up individual ticker history (prices stored in EUR after backend conversion)
        let lastHistory = null
        if (tickerAsset) {
          lastHistory = history.filter(h => h.asset_id === tickerAsset.id).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
@@ -84,36 +96,40 @@ export default function Stocks() {
          lastHistory = history.filter(h => h.asset_id === fakeasset_id).sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime())[0]
        }
        
-       // --- AQUÍ FALTABA ESTO: CALCULAR EL PRECIO ACTUAL ---
-       let currentPrice = data.avgPrice;
+       // Current price (in EUR from history, which was already converted by backend)
+       let currentPriceEUR = data.avgPriceEUR; // fallback to average cost
        if (lastHistory) {
          if (lastHistory.liquidNavValue > 0) {
-           currentPrice = lastHistory.liquidNavValue;
+           currentPriceEUR = lastHistory.liquidNavValue;
          } else if (lastHistory.nav > 0 && lastHistory.participations > 0) {
-           currentPrice = lastHistory.nav / lastHistory.participations;
+           currentPriceEUR = lastHistory.nav / lastHistory.participations;
          } else if (lastHistory.nav > 0) {
-           currentPrice = lastHistory.nav / data.shares;
+           currentPriceEUR = lastHistory.nav / data.shares;
          }
        }
-       // ---------------------------------------------------
        
-       const currentValue = data.shares * currentPrice
-       const unrealizedGain = currentValue - data.cost
-       const unrealizedGainPercent = data.cost > 0 ? (unrealizedGain / data.cost) * 100 : 0
+       const currentValue = data.shares * currentPriceEUR
+       const unrealizedGain = currentValue - data.costEUR
+       const unrealizedGainPercent = data.costEUR > 0 ? (unrealizedGain / data.costEUR) * 100 : 0
        
-       return [ticker, { ...data, lastPrice: currentPrice, currentValue, unrealizedGain, unrealizedGainPercent }] as const
+       return [ticker, { 
+         ...data, 
+         lastPrice: currentPriceEUR, 
+         currentValue, 
+         unrealizedGain, 
+         unrealizedGainPercent 
+       }] as const
     })
 
-    // Calcular totales usando los valores reales actuales (suma de todas las acciones por su precio actual)
+    // Totals in EUR
     const totalValue = tickers.reduce((sum, [_, data]) => sum + data.currentValue, 0)
-    const totalInvestment = tickers.reduce((sum, [_, data]) => sum + data.cost, 0)
+    const totalInvestmentEUR = tickers.reduce((sum, [_, data]) => sum + data.costEUR, 0)
     
-    // USAR DIRECTAMENTE EL TOTAL VALUE DE LAS ACCIONES PARA ESTA PESTAÑA
     const finalTotalValue = totalValue > 0 ? totalValue : (assetLatestNAV > 0 ? assetLatestNAV : 0)
-    const unrealizedGains = finalTotalValue - totalInvestment
+    const unrealizedGains = finalTotalValue - totalInvestmentEUR
 
-    return { tickers, tickerMap, totalValue: finalTotalValue, totalInvestment, unrealizedGains }
-  }, [stockTransactions, assets, history, assetLatestNAV])
+    return { tickers, tickerMap, totalValue: finalTotalValue, totalInvestment: totalInvestmentEUR, unrealizedGains }
+  }, [stockTransactions, assets, history, assetLatestNAV, fxRate])
 
   const getSortedTransactions = useCallback((txs: StockTransaction[], column: 'date' | 'ticker' | 'type' | 'shares' | 'price' | 'fees' | 'total', direction: 'asc' | 'desc') => {
     const sorted = [...txs]
@@ -143,9 +159,9 @@ export default function Stocks() {
 
   const distributionData = portfolioMetrics.tickers.map(([ticker, data]) => ({
     name: ticker,
-    value: data.cost,
+    value: data.costEUR,
     shares: data.shares,
-    avgPrice: data.avgPrice
+    avgPrice: data.avgPriceEUR
   }))
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -174,6 +190,7 @@ export default function Stocks() {
           pricePerUnit: formData.pricePerShare,
           fees: formData.fees,
           totalAmount: totalAmount,
+          currency: 'USD',
           asset_id: assetId
         };
 
@@ -258,7 +275,7 @@ export default function Stocks() {
             Gestor de Acciones
           </h1>
           <p className="text-slate-600 dark:text-slate-400 mt-2">
-            Gestiona tu cartera de acciones
+            Gestiona tu cartera de acciones · Tipo de cambio: 1 € = {fxRate.toFixed(4)} $
           </p>
         </div>
         <Button variant="primary" onClick={() => handleOpenModal()}>
@@ -267,24 +284,24 @@ export default function Stocks() {
         </Button>
       </header>
 
-      {/* Métricas */}
+      {/* Métricas (all in EUR) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <MetricCard
           title="Valor Total Cartera"
           value={formatCurrency(Math.round(portfolioMetrics.totalValue))}
-          subtitle="Precio actual"
+          subtitle="Precio actual (€)"
           color="text-indigo-600"
         />
         <MetricCard
           title="Inversión Neta"
           value={formatCurrency(Math.round(portfolioMetrics.totalInvestment))}
-          subtitle="Capital empleado"
+          subtitle="Capital empleado (€)"
           color="text-slate-900 dark:text-white"
         />
         <MetricCard
           title="Ganancia No Realizada"
           value={formatCurrency(Math.round(portfolioMetrics.unrealizedGains))}
-          subtitle="P&L actual"
+          subtitle={`P&L actual (${portfolioMetrics.totalInvestment > 0 ? (portfolioMetrics.unrealizedGains / portfolioMetrics.totalInvestment * 100).toFixed(1) + '%' : '0%'})`}
           color={portfolioMetrics.unrealizedGains >= 0 ? 'text-emerald-500' : 'text-rose-500'}
         />
         <MetricCard
@@ -346,14 +363,20 @@ export default function Stocks() {
                     <span className="text-sm text-slate-600 dark:text-slate-400">{data.shares.toLocaleString('es-ES', { maximumFractionDigits: 4 })} acciones</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-600 dark:text-slate-400">Precio Medio: {formatCurrency(data.avgPrice)}</span>
-                    <span className="font-bold dark:text-white">Inversión: {formatCurrency(Math.round(data.cost))}</span>
+                    <span className="text-slate-600 dark:text-slate-400">
+                      Precio Medio: {formatUSD(data.avgPriceUSD)} ({formatCurrency(Math.round(data.avgPriceEUR))})
+                    </span>
+                    <span className="font-bold dark:text-white">Inversión: {formatCurrency(Math.round(data.costEUR))}</span>
                   </div>
-                  {/* 🟢 FIX 2.1: Mostrar la ganancia individual */}
+                  <div className="flex justify-between text-sm mt-1">
+                    <span className="text-slate-600 dark:text-slate-400">Valor actual: {formatCurrency(Math.round(data.currentValue))}</span>
+                    <span className="text-slate-600 dark:text-slate-400">Precio: {formatCurrency(Math.round(data.lastPrice))}/acción</span>
+                  </div>
+                  {/* P&L per ticker */}
                   <div className="flex justify-between items-center text-sm mt-1 border-t border-slate-200 dark:border-slate-700 pt-1">
                     <span className="text-slate-600 dark:text-slate-400">P&L Actual:</span>
                     <span className={`font-bold ${data.unrealizedGain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                       {data.unrealizedGain >= 0 ? '↑' : '↓'} {formatCurrency(Math.abs(data.unrealizedGain))} ({data.unrealizedGainPercent.toFixed(1)}%)
+                       {data.unrealizedGain >= 0 ? '↑' : '↓'} {formatCurrency(Math.abs(Math.round(data.unrealizedGain)))} ({data.unrealizedGainPercent.toFixed(1)}%)
                     </span>
                   </div>
                 </div>
@@ -367,7 +390,7 @@ export default function Stocks() {
         </Card>
       </div>
 
-      {/* Tabla de Transacciones */}
+      {/* Tabla de Transacciones (amounts in USD) */}
       <Card title="Historial de Transacciones" className="overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -449,7 +472,7 @@ export default function Stocks() {
                   className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-slate-900 dark:hover:text-slate-200 select-none"
                 >
                   <div className="flex items-center justify-end gap-2">
-                    Precio
+                    Precio ($)
                     {sortColumn === 'price' && (sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />)}
                   </div>
                 </th>
@@ -465,7 +488,7 @@ export default function Stocks() {
                   className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-slate-900 dark:hover:text-slate-200 select-none"
                 >
                   <div className="flex items-center justify-end gap-2">
-                    Comisión
+                    Comisión ($)
                     {sortColumn === 'fees' && (sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />)}
                   </div>
                 </th>
@@ -481,7 +504,7 @@ export default function Stocks() {
                   className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-slate-900 dark:hover:text-slate-200 select-none"
                 >
                   <div className="flex items-center justify-end gap-2">
-                    Total
+                    Total ($)
                     {sortColumn === 'total' && (sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />)}
                   </div>
                 </th>
@@ -501,9 +524,9 @@ export default function Stocks() {
                     </span>
                   </td>
                   <td className="py-3 px-4 text-right font-bold dark:text-white">{tx.shares}</td>
-                  <td className="py-3 px-4 text-right font-bold text-slate-600 dark:text-slate-300">{formatCurrency(Math.round(tx.pricePerShare))}</td>
-                  <td className="py-3 px-4 text-right font-bold dark:text-white">{formatCurrency(Math.round(tx.fees))}</td>
-                  <td className="py-3 px-4 text-right font-bold dark:text-white">{formatCurrency(Math.round(tx.totalAmount))}</td>
+                  <td className="py-3 px-4 text-right font-bold text-slate-600 dark:text-slate-300">{formatUSD(tx.pricePerShare)}</td>
+                  <td className="py-3 px-4 text-right font-bold dark:text-white">{formatUSD(tx.fees)}</td>
+                  <td className="py-3 px-4 text-right font-bold dark:text-white">{formatUSD(tx.totalAmount)}</td>
                   <td className="py-3 px-4 text-center space-x-2 flex gap-2 justify-center">
                     <button
                       onClick={() => handleOpenModal(tx)}
@@ -580,7 +603,7 @@ export default function Stocks() {
           />
 
           <Input
-            label="Precio por Acción (€)"
+            label="Precio por Acción ($)"
             type="number"
             value={formData.pricePerShare}
             onChange={(e) => setFormData({ ...formData, pricePerShare: parseFloat(e.target.value) })}
@@ -590,13 +613,24 @@ export default function Stocks() {
           />
 
           <Input
-            label="Comisión (€)"
+            label="Comisión ($)"
             type="number"
             value={formData.fees}
             onChange={(e) => setFormData({ ...formData, fees: parseFloat(e.target.value) })}
             step="0.01"
             min="0"
           />
+
+          {formData.shares > 0 && formData.pricePerShare > 0 && (
+            <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-lg space-y-1">
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                <strong>Total USD:</strong> {formatUSD(formData.shares * formData.pricePerShare + formData.fees)}
+              </p>
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                <strong>Equivalente EUR:</strong> {formatCurrency(Math.round((formData.shares * formData.pricePerShare + formData.fees) / fxRate))}
+              </p>
+            </div>
+          )}
 
           <div className="flex gap-2 justify-end pt-4">
             <Button variant="secondary" onClick={() => setIsModalOpen(false)}>

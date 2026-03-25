@@ -67,6 +67,15 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
 
         broker_assets = list(broker_assets_dict.values())
 
+        # Fetch EUR/USD exchange rate for stock price conversion (stocks are priced in USD)
+        eur_usd_rate = None
+        if broker_assets:
+            eur_usd_rate = await asyncio.to_thread(PriceFetcher.fetch_eur_usd_rate)
+            if eur_usd_rate:
+                logger.info(f"💱 EUR/USD rate for conversion: {eur_usd_rate:.4f}")
+            else:
+                logger.warning("⚠️ Could not fetch EUR/USD rate, stock prices will NOT be converted")
+
         tasks = []
 
         def fetch_btc():
@@ -96,13 +105,13 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                 continue
             tasks.append(asyncio.to_thread(make_fund_fetcher(fund)))
 
-        def make_broker_fetcher(broker):
+        def make_broker_fetcher(broker, fx_rate):
             def fetch():
                 component_tickers = broker.get("componentTickers", [])
                 holdings = broker.get("holdings", {})
 
                 if not component_tickers:
-                    return ("broker", broker, [])
+                    return ("broker", broker, [], fx_rate)
 
                 tickers_map = {
                     ticker: (f"{broker.get('name')} - {ticker}", broker["id"])
@@ -114,6 +123,13 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                 total_broker_value = 0.0
                 for p in individual_prices:
                     shares = holdings.get(p.ticker, 0.0)
+                    # Convert USD price to EUR if we have the exchange rate
+                    if fx_rate and fx_rate > 0:
+                        usd_price = float(p.price)
+                        eur_price = round(usd_price / fx_rate, 2)
+                        logger.info(f"💱 {p.ticker}: ${usd_price:.2f} → €{eur_price:.2f} (rate: {fx_rate:.4f})")
+                        p.price = Decimal(str(eur_price))
+                    p.currency = "EUR"
                     total_broker_value += float(p.price) * shares
                     p.asset_id = f"ticker-{p.ticker}"
                     p.asset_name = f"Stock {p.ticker}"
@@ -128,14 +144,14 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                         fetched_at=format_datetime_iso(datetime.now()),
                         source="yfinance_aggregated"
                     )
-                    return ("broker", broker, [aggregated_price] + individual_prices)
+                    return ("broker", broker, [aggregated_price] + individual_prices, fx_rate)
 
-                return ("broker", broker, individual_prices)
+                return ("broker", broker, individual_prices, fx_rate)
             return fetch
 
         for broker in broker_assets:
             if broker.get("componentTickers"):
-                tasks.append(asyncio.to_thread(make_broker_fetcher(broker)))
+                tasks.append(asyncio.to_thread(make_broker_fetcher(broker, eur_usd_rate)))
 
         results = await asyncio.gather(*tasks)
 
@@ -156,7 +172,7 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                     nav_mapping[price_data.asset_id] = price_data.price
                 else: errors.append(f"Failed to fetch price for {fund.get('name')}")
             elif type_ == "broker":
-                _, broker, broker_prices = result
+                _, broker, broker_prices, _ = result
                 prices.extend(broker_prices)
                 for p in broker_prices:
                     if p.ticker is None:
@@ -178,6 +194,11 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
         saved_count = 0
         month_str = f"{year}-{month:02d}-01"
         date_obj = datetime.strptime(month_str, "%Y-%m-%d").date()
+
+        # Save exchange rate to DB if we fetched one
+        if eur_usd_rate and eur_usd_rate > 0:
+            await db_service.save_exchange_rate(session, date_obj, "EUR/USD", eur_usd_rate)
+            logger.info(f"💾 Saved EUR/USD rate {eur_usd_rate:.4f} for {date_obj}")
 
         for asset in active_assets:
             asset_id = asset["id"]
@@ -309,7 +330,8 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                 history_entry = existing_entries[0]
                 history_entry.liquid_nav_value = liquid_nav
                 history_entry.nav = nav_val
-                history_entry.contribution = contribution
+                # ✅ Preserve existing contribution — user adds these manually
+                # contribution stays as-is (do NOT overwrite with 0)
                 history_entry.participations = participations
                 history_entry.mean_cost = mean_cost
                 await db_service.update_history_entry(session, history_entry.id, history_entry)
@@ -350,7 +372,7 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                     history_entry = existing_entries[0]
                     history_entry.liquid_nav_value = liquid_nav
                     history_entry.nav = nav_val
-                    history_entry.contribution = contribution
+                    # ✅ Preserve contribution (user-managed)
                     history_entry.participations = participations
                     history_entry.mean_cost = mean_cost
                     await db_service.update_history_entry(session, history_entry.id, history_entry)

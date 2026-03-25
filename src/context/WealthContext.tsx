@@ -58,6 +58,7 @@ interface WealthContextType {
   syncState: SyncState
   darkMode: boolean
   metrics: Metrics | null
+  eurUsdRate: number
   setAssets: (assets: Asset[]) => void
   setHistory: (history: HistoryEntry[]) => void
   setBitcoinTransactions: (txs: BitcoinTransaction[]) => void
@@ -80,6 +81,7 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   })
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('wm_theme') === 'dark')
   const [metrics, setMetrics] = useState<Metrics | null>(null)
+  const [eurUsdRate, setEurUsdRate] = useState<number>(1.08) // default fallback
   
   // Referencias para controlar cargas
   const isFirstRender = useRef(true)
@@ -88,11 +90,12 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const fetchFromDatabase = async () => {
       try {
                 // ✅ CORRECCIÓN 1: Traemos summaryRes en el Promise.all
-                const [assetsRes, historyRes, txsRes, summaryRes] = await Promise.all([
+                const [assetsRes, historyRes, txsRes, summaryRes, exchangeRateRes] = await Promise.all([
                     fetch(`${config.backendUrl}/api/assets`),
                     fetch(`${config.backendUrl}/api/history`),
                     fetch(`${config.backendUrl}/api/transactions`),
-                    fetch(`${config.backendUrl}/api/portfolio/summary`)
+                    fetch(`${config.backendUrl}/api/portfolio/summary`),
+                    fetch(`${config.backendUrl}/api/portfolio/exchange-rate`)
                 ]);
 
                 if (!assetsRes.ok || !historyRes.ok || !txsRes.ok) {
@@ -159,6 +162,14 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     });
                 }
 
+                // Load exchange rate
+                if (exchangeRateRes.ok) {
+                    const rateData = await exchangeRateRes.json();
+                    if (rateData && rateData.rate > 0) {
+                        setEurUsdRate(rateData.rate);
+                    }
+                }
+
                 setIsDataLoaded(true); // ✅ Avisamos que cargó correctamente
                 
             } catch (error) {
@@ -219,6 +230,7 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     syncState,
     darkMode,
     metrics,
+    eurUsdRate,
     setAssets,
     setHistory,
     setBitcoinTransactions,
