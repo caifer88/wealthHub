@@ -20,6 +20,8 @@ async def create_transaction(transaction: Transaction, session: AsyncSession = D
     if isinstance(transaction.transaction_date, str):
         from datetime import datetime
         transaction.transaction_date = datetime.strptime(transaction.transaction_date, "%Y-%m-%d").date()
+    if transaction.type:
+        transaction.type = transaction.type.upper()
     result = await db_service.create_transaction(session, transaction)
     # Auto-update history for the month of this transaction
     if result.asset_id and result.transaction_date:
@@ -33,6 +35,8 @@ async def update_transaction(transaction_id: str, transaction: Transaction, sess
     if isinstance(transaction.transaction_date, str):
         from datetime import datetime
         transaction.transaction_date = datetime.strptime(transaction.transaction_date, "%Y-%m-%d").date()
+    if transaction.type:
+        transaction.type = transaction.type.upper()
     updated = await db_service.update_transaction(session, transaction_id, transaction)
     if not updated:
         raise HTTPException(status_code=404, detail="Transaction not found")

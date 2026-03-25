@@ -245,7 +245,7 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                 is_btc = asset.get("category") == AssetCategory.CRYPTO.value and ("BTC" in str(asset.get("ticker", "")).upper() or "BITCOIN" in str(asset.get("name", "")).upper())
 
                 if is_btc:
-                    btc_holdings = await db_service.get_total_btc_holdings(session, asset_id)
+                    btc_holdings = await db_service.get_total_btc_holdings(session, asset_id, to_date=last_business_day)
                     participations = Decimal(str(round(btc_holdings, 8)))
                     nav_val = Decimal(str(round(float(val) * btc_holdings, 2)))
                     liquid_nav = Decimal(str(val))
@@ -253,7 +253,7 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                     nav_val = Decimal(str(val))
                     liquid_nav = Decimal("1.0") if float(val) > 0 else Decimal("0.0")
                 else:
-                    fund_holdings = await db_service.get_asset_total_quantity(session, asset_id)
+                    fund_holdings = await db_service.get_asset_total_quantity(session, asset_id, to_date=last_business_day)
                     participations = Decimal(str(round(fund_holdings, 8))) if fund_holdings > 0 else prev_participations
                     
                     if participations > 0:
@@ -270,7 +270,7 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                 is_btc = asset.get("category") == AssetCategory.CRYPTO.value and ("BTC" in str(asset.get("ticker", "")).upper() or "BITCOIN" in str(asset.get("name", "")).upper())
 
                 if is_btc:
-                    btc_holdings = await db_service.get_total_btc_holdings(session, asset_id)
+                    btc_holdings = await db_service.get_total_btc_holdings(session, asset_id, to_date=last_business_day)
                     participations = Decimal(str(round(btc_holdings, 8)))
 
                     if prev_participations > 0 and prev_liquid_nav > 0:
@@ -314,7 +314,7 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                         liquid_nav = prev_liquid_nav
                 else:
                     # For standard funds, cash, or missing fetches
-                    fund_holdings = await db_service.get_asset_total_quantity(session, asset_id)
+                    fund_holdings = await db_service.get_asset_total_quantity(session, asset_id, to_date=last_business_day)
                     participations = Decimal(str(round(fund_holdings, 8))) if fund_holdings > 0 else prev_participations
 
                     if participations > 0 and prev_liquid_nav > 0:

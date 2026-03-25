@@ -5,7 +5,7 @@ Database repository for WealthHub Backend
 from sqlmodel import select, delete
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy import func, case
-from typing import List, Optional
+from typing import List, Optional, Any
 import logging
 
 from models import Asset, HistoryEntry as AssetHistory, Transaction, TransactionType
@@ -115,8 +115,8 @@ async def get_asset_holdings(session: AsyncSession, asset_id: str) -> dict:
         Transaction.ticker,
         func.sum(
             case(
-                (Transaction.type == TransactionType.BUY, Transaction.quantity),
-                (Transaction.type == TransactionType.SELL, -Transaction.quantity),
+                (func.upper(Transaction.type) == TransactionType.BUY.value, Transaction.quantity),
+                (func.upper(Transaction.type) == TransactionType.SELL.value, -Transaction.quantity),
                 else_=0
             )
         ).label('total_quantity')
@@ -125,31 +125,39 @@ async def get_asset_holdings(session: AsyncSession, asset_id: str) -> dict:
     results = (await session.exec(statement)).all()
     return {ticker: float(qty) for ticker, qty in results if qty > 0.0001}
 
-async def get_total_btc_holdings(session: AsyncSession, asset_id: str) -> float:
+async def get_total_btc_holdings(session: AsyncSession, asset_id: str, to_date: Optional[Any] = None) -> float:
     statement = select(
         func.sum(
             case(
-                (Transaction.type == TransactionType.BUY, Transaction.quantity),
-                (Transaction.type == TransactionType.SELL, -Transaction.quantity),
+                (func.upper(Transaction.type) == TransactionType.BUY.value, Transaction.quantity),
+                (func.upper(Transaction.type) == TransactionType.SELL.value, -Transaction.quantity),
                 else_=0
             )
         )
     ).where(
         (Transaction.asset_id == asset_id) | (Transaction.ticker == 'BTC')
     )
+    
+    if to_date:
+        statement = statement.where(Transaction.transaction_date <= to_date)
+        
     result = (await session.exec(statement)).first()
     return float(result) if result else 0.0
 
-async def get_asset_total_quantity(session: AsyncSession, asset_id: str) -> float:
+async def get_asset_total_quantity(session: AsyncSession, asset_id: str, to_date: Optional[Any] = None) -> float:
     statement = select(
         func.sum(
             case(
-                (Transaction.type == TransactionType.BUY, Transaction.quantity),
-                (Transaction.type == TransactionType.SELL, -Transaction.quantity),
+                (func.upper(Transaction.type) == TransactionType.BUY.value, Transaction.quantity),
+                (func.upper(Transaction.type) == TransactionType.SELL.value, -Transaction.quantity),
                 else_=0
             )
         )
     ).where(Transaction.asset_id == asset_id)
+    
+    if to_date:
+        statement = statement.where(Transaction.transaction_date <= to_date)
+        
     result = (await session.exec(statement)).first()
     return float(result) if result else 0.0
 
