@@ -50,6 +50,11 @@ INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, tic
 INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a7', 'Broker DeGiro', 'STOCK', '#60a5fa', true, 'Medio', NULL, NULL, NULL) ON CONFLICT (id) DO NOTHING;
 INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a8', 'Numantia Patrimonio', 'FUND', '#b2b512', false, 'Moderado', 'ES0173311103', NULL, NULL) ON CONFLICT (id) DO NOTHING;
 INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a9', 'Interactive Brokers', 'STOCK', '#3b82f6', false, 'Medio', NULL, NULL, 'Cartera de acciones individuales') ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a10', 'Fidelity MSCI Emerging Markets', 'FUND', '#f26464', false, 'Moderado', 'IE00BYX5M476', NULL, NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a11', 'Vanguard European Stock Index ', 'FUND', '#f26464', false, 'Moderado', 'IE0007987690', NULL, NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a12', 'Vanguard Global Small-Cap Index ', 'FUND', '#f26464', false, 'Moderado', 'IE00B42W3S00', NULL, NULL) ON CONFLICT (id) DO NOTHING;
+
 -- 3. INSERCIÓN DE HISTORIAL MENSUAL
 INSERT INTO Asset_History (id, asset_id, snapshot_date, nav, contribution, participations, liquid_nav_value, mean_cost) VALUES ('h-2020-01-a5', 'a5', '2020-01-01', 15000, 0, NULL, NULL, NULL) ON CONFLICT (id) DO NOTHING;
 INSERT INTO Asset_History (id, asset_id, snapshot_date, nav, contribution, participations, liquid_nav_value, mean_cost) VALUES ('h-2020-01-a6', 'a6', '2020-01-01', 0, 0, NULL, NULL, NULL) ON CONFLICT (id) DO NOTHING;
@@ -419,6 +424,8 @@ INSERT INTO Asset_History (id, asset_id, snapshot_date, nav, contribution, parti
 INSERT INTO Asset_History (id, asset_id, snapshot_date, nav, contribution, participations, liquid_nav_value, mean_cost) VALUES ('f4fd47f6-45fc-4b46-b178-2e1d6cba1c2b', 'a5', '2026-03-01', 23400, -1000, 0, 0, 0) ON CONFLICT (id) DO NOTHING;
 
 -- 4. INSERCIÓN DE TRANSACCIONES
+INSERT INTO Transaction (id, asset_id, transaction_date, type, ticker, quantity, price_per_unit, fees, total_amount) VALUES ('tx-btc-058', 'a4', '2026-03-26', 'BUY', 'BTC', 0.004680, 60687, 0, 284) ON CONFLICT (id) DO NOTHING;
+INSERT INTO Transaction (id, asset_id, transaction_date, type, ticker, quantity, price_per_unit, fees, total_amount) VALUES ('tx-btc-057', 'a4', '2026-03-15', 'BUY', 'BTC', 0.004880, 64955, 0, 317) ON CONFLICT (id) DO NOTHING;
 INSERT INTO Transaction (id, asset_id, transaction_date, type, ticker, quantity, price_per_unit, fees, total_amount) VALUES ('tx-btc-056', 'a4', '2026-02-19', 'BUY', 'BTC', 0.00603547, 57493.4512, 0, 347) ON CONFLICT (id) DO NOTHING;
 INSERT INTO Transaction (id, asset_id, transaction_date, type, ticker, quantity, price_per_unit, fees, total_amount) VALUES ('tx-btc-001', 'a4', '2026-02-05', 'BUY', 'BTC', 0.00494981, 60608.38698859148, 0, 300) ON CONFLICT (id) DO NOTHING;
 INSERT INTO Transaction (id, asset_id, transaction_date, type, ticker, quantity, price_per_unit, fees, total_amount) VALUES ('tx-btc-002', 'a4', '2026-01-30', 'BUY', 'BTC', 0.00355157, 72643.92930450477, 0, 258) ON CONFLICT (id) DO NOTHING;
