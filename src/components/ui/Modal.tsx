@@ -6,7 +6,7 @@ interface ModalProps {
   title: string
   children: React.ReactNode
   onClose: () => void
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'sm' | 'md' | 'lg' | 'xl'
 }
 
 export const Modal: React.FC<ModalProps> = ({
@@ -21,13 +21,14 @@ export const Modal: React.FC<ModalProps> = ({
   const sizeClasses = {
     sm: 'max-w-sm',
     md: 'max-w-md',
-    lg: 'max-w-lg'
+    lg: 'max-w-lg',
+    xl: 'max-w-4xl w-full'
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className={`bg-white dark:bg-slate-900 rounded-3xl p-6 ${sizeClasses[size]}`}>
-        <div className="flex justify-between items-center mb-4">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+      <div className={`bg-white dark:bg-slate-900 rounded-3xl p-6 overflow-hidden flex flex-col max-h-[90vh] ${sizeClasses[size]}`}>
+        <div className="flex justify-between items-center mb-4 flex-shrink-0">
           <h2 className="text-xl font-bold dark:text-white">{title}</h2>
           <button
             onClick={onClose}

@@ -2,14 +2,13 @@ import { useState, Suspense, lazy } from 'react'
 import { Moon, Sun, Menu, X } from 'lucide-react'
 import { useWealth } from './context/WealthContext'
 const Dashboard = lazy(() => import('./pages/Dashboard'))
-const History = lazy(() => import('./pages/History'))
 const Assets = lazy(() => import('./pages/Assets'))
 const Bitcoin = lazy(() => import('./pages/Bitcoin'))
 const Stocks = lazy(() => import('./pages/Stocks'))
 const Projections = lazy(() => import('./pages/Projections'))
 const Statistics = lazy(() => import('./pages/Statistics'))
 
-type TabType = 'dashboard' | 'history' | 'assets' | 'bitcoin' | 'stocks' | 'proyecciones' | 'estadisticas'
+type TabType = 'dashboard' | 'assets' | 'bitcoin' | 'stocks' | 'proyecciones' | 'estadisticas'
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard')
@@ -18,7 +17,6 @@ export default function App() {
 
   const tabs = [
     { id: 'dashboard' as TabType, label: '📊 Dashboard', icon: '📊' },
-    { id: 'history' as TabType, label: '📈 Historial', icon: '📈' },
     { id: 'estadisticas' as TabType, label: '📉 Estadísticas', icon: '📉' },
     { id: 'assets' as TabType, label: '💼 Activos', icon: '💼' },
     { id: 'bitcoin' as TabType, label: '₿ Bitcoin', icon: '₿' },
@@ -30,8 +28,6 @@ export default function App() {
     switch (activeTab) {
       case 'dashboard':
         return <Dashboard />
-      case 'history':
-        return <History />
       case 'estadisticas':
         return <Statistics />
       case 'assets':
