@@ -41,19 +41,19 @@ CREATE TABLE IF NOT EXISTS Transaction (
 );
 
 -- 2. INSERCIÓN DE ACTIVOS
-INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a1', 'Basalto USA ', 'FUND', '#102cb7', false, 'Moderado', 'ES0164691083', NULL, NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a1', 'Basalto USA ', 'FUND_ACTIVE', '#102cb7', false, 'Moderado', 'ES0164691083', NULL, NULL) ON CONFLICT (id) DO NOTHING;
 INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a2', 'Numantia Pensiones PP', 'PENSION', '#e8f075', false, 'Moderado', '0P0001NBRZ', NULL, NULL) ON CONFLICT (id) DO NOTHING;
-INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a3', 'Vanguard SP500 Stock index', 'FUND', '#f26464', false, 'Moderado', 'IE0032126645', NULL, NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a3', 'Vanguard SP500 Stock index', 'FUND_INDEX', '#f26464', false, 'Moderado', 'IE0032126645', NULL, NULL) ON CONFLICT (id) DO NOTHING;
 INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a4', 'Bitcoin', 'CRYPTO', '#f59e0b', false, 'Medio', NULL, 'BTC-EUR', NULL) ON CONFLICT (id) DO NOTHING;
 INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a5', 'Cash', 'CASH', '#33a340', false, 'Moderado', NULL, NULL, NULL) ON CONFLICT (id) DO NOTHING;
-INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a6', 'Founds old', 'FUND', '#fca5a5', true, 'Medio', NULL, NULL, NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a6', 'Founds old', 'FUND_ACTIVE', '#fca5a5', true, 'Medio', NULL, NULL, NULL) ON CONFLICT (id) DO NOTHING;
 INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a7', 'Broker DeGiro', 'STOCK', '#60a5fa', true, 'Medio', NULL, NULL, NULL) ON CONFLICT (id) DO NOTHING;
-INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a8', 'Numantia Patrimonio', 'FUND', '#b2b512', false, 'Moderado', 'ES0173311103', NULL, NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a8', 'Numantia Patrimonio', 'FUND_ACTIVE', '#b2b512', false, 'Moderado', 'ES0173311103', NULL, NULL) ON CONFLICT (id) DO NOTHING;
 INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a9', 'Interactive Brokers', 'STOCK', '#3b82f6', false, 'Medio', NULL, NULL, 'Cartera de acciones individuales') ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a10', 'Fidelity MSCI Emerging Markets', 'FUND', '#f26464', false, 'Moderado', 'IE00BYX5M476', NULL, NULL) ON CONFLICT (id) DO NOTHING;
-INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a11', 'Vanguard European Stock Index ', 'FUND', '#f26464', false, 'Moderado', 'IE0007987690', NULL, NULL) ON CONFLICT (id) DO NOTHING;
-INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a12', 'Vanguard Global Small-Cap Index ', 'FUND', '#f26464', false, 'Moderado', 'IE00B42W3S00', NULL, NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a10', 'Fidelity MSCI Emerging Markets', 'FUND_INDEX', '#f26464', false, 'Moderado', 'IE00BYX5M476', NULL, NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a11', 'Vanguard European Stock Index ', 'FUND_INDEX', '#f26464', false, 'Moderado', 'IE0007987690', NULL, NULL) ON CONFLICT (id) DO NOTHING;
+INSERT INTO Asset (id, name, category, color, is_archived, risk_level, isin, ticker, description) VALUES ('a12', 'Vanguard Global Small-Cap Index ', 'FUND_INDEX', '#f26464', false, 'Moderado', 'IE00B42W3S00', NULL, NULL) ON CONFLICT (id) DO NOTHING;
 
 -- 3. INSERCIÓN DE HISTORIAL MENSUAL
 INSERT INTO Asset_History (id, asset_id, snapshot_date, nav, contribution, participations, liquid_nav_value, mean_cost) VALUES ('h-2020-01-a5', 'a5', '2020-01-01', 15000, 0, NULL, NULL, NULL) ON CONFLICT (id) DO NOTHING;
@@ -484,5 +484,8 @@ INSERT INTO Transaction (id, asset_id, transaction_date, type, ticker, quantity,
 INSERT INTO Transaction (id, asset_id, transaction_date, type, ticker, quantity, price_per_unit, fees, total_amount) VALUES ('tx-btc-055', 'a4', '2021-08-20', 'BUY', 'BTC', 0.01189645, 42029, 0, 500) ON CONFLICT (id) DO NOTHING;
 INSERT INTO Transaction (id, asset_id, transaction_date, type, ticker, quantity, price_per_unit, fees, total_amount) VALUES ('tx-stock-001', 'a9', '2026-02-05', 'BUY', 'AMD', 10, 168.77, 0, 1687.7) ON CONFLICT (id) DO NOTHING;
 INSERT INTO Transaction (id, asset_id, transaction_date, type, ticker, quantity, price_per_unit, fees, total_amount) VALUES ('tx-stock-002', 'a9', '2026-02-05', 'BUY', 'MSTR', 30, 103.43, 0, 3102.9) ON CONFLICT (id) DO NOTHING;
+-- 5. MIGRACIÓN DE CATEGORÍAS (idempotente: sólo actualiza si aún tienen la categoría genérica FUND)
+UPDATE Asset SET category = 'FUND_ACTIVE' WHERE id IN ('a1', 'a6', 'a8') AND category = 'FUND';
+UPDATE Asset SET category = 'FUND_INDEX' WHERE id IN ('a3', 'a10', 'a11', 'a12') AND category = 'FUND';
 
 COMMIT;

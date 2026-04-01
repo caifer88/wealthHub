@@ -3,10 +3,11 @@ import { Modal } from './ui/Modal'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
 import { Select } from './ui/Select'
-import { Asset, HistoryEntry } from '../types'
-import { Trash2, Edit3 } from 'lucide-react'
+import { Asset, HistoryEntry, AssetCategory } from '../types'
+import { Trash2, Edit3, Shield, Info, BarChart2, Briefcase } from 'lucide-react'
 import { formatCurrencyDecimals, generateUUID } from '../utils'
 import { api } from '../services/api'
+import { CATEGORY_META } from '../hooks/useAllocation'
 
 interface AssetDetailModalProps {
   isOpen: boolean
@@ -26,7 +27,7 @@ export function AssetDetailModal({
   const [activeTab, setActiveTab] = useState<'details' | 'history'>('details')
   const [formData, setFormData] = useState({
     name: '',
-    category: 'Fund',
+    category: AssetCategory.FUND_INDEX as string,
     color: '#6366f1',
     riskLevel: 'Medio',
     isArchived: false,
@@ -46,8 +47,12 @@ export function AssetDetailModal({
   })
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false)
 
-  const categories = ['Fund', 'Cash', 'Crypto', 'Stocks', 'Plan de pensiones']
-  const colors = ['#6366f1', '#0f1010', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4']
+  const categories = Object.values(AssetCategory)
+  const colors = [
+    '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', 
+    '#f59e0b', '#10b981', '#0ea5e9', '#0f1010',
+    '#64748b'
+  ]
   const riskLevels = ['Bajo', 'Medio', 'Alto']
 
   useEffect(() => {
@@ -55,7 +60,7 @@ export function AssetDetailModal({
       if (asset) {
         setFormData({
           name: asset.name,
-          category: asset.category,
+          category: asset.category || AssetCategory.FUND_INDEX,
           color: asset.color,
           riskLevel: asset.riskLevel || 'Medio',
           isArchived: asset.isArchived || false,
@@ -68,7 +73,7 @@ export function AssetDetailModal({
       } else {
         setFormData({
           name: '',
-          category: 'Fund',
+          category: AssetCategory.FUND_INDEX,
           color: '#6366f1',
           riskLevel: 'Medio',
           isArchived: false,
@@ -96,7 +101,9 @@ export function AssetDetailModal({
         riskLevel: formData.riskLevel,
         isArchived: formData.isArchived,
         isin: formData.isin || null,
-        ticker: formData.ticker || null
+        ticker: formData.ticker || null,
+        participations: formData.participations,
+        meanCost: formData.meanCost
       } as any
 
       if (asset) {
@@ -109,7 +116,7 @@ export function AssetDetailModal({
       }
 
       await refetchData()
-      if (!asset) onClose() // Cierra si es nuevo porque ya no necesitamos tab de historial
+      if (!asset) onClose() // Cierra si es nuevo
       else alert("Detalles actualizados correctamente")
     } catch (error) {
       console.error("Error saving asset", error)
@@ -183,6 +190,7 @@ export function AssetDetailModal({
     }
   }
 
+
   return (
     <Modal
       isOpen={isOpen}
@@ -191,75 +199,100 @@ export function AssetDetailModal({
       size="xl"
     >
       {asset && (
-        <div className="flex space-x-4 border-b border-slate-200 dark:border-slate-800 mb-6">
+        <div className="flex space-x-6 border-b border-slate-200 dark:border-slate-800 mb-6">
           <button
             onClick={() => setActiveTab('history')}
-            className={`pb-2 text-sm font-semibold border-b-2 transition-colors ${
+            className={`pb-3 text-sm font-semibold border-b-2 transition-all flex items-center gap-2 ${
               activeTab === 'history' 
                 ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400' 
-                : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
             }`}
           >
+            <BarChart2 size={16} />
             Historial Mensual
           </button>
           <button
             onClick={() => setActiveTab('details')}
-            className={`pb-2 text-sm font-semibold border-b-2 transition-colors ${
+            className={`pb-3 text-sm font-semibold border-b-2 transition-all flex items-center gap-2 ${
               activeTab === 'details' 
                 ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400' 
-                : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
             }`}
           >
-            Detalles del Activo
+            <Info size={16} />
+            Configuración del Activo
           </button>
         </div>
       )}
 
       {activeTab === 'details' || !asset ? (
-        <form onSubmit={handleAssetSubmit} className="space-y-4">
-          <Input
-            label="Nombre del Activo"
-            value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            placeholder="Ej: Tesla, Bitcoin, Fondo de Pensiones"
-            required
-          />
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Select
-              label="Categoría"
-              value={formData.category}
-              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-              options={categories.map(c => ({ value: c, label: c }))}
+        <form onSubmit={handleAssetSubmit} className="space-y-6">
+          
+          <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800/60 ring-1 ring-black/5 dark:ring-white/5 space-y-4">
+            <h3 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-2 mb-2">
+              <Briefcase size={16} className="text-indigo-500"/>
+              Información Principal
+            </h3>
+            
+            <Input
+              label="Nombre del Activo"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="Ej: Tesla, Bitcoin, Fondo de Pensiones..."
+              required
             />
 
-            <Select
-              label="Nivel de Riesgo"
-              value={formData.riskLevel}
-              onChange={(e) => setFormData({ ...formData, riskLevel: e.target.value })}
-              options={riskLevels.map(r => ({ value: r, label: r }))}
-            />
-          </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <Select
+                label="Categoría"
+                value={formData.category}
+                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                options={categories.map(c => ({ 
+                  value: c, 
+                  label: CATEGORY_META[c] ? `${CATEGORY_META[c].icon}  ${CATEGORY_META[c].label}` : c 
+                }))}
+              />
 
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-              Color
-            </label>
-            <div className="flex gap-2 flex-wrap">
-              {colors.map(color => (
-                <button
-                  key={color}
-                  type="button"
-                  onClick={() => setFormData({ ...formData, color })}
-                  className={`w-8 h-8 rounded-full border-2 ${formData.color === color ? 'border-slate-900 dark:border-white' : 'border-slate-300'
-                    }`}
-                  style={{ backgroundColor: color }}
-                />
-              ))}
+              <div className="flex flex-col">
+                 <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Nivel de Riesgo
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Shield size={16} /></span>
+                  <select
+                    className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg dark:bg-slate-800 dark:border-slate-700 dark:text-white focus:outline-indigo-500 transition-colors"
+                    value={formData.riskLevel}
+                    onChange={(e) => setFormData({ ...formData, riskLevel: e.target.value })}
+                  >
+                    {riskLevels.map(r => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                Color de Referencia
+              </label>
+              <div className="flex gap-2 flex-wrap bg-white dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                {colors.map(color => (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, color })}
+                    className={`w-9 h-9 rounded-full border-2 transition-all duration-200 ${formData.color === color ? 'border-slate-900 dark:border-white scale-110 shadow-sm' : 'border-transparent hover:scale-105'
+                      }`}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 p-5 bg-white dark:bg-slate-800/20 rounded-2xl border border-slate-100 dark:border-slate-800/60 ring-1 ring-black/5 dark:ring-white/5">
+            <h3 className="col-span-full text-sm font-bold text-slate-800 dark:text-white uppercase tracking-wider mb-2">
+              Identificadores
+            </h3>
             <Input
               label="ISIN (para fondos)"
               value={formData.isin}
@@ -268,16 +301,19 @@ export function AssetDetailModal({
             />
 
             <Input
-              label="Ticker (para acciones y crypto)"
+              label="Ticker (acciones y cripto)"
               value={formData.ticker}
               onChange={(e) => setFormData({ ...formData, ticker: e.target.value })}
               placeholder="Ej: AAPL, BTC-EUR"
             />
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 p-5 bg-white dark:bg-slate-800/20 rounded-2xl border border-slate-100 dark:border-slate-800/60 ring-1 ring-black/5 dark:ring-white/5">
+             <h3 className="col-span-full text-sm font-bold text-slate-800 dark:text-white uppercase tracking-wider mb-2">
+              Posición y Coste (Opcional)
+            </h3>
             <Input
-              label="Número de Participaciones"
+              label="Participaciones / Títulos"
               type="number"
               value={formData.participations}
               onChange={(e) => setFormData({ ...formData, participations: parseFloat(e.target.value) || 0 })}
@@ -287,7 +323,7 @@ export function AssetDetailModal({
             />
 
             <Input
-              label="Coste Medio por Participación (€)"
+              label="Precio Medio Compra (€)"
               type="number"
               value={formData.meanCost}
               onChange={(e) => setFormData({ ...formData, meanCost: parseFloat(e.target.value) || 0 })}
@@ -297,72 +333,88 @@ export function AssetDetailModal({
             />
           </div>
 
-          <div className="border-t pt-4">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={formData.isArchived}
-                onChange={(e) => setFormData({ ...formData, isArchived: e.target.checked })}
-                className="w-4 h-4 rounded cursor-pointer"
-              />
-              <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                Archivar (posición cerrada)
-              </span>
+          <div className="pt-2">
+            <label className="flex items-center gap-3 cursor-pointer group bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/30 dark:hover:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700/50 transition-colors">
+              <div className="relative flex items-center">
+                <input
+                  type="checkbox"
+                  checked={formData.isArchived}
+                  onChange={(e) => setFormData({ ...formData, isArchived: e.target.checked })}
+                  className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-900 cursor-pointer"
+                />
+              </div>
+              <div>
+                <span className="text-sm font-bold text-slate-800 dark:text-slate-200 block">
+                  Archivar Activo
+                </span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  Oculta este activo de los listados principales y asume que la posición está cerrada.
+                </span>
+              </div>
             </label>
           </div>
 
-          <div className="flex justify-end gap-2 pt-4">
-            <Button variant="secondary" onClick={onClose} type="button">
-              Cerrar
+          <div className="flex justify-end gap-3 pt-6 border-t border-slate-200 dark:border-slate-800 mt-6">
+            <Button variant="secondary" onClick={onClose} type="button" className="px-6">
+              Cancelar
             </Button>
-            <Button variant="primary" type="submit">
-              {asset ? 'Actualizar Detalles' : 'Crear Activo'}
+            <Button variant="primary" type="submit" className="px-8 shadow-md">
+              {asset ? 'Guardar Cambios' : 'Crear Activo'}
             </Button>
           </div>
         </form>
       ) : (
         <div className="space-y-4">
-          <div className="max-h-[50vh] overflow-y-auto">
+          <div className="max-h-[50vh] overflow-y-auto rounded-xl ring-1 ring-slate-200 dark:ring-slate-800 shadow-sm bg-white dark:bg-slate-900">
             <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-white dark:bg-slate-950 z-10">
-                <tr className="border-b border-slate-200 dark:border-slate-800">
-                  <th className="text-left font-semibold py-2">Mes</th>
-                  <th className="text-right font-semibold py-2">NAV</th>
-                  <th className="text-right font-semibold py-2 text-indigo-500">Aportación</th>
-                  <th className="text-right font-semibold py-2 hidden sm:table-cell">Part.</th>
-                  <th className="text-center font-semibold py-2 px-2">Acciones</th>
+              <thead className="sticky top-0 bg-slate-50 dark:bg-slate-900/95 backdrop-blur z-10 shadow-sm border-b border-slate-200 dark:border-slate-800">
+                <tr>
+                  <th className="text-left font-semibold py-3 px-4 text-slate-600 dark:text-slate-400 uppercase text-xs tracking-wider">Mes</th>
+                  <th className="text-right font-semibold py-3 px-4 text-slate-600 dark:text-slate-400 uppercase text-xs tracking-wider">Valoración</th>
+                  <th className="text-right font-semibold py-3 px-4 text-indigo-600 dark:text-indigo-400 uppercase text-xs tracking-wider">Net Flow</th>
+                  <th className="text-right font-semibold py-3 px-4 hidden sm:table-cell text-slate-600 dark:text-slate-400 uppercase text-xs tracking-wider">Part.</th>
+                  <th className="text-center font-semibold py-3 px-4 text-slate-600 dark:text-slate-400 uppercase text-xs tracking-wider">Acciones</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                 {assetHistory.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-8 text-center text-slate-500 dark:text-slate-400">
-                      Este activo aún no tiene movimientos históricos registrados.
+                    <td colSpan={5} className="py-12 text-center text-slate-500 dark:text-slate-400">
+                      <div className="flex flex-col items-center justify-center space-y-3">
+                        <div className="p-3 rounded-full bg-slate-100 dark:bg-slate-800">
+                          <BarChart2 size={24} className="text-slate-400" />
+                        </div>
+                        <p>No hay registros históricos para este activo.</p>
+                      </div>
                     </td>
                   </tr>
                 ) : (
                   assetHistory.map(entry => (
-                    <tr key={entry.id} className="border-b border-slate-100 dark:border-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-900">
-                      <td className="py-2.5 font-medium dark:text-white">{formatMonth(entry.month)}</td>
-                      <td className="py-2.5 text-right font-bold dark:text-white">{formatCurrencyDecimals(entry.nav, 2)}</td>
-                      <td className="py-2.5 text-right text-indigo-600 dark:text-indigo-400 font-semibold">{formatCurrencyDecimals(entry.contribution, 2)}</td>
-                      <td className="py-2.5 text-right hidden sm:table-cell dark:text-slate-300">
+                    <tr key={entry.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors group">
+                      <td className="py-3 px-4 font-medium dark:text-slate-200">{formatMonth(entry.month)}</td>
+                      <td className="py-3 px-4 text-right font-bold dark:text-white">{formatCurrencyDecimals(entry.nav, 2)}</td>
+                      <td className="py-3 px-4 text-right">
+                        <span className={`px-2 py-1 rounded-md text-xs font-semibold ${entry.contribution > 0 ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300' : entry.contribution < 0 ? 'bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300' : 'text-slate-500'}`}>
+                          {entry.contribution > 0 ? '+' : ''}{formatCurrencyDecimals(entry.contribution, 2)}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right hidden sm:table-cell text-slate-600 dark:text-slate-400">
                         {entry.participations > 0 ? entry.participations.toLocaleString('es-ES', { maximumFractionDigits: 3 }) : '-'}
                       </td>
-                      <td className="py-2.5 flex justify-center gap-1.5 h-full items-center mt-1">
+                      <td className="py-3 px-4 flex justify-center gap-2 items-center">
                         <button
                           onClick={() => handleEditHistory(entry)}
-                          className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition"
+                          className="p-1.5 focus:outline-none hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
                           title="Editar"
                         >
-                          <Edit3 size={14} className="text-slate-600 dark:text-slate-400 hover:text-indigo-500" />
+                          <Edit3 size={16} className="text-slate-600 dark:text-slate-400 hover:text-indigo-500" />
                         </button>
                         <button
                           onClick={() => handleDeleteHistory(entry.id, entry.month)}
-                          className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition"
+                          className="p-1.5 focus:outline-none hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
                           title="Eliminar"
                         >
-                          <Trash2 size={14} className="text-rose-400 hover:text-rose-600" />
+                          <Trash2 size={16} className="text-rose-500 hover:text-rose-600 dark:text-rose-400" />
                         </button>
                       </td>
                     </tr>
@@ -371,8 +423,8 @@ export function AssetDetailModal({
               </tbody>
             </table>
           </div>
-          <div className="flex justify-end pt-4 border-t border-slate-200 dark:border-slate-800">
-            <Button variant="secondary" onClick={onClose}>
+          <div className="flex justify-end pt-5">
+            <Button variant="secondary" onClick={onClose} className="px-6">
               Cerrar Panel
             </Button>
           </div>
@@ -384,12 +436,12 @@ export function AssetDetailModal({
         <Modal
           isOpen={isHistoryModalOpen}
           onClose={() => setIsHistoryModalOpen(false)}
-          title={`Editar Historial: ${formatMonth(editingHistory.month)}`}
+          title={`Editar Registro: ${formatMonth(editingHistory.month)}`}
           size="sm"
         >
-          <form onSubmit={handleSaveHistory} className="space-y-4">
+          <form onSubmit={handleSaveHistory} className="space-y-5">
             <Input
-              label="NAV (€)"
+              label="Valor Total (NAV) en €"
               type="number"
               value={historyForm.nav}
               onChange={(e) => setHistoryForm({ ...historyForm, nav: e.target.value })}
@@ -397,24 +449,27 @@ export function AssetDetailModal({
               required
             />
             <Input
-              label="Aportación del mes (€)"
+              label="Flujo Neto (Aportación/Retirada) en €"
               type="number"
               value={historyForm.contribution}
               onChange={(e) => setHistoryForm({ ...historyForm, contribution: e.target.value })}
               step="0.01"
             />
-            <details className="text-sm border border-slate-200 dark:border-slate-800 rounded-lg p-3 group">
-              <summary className="font-semibold cursor-pointer text-slate-700 dark:text-slate-300">Campos Avanzados</summary>
-              <div className="mt-3 space-y-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <details className="text-sm bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 rounded-xl p-4 group mt-2 transition-all">
+              <summary className="font-bold cursor-pointer text-slate-700 dark:text-slate-300 flex items-center outline-none">
+                <span className="flex-1">Datos Adicionales Avanzados</span>
+                <span className="text-slate-400 group-open:rotate-180 transition-transform">▼</span>
+              </summary>
+              <div className="mt-4 space-y-4 pt-4 border-t border-slate-200 dark:border-slate-700">
                 <Input
-                  label="Participaciones"
+                  label="Participaciones / Títulos"
                   type="number"
                   value={historyForm.participations}
                   onChange={(e) => setHistoryForm({ ...historyForm, participations: e.target.value })}
                   step="0.0001"
                 />
                 <Input
-                  label="NAV Liquidativo Unitario"
+                  label="Valor Liquidativo Unitario (Precio)"
                   type="number"
                   value={historyForm.liquidNavValue}
                   onChange={(e) => setHistoryForm({ ...historyForm, liquidNavValue: e.target.value })}
@@ -430,9 +485,9 @@ export function AssetDetailModal({
               </div>
             </details>
             
-            <div className="flex justify-end gap-2 pt-4">
-              <Button variant="secondary" onClick={() => setIsHistoryModalOpen(false)} type="button">Cancelar</Button>
-              <Button variant="primary" type="submit">Guardar</Button>
+            <div className="flex justify-end gap-3 pt-6 border-t border-slate-100 dark:border-slate-800 mt-6">
+              <Button variant="secondary" onClick={() => setIsHistoryModalOpen(false)} type="button" className="px-5">Cancelar</Button>
+              <Button variant="primary" type="submit" className="px-6 shadow-md">Guardar</Button>
             </div>
           </form>
         </Modal>

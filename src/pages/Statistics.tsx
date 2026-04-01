@@ -1,9 +1,11 @@
-import React, { useState, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useWealth } from '../context/WealthContext'
 import { Card } from '../components/ui/Card'
 import { MetricCard } from '../components/ui/MetricCard'
 import { formatCurrency } from '../utils'
+import { useROIMetrics } from '../hooks'
+import { useAllocationByCategory } from '../hooks/useAllocation'
 
 interface YearlyMetrics {
   year: number
@@ -18,6 +20,8 @@ interface YearlyMetrics {
 
 export default function Statistics() {
   const { assets, history, metrics } = useWealth()
+  const roiMetrics = useROIMetrics(assets, history)
+  const allocations = useAllocationByCategory(assets, history, roiMetrics)
   const [expandedYears, setExpandedYears] = useState<number[]>([])
 
   const toggleYear = (year: number) => {
@@ -218,6 +222,73 @@ export default function Statistics() {
         />
       </div>
 
+      {/* Block 0: Strategy Allocation (Macro) */}
+      <Card title="🎯 Asignación por Estrategia">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 dark:border-slate-800">
+                <th className="text-left py-3 px-4 font-bold text-slate-600 dark:text-slate-400">Estrategia</th>
+                <th className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-400">NAV Actual</th>
+                <th className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-400">Invertido</th>
+                <th className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-400">Ganancia</th>
+                <th className="text-center py-3 px-4 font-bold text-slate-600 dark:text-slate-400">% Cartera</th>
+                <th className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-400">ROI %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allocations.map(a => (
+                <tr key={a.category} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900">
+                  <td className="py-3 px-4 font-bold dark:text-white flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: a.meta.barColor }} />
+                    {a.meta.icon} {a.meta.label}
+                  </td>
+                  <td className="py-3 px-4 text-right font-bold tabular-nums dark:text-white">
+                    {formatCurrency(Math.round(a.totalNAV))}
+                  </td>
+                  <td className="py-3 px-4 text-right font-bold tabular-nums text-slate-500 dark:text-slate-400">
+                    {formatCurrency(Math.round(a.totalInvested))}
+                  </td>
+                  <td className={`py-3 px-4 text-right font-bold tabular-nums ${a.totalProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                    {formatCurrency(Math.round(a.totalProfit))}
+                  </td>
+                  <td className="py-3 px-4 text-center font-bold text-indigo-600">
+                    {a.percentage.toFixed(1)}%
+                  </td>
+                  <td className={`py-3 px-4 text-right font-bold tabular-nums ${a.roi >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {a.roi.toFixed(2)}%
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            {allocations.length > 0 && (
+              <tfoot>
+                <tr className="border-t-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40">
+                  <td className="py-3 px-4 font-black text-slate-700 dark:text-slate-300 uppercase">Total Cartera</td>
+                  <td className="py-3 px-4 text-right font-black tabular-nums dark:text-white">
+                    {formatCurrency(Math.round(allocations.reduce((s, a) => s + a.totalNAV, 0)))}
+                  </td>
+                  <td className="py-3 px-4 text-right font-black tabular-nums text-slate-600 dark:text-slate-400">
+                    {formatCurrency(Math.round(allocations.reduce((s, a) => s + a.totalInvested, 0)))}
+                  </td>
+                  <td className={`py-3 px-4 text-right font-black tabular-nums ${allocations.reduce((s, a) => s + a.totalProfit, 0) >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                    {formatCurrency(Math.round(allocations.reduce((s, a) => s + a.totalProfit, 0)))}
+                  </td>
+                  <td className="py-3 px-4 text-center font-black text-indigo-600">100.0%</td>
+                  <td className="py-3 px-4 text-right font-black tabular-nums text-indigo-600">
+                    {(() => {
+                      const inv = allocations.reduce((s, a) => s + a.totalInvested, 0)
+                      const prof = allocations.reduce((s, a) => s + a.totalProfit, 0)
+                      return inv > 0 ? ((prof / inv) * 100).toFixed(2) + '%' : '0.00%'
+                    })()}
+                  </td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </Card>
+
       {/* Block 1: Annual Analysis */}
       <Card title="📅 Análisis Anual">
         <div className="overflow-x-auto">
@@ -336,7 +407,7 @@ export default function Statistics() {
                 ).length
 
                 return (
-                  <React.Fragment key={`year-section-${year.year}`}>
+                  <div key={`year-section-${year.year}`}>
                     {/* Year Summary Row */}
                     <tr 
                       key={`year-${year.year}`}
@@ -405,7 +476,7 @@ export default function Statistics() {
                           </tr>
                         )
                       })}
-                  </React.Fragment>
+                  </div>
                 )
               })}
             </tbody>

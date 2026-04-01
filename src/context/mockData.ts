@@ -1,11 +1,11 @@
-import { Asset, HistoryEntry, BitcoinTransaction, StockTransaction } from '../types'
+import { Asset, HistoryEntry, BitcoinTransaction, StockTransaction, AssetCategory } from '../types'
 
 export const SAMPLE_DATA = {
   assets: [
     {
       id: 'asset-basalto',
       name: 'Basalto',
-      category: 'Fund' as const,
+      category: AssetCategory.FUND_INDEX,
       color: '#6366f1',
       isArchived: false,
       riskLevel: 'Medio' as const,
@@ -16,7 +16,7 @@ export const SAMPLE_DATA = {
     {
       id: 'asset-sp500',
       name: 'Vanguard U.S. 500 Stock Index Fund EUR Acc',
-      category: 'Fund' as const,
+      category: AssetCategory.FUND_INDEX,
       color: '#10b981',
       isArchived: false,
       riskLevel: 'Medio' as const,
@@ -27,7 +27,7 @@ export const SAMPLE_DATA = {
     {
       id: 'asset-numantia',
       name: 'Renta 4 Multigestión Numantia Patrimonio Global',
-      category: 'Fund' as const,
+      category: AssetCategory.FUND_INDEX,
       color: '#f59e0b',
       isArchived: false,
       riskLevel: 'Medio' as const,
@@ -38,7 +38,7 @@ export const SAMPLE_DATA = {
     {
       id: 'asset-numantia-pp',
       name: 'Numantia Pensiones PP',
-      category: 'Fund' as const,
+      category: AssetCategory.FUND_INDEX,
       color: '#8b5cf6',
       isArchived: false,
       riskLevel: 'Medio' as const,
@@ -49,7 +49,7 @@ export const SAMPLE_DATA = {
     {
       id: 'asset-cash',
       name: 'Cash',
-      category: 'Cash' as const,
+      category: AssetCategory.CASH,
       color: '#22C55E',
       isArchived: false,
       riskLevel: 'Bajo' as const,

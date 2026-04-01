@@ -17,7 +17,7 @@ export const MetricCard: React.FC<MetricCardProps> = ({
     <p className="text-xs font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest mb-2">
       {title}
     </p>
-    <p className={`text-2xl font-black tracking-tight ${color} mb-1`}>
+    <p className={`text-2xl font-black tracking-tight tabular-nums ${color} mb-1`}>
       {value}
     </p>
     {subtitle && (

@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { Plus, Archive, ArchiveX } from 'lucide-react'
+import { Plus, Archive, ArchiveX, RefreshCw } from 'lucide-react'
 import { useWealth } from '../context/WealthContext'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
@@ -7,8 +7,10 @@ import { MetricCard } from '../components/ui/MetricCard'
 import { formatCurrency, formatCurrencyDecimals } from '../utils'
 import type { Asset } from '../types'
 import { useAssetMetrics } from '../hooks/useAssetMetrics'
+import { getCategoryMeta } from '../hooks/useAllocation'
 import { AssetDetailModal } from '../components/AssetDetailModal'
 import { BulkUpdateModal } from '../components/BulkUpdateModal'
+import { fetchAndUpdatePrices } from '../services/priceUpdater'
 
 // Componente para renderizar la tarjeta de cada activo separando su lógica hook.
 const AssetCard = ({ 
@@ -54,18 +56,29 @@ const AssetCard = ({
       onClick={() => onAssetClick(asset)}
     >
       {/* Header compacto */}
-      <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
-        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: asset.color }} />
-        <div className="flex-1 min-w-0">
-          <h3 className={`text-base font-bold truncate ${asset.isArchived ? 'line-through text-slate-400' : 'dark:text-white'}`}>
-            {asset.name}
-          </h3>
-          {(asset.isin || asset.ticker) && (
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-              {asset.isin || asset.ticker}
-            </p>
-          )}
+      <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: asset.color }} />
+          <div className="flex-1 min-w-0">
+            <h3 className={`text-base font-bold truncate ${asset.isArchived ? 'line-through text-slate-400' : 'dark:text-white'}`}>
+              {asset.name}
+            </h3>
+            {(asset.isin || asset.ticker) && (
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                {asset.isin || asset.ticker}
+              </p>
+            )}
+          </div>
         </div>
+        {/* Category Badge */}
+        {(() => {
+          const m = getCategoryMeta(asset.category)
+          return (
+            <span className={`flex-shrink-0 ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${m.color} ${m.textColor}`}>
+              {m.label}
+            </span>
+          )
+        })()}
       </div>
 
       {/* Valor de mercado principal y ROI Global */}
@@ -119,6 +132,23 @@ export default function Assets() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
   
   const [isBulkUpdateModalOpen, setIsBulkUpdateModalOpen] = useState(false)
+  const [isFetchingPrices, setIsFetchingPrices] = useState(false)
+
+  const handleFetchPrices = async () => {
+    try {
+      setIsFetchingPrices(true)
+      const result = await fetchAndUpdatePrices(assets, history, stockTransactions, bitcoinTransactions)
+      if (result.success) {
+        await refetchData()
+      } else {
+        alert(`Error al actualizar precios: ${result.message}`)
+      }
+    } catch (error) {
+      alert("Error desconocido al actualizar precios.")
+    } finally {
+      setIsFetchingPrices(false)
+    }
+  }
 
   const displayedAssets = showArchived ? assets : assets.filter(a => !a.isArchived)
 
@@ -166,6 +196,15 @@ export default function Assets() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button 
+            variant="secondary" 
+            onClick={handleFetchPrices}
+            disabled={isFetchingPrices}
+            className="whitespace-nowrap"
+          >
+            <RefreshCw size={18} className={`inline mr-2 ${isFetchingPrices ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Auto-completa Precios</span>
+          </Button>
           <Button variant="secondary" onClick={() => setIsBulkUpdateModalOpen(true)} className="whitespace-nowrap">
             Registrar Mes
           </Button>
@@ -191,23 +230,23 @@ export default function Assets() {
       </div>
 
       {getArchivedCount() > 0 && (
-        <div className="flex gap-2">
-          <Button
-            variant={showArchived ? "primary" : "secondary"}
+        <div className="flex justify-end mt-2 mb-2">
+          <button
             onClick={() => setShowArchived(!showArchived)}
+            className="flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white transition-colors"
           >
             {showArchived ? (
               <>
-                <Archive size={16} className="mr-2" />
-                Ocultar archivados ({getArchivedCount()})
+                <ArchiveX size={16} />
+                <span>Ocultar archivados ({getArchivedCount()})</span>
               </>
             ) : (
               <>
-                <ArchiveX size={16} className="mr-2" />
-                Mostrar archivados ({getArchivedCount()})
+                <Archive size={16} />
+                <span>Mostrar archivados ({getArchivedCount()})</span>
               </>
             )}
-          </Button>
+          </button>
         </div>
       )}
 

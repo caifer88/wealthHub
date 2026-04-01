@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { Modal } from './ui/Modal'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
 import { RefreshCw, Save } from 'lucide-react'
 import { Asset, HistoryEntry, StockTransaction, BitcoinTransaction } from '../types'
-import { fetchAndUpdatePrices } from '../services/priceUpdater'
+import { Asset, HistoryEntry, StockTransaction, BitcoinTransaction } from '../types'
 import { api } from '../services/api'
 
 interface BulkUpdateModalProps {
@@ -26,8 +26,6 @@ export function BulkUpdateModal({
   bitcoinTransactions,
   refetchData
 }: BulkUpdateModalProps) {
-  const [isFetching, setIsFetching] = useState(false)
-  const [fetchMessage, setFetchMessage] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   
   // State to hold the current month's values for each asset
@@ -62,30 +60,8 @@ export function BulkUpdateModal({
         }
       })
       setValues(initialValues)
-      setFetchMessage('')
     }
   }, [isOpen, assets, history])
-
-  const handleFetchPrices = async () => {
-    try {
-      setIsFetching(true)
-      setFetchMessage('Obteniendo precios de mercado...')
-
-      const result = await fetchAndUpdatePrices(assets, history, stockTransactions, bitcoinTransactions)
-      
-      if (result.success) {
-        // We need to fetch the DB again because fetchAndUpdatePrices mutates DB
-        await refetchData()
-        setFetchMessage('✅ Precios actualizados correctamente. Revisa los valores antes de guardar.')
-      } else {
-        setFetchMessage(`❌ Error: ${result.message}`)
-      }
-    } catch (error) {
-      setFetchMessage(`❌ Error desconocido`)
-    } finally {
-      setIsFetching(false)
-    }
-  }
 
   const handleSave = async () => {
     setIsSaving(true)
@@ -161,28 +137,11 @@ export function BulkUpdateModal({
       size="xl"
     >
       <div className="space-y-4">
-        <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-900 p-4 rounded-lg">
-          <div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              Actualiza el NAV y las aportaciones de todos tus activos activos para el mes actual ({new Date().toISOString().substring(0, 7)}).
-            </p>
-          </div>
-          <Button 
-            variant="secondary" 
-            onClick={handleFetchPrices}
-            disabled={isFetching || isSaving}
-            className="whitespace-nowrap"
-          >
-            <RefreshCw size={16} className={`mr-2 ${isFetching ? 'animate-spin' : ''}`} />
-            Auto-completar Precios
-          </Button>
+        <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-lg mb-4">
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            Actualiza el NAV y las aportaciones de todos tus activos activos para el mes actual ({new Date().toISOString().substring(0, 7)}).
+          </p>
         </div>
-
-        {fetchMessage && (
-          <div className={`p-3 rounded text-sm font-mono ${fetchMessage.includes('✅') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-            {fetchMessage}
-          </div>
-        )}
 
         <div className="max-h-[60vh] overflow-y-auto pr-2">
           <table className="w-full text-sm">
@@ -232,7 +191,7 @@ export function BulkUpdateModal({
           <Button variant="secondary" onClick={onClose} disabled={isSaving}>
             Cancelar
           </Button>
-          <Button variant="primary" onClick={handleSave} disabled={isSaving || isFetching}>
+          <Button variant="primary" onClick={handleSave} disabled={isSaving}>
             <Save size={16} className="mr-2" />
             {isSaving ? 'Guardando...' : 'Guardar Todo'}
           </Button>

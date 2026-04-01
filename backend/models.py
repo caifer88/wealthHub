@@ -14,12 +14,14 @@ from datetime import date as DateType, datetime
 
 class AssetCategory(str, Enum):
     """Asset category types"""
-    CRYPTO = "CRYPTO"
-    FUND = "FUND"
-    STOCK = "STOCK"
-    PENSION = "PENSION"
-    CASH = "CASH"
-    OTHER = "OTHER"
+    CRYPTO      = "CRYPTO"
+    FUND        = "FUND"         # genérico / legacy
+    FUND_ACTIVE = "FUND_ACTIVE"  # gestión activa
+    FUND_INDEX  = "FUND_INDEX"   # fondos indexados
+    STOCK       = "STOCK"
+    PENSION     = "PENSION"
+    CASH        = "CASH"
+    OTHER       = "OTHER"
 
 
 class RiskLevel(str, Enum):

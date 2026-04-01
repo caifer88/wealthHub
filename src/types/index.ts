@@ -1,9 +1,10 @@
 export enum AssetCategory {
   CRYPTO = 'CRYPTO',
-  FUND = 'FUND',
+  FUND_ACTIVE = 'FUND_ACTIVE', // gestión activa
+  FUND_INDEX = 'FUND_INDEX',  // fondos indexados
   STOCK = 'STOCK',
   PENSION = 'PENSION',
-  CASH = 'CASH'
+  CASH = 'CASH',
 }
 
 // Types for WealthHub application
