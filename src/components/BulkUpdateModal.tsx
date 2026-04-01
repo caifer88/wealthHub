@@ -2,9 +2,8 @@ import { useState, useEffect } from 'react'
 import { Modal } from './ui/Modal'
 import { Button } from './ui/Button'
 import { Input } from './ui/Input'
-import { RefreshCw, Save } from 'lucide-react'
-import { Asset, HistoryEntry, StockTransaction, BitcoinTransaction } from '../types'
-import { Asset, HistoryEntry, StockTransaction, BitcoinTransaction } from '../types'
+import { Save } from 'lucide-react'
+import { Asset, HistoryEntry } from '../types'
 import { api } from '../services/api'
 
 interface BulkUpdateModalProps {
@@ -12,8 +11,6 @@ interface BulkUpdateModalProps {
   onClose: () => void
   assets: Asset[]
   history: HistoryEntry[]
-  stockTransactions: StockTransaction[]
-  bitcoinTransactions: BitcoinTransaction[]
   refetchData: () => Promise<void>
 }
 
@@ -22,8 +19,6 @@ export function BulkUpdateModal({
   onClose,
   assets,
   history,
-  stockTransactions,
-  bitcoinTransactions,
   refetchData
 }: BulkUpdateModalProps) {
   const [isSaving, setIsSaving] = useState(false)

@@ -48,7 +48,15 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
         active_assets = [a for a in assets if not a.get("is_archived", False)]
 
         crypto_assets = [a for a in active_assets if a.get("category") == AssetCategory.CRYPTO.value and ("BTC" in str(a.get("ticker", "")).upper() or "BITCOIN" in str(a.get("name", "")).upper())]
-        fund_assets = [a for a in active_assets if a.get("category") == AssetCategory.FUND.value]
+        fund_assets = [
+            a for a in active_assets 
+            if a.get("category") in (
+                AssetCategory.FUND.value, 
+                AssetCategory.FUND_ACTIVE.value, 
+                AssetCategory.FUND_INDEX.value,
+                AssetCategory.PENSION.value
+            )
+        ]
 
         broker_assets_dict = {}
         stocks_assets = [a for a in active_assets if a.get("category") == AssetCategory.STOCK.value]
@@ -120,8 +128,10 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
 
                 individual_prices = PriceFetcher.fetch_multiple_stocks(tickers_map, last_business_day)
 
+                copied_individual_prices = []
                 total_broker_value = 0.0
-                for p in individual_prices:
+                for original_p in individual_prices:
+                    p = original_p.model_copy()
                     shares = holdings.get(p.ticker, 0.0)
                     # Convert USD price to EUR if we have the exchange rate
                     if fx_rate and fx_rate > 0:
@@ -133,6 +143,7 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                     total_broker_value += float(p.price) * shares
                     p.asset_id = f"ticker-{p.ticker}"
                     p.asset_name = f"Stock {p.ticker}"
+                    copied_individual_prices.append(p)
 
                 if total_broker_value > 0:
                     aggregated_price = PriceData(
@@ -144,9 +155,9 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                         fetched_at=format_datetime_iso(datetime.now()),
                         source="yfinance_aggregated"
                     )
-                    return ("broker", broker, [aggregated_price] + individual_prices, fx_rate)
+                    return ("broker", broker, [aggregated_price] + copied_individual_prices, fx_rate)
 
-                return ("broker", broker, individual_prices, fx_rate)
+                return ("broker", broker, copied_individual_prices, fx_rate)
             return fetch
 
         for broker in broker_assets:

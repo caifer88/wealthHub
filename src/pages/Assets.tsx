@@ -203,7 +203,7 @@ export default function Assets() {
             className="whitespace-nowrap"
           >
             <RefreshCw size={18} className={`inline mr-2 ${isFetchingPrices ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">Auto-completa Precios</span>
+            <span className="hidden sm:inline">Update Navs</span>
           </Button>
           <Button variant="secondary" onClick={() => setIsBulkUpdateModalOpen(true)} className="whitespace-nowrap">
             Registrar Mes
@@ -291,8 +291,6 @@ export default function Assets() {
         onClose={() => setIsBulkUpdateModalOpen(false)}
         assets={assets}
         history={history}
-        bitcoinTransactions={bitcoinTransactions}
-        stockTransactions={stockTransactions}
         refetchData={refetchData}
       />
     </div>
