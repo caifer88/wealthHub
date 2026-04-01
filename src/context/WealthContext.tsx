@@ -45,6 +45,7 @@ export const sanitizeStockTransactions = (txs: any[]): StockTransaction[] => {
       pricePerShare: parseFloat(tx.pricePerShare) || 0,
       fees: parseFloat(tx.fees) || 0,
       totalAmount: parseFloat(tx.totalAmount) || 0,
+      exchangeRate: parseFloat(tx.exchangeRate || tx.exchange_rate) || 1.08,
       broker: tx.broker || undefined
     } as StockTransaction
   })
@@ -142,6 +143,7 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                                 pricePerShare: tx.pricePerUnit,
                                 fees: tx.fees,
                                 totalAmount: tx.totalAmount,
+                                exchangeRate: tx.exchangeRate || tx.exchange_rate,
                                 broker: brokerAsset ? brokerAsset.name : undefined
                             });
                         }

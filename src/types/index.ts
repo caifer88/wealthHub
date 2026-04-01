@@ -52,6 +52,7 @@ export interface StockTransaction {
   pricePerShare: number;
   fees: number;
   totalAmount: number;
+  exchangeRate?: number;
   broker?: string;  // Broker identifier (e.g."Interactive Brokers")
 }
 

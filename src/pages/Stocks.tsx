@@ -25,7 +25,8 @@ export default function Stocks() {
     shares: 0,
     pricePerShare: 0,
     fees: 0,
-    totalAmount: 0
+    totalAmount: 0,
+    exchangeRate: 1.08
   })
   
   // EUR/USD rate for converting transaction amounts (stored in USD) to EUR
@@ -64,10 +65,11 @@ export default function Stocks() {
         }
       }
 
+      const txExchangeRate = tx.exchangeRate || fxRate
       if (tx.type === 'buy') {
         tickerMap[tx.ticker].shares += tx.shares
         tickerMap[tx.ticker].costUSD += tx.totalAmount
-        tickerMap[tx.ticker].costEUR += tx.totalAmount / fxRate
+        tickerMap[tx.ticker].costEUR += tx.totalAmount / txExchangeRate
       } else {
         const avgPriceUSD = tickerMap[tx.ticker].shares > 0 ? tickerMap[tx.ticker].costUSD / tickerMap[tx.ticker].shares : 0
         const avgPriceEUR = tickerMap[tx.ticker].shares > 0 ? tickerMap[tx.ticker].costEUR / tickerMap[tx.ticker].shares : 0
@@ -191,7 +193,8 @@ export default function Stocks() {
           fees: formData.fees,
           totalAmount: totalAmount,
           currency: 'USD',
-          asset_id: assetId
+          asset_id: assetId,
+          exchange_rate: formData.exchangeRate
         };
 
         if (editingTransaction) {
@@ -214,7 +217,8 @@ export default function Stocks() {
           shares: 0,
           pricePerShare: 0,
           fees: 0,
-          totalAmount: 0
+          totalAmount: 0,
+          exchangeRate: fxRate
         });
       } catch (error) {
         console.error("Error saving stock transaction", error);
@@ -235,7 +239,8 @@ export default function Stocks() {
         shares: transaction.shares,
         pricePerShare: transaction.pricePerShare,
         fees: transaction.fees,
-        totalAmount: transaction.totalAmount
+        totalAmount: transaction.totalAmount,
+        exchangeRate: transaction.exchangeRate || fxRate
       })
     } else {
       setEditingTransaction(null)
@@ -246,7 +251,8 @@ export default function Stocks() {
         shares: 0,
         pricePerShare: 0,
         fees: 0,
-        totalAmount: 0
+        totalAmount: 0,
+        exchangeRate: fxRate
       })
     }
     setIsModalOpen(true)
@@ -469,12 +475,17 @@ export default function Stocks() {
                       setSortDirection('desc')
                     }
                   }}
-                  className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-slate-900 dark:hover:text-slate-200 select-none"
                 >
                   <div className="flex items-center justify-end gap-2">
                     Precio ($)
                     {sortColumn === 'price' && (sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />)}
                   </div>
+                </th>
+                <th className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-400">
+                  Ratio (€/$)
+                </th>
+                <th className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-400">
+                  Inversión (€)
                 </th>
                 <th 
                   onClick={() => {
@@ -525,6 +536,10 @@ export default function Stocks() {
                   </td>
                   <td className="py-3 px-4 text-right font-bold dark:text-white">{tx.shares}</td>
                   <td className="py-3 px-4 text-right font-bold text-slate-600 dark:text-slate-300">{formatUSD(tx.pricePerShare)}</td>
+                  <td className="py-3 px-4 text-right font-bold dark:text-white">{(tx.exchangeRate || 1.08).toFixed(4)}</td>
+                  <td className="py-3 px-4 text-right font-bold text-indigo-600 dark:text-indigo-400">
+                    {formatCurrency(tx.totalAmount / (tx.exchangeRate || 1.08))}
+                  </td>
                   <td className="py-3 px-4 text-right font-bold dark:text-white">{formatUSD(tx.fees)}</td>
                   <td className="py-3 px-4 text-right font-bold dark:text-white">{formatUSD(tx.totalAmount)}</td>
                   <td className="py-3 px-4 text-center space-x-2 flex gap-2 justify-center">
@@ -620,6 +635,19 @@ export default function Stocks() {
             step="0.01"
             min="0"
           />
+          
+          <Input
+            label="Tipo de Cambio (1€ = X$)"
+            type="number"
+            value={formData.exchangeRate}
+            onChange={(e) => setFormData({ ...formData, exchangeRate: parseFloat(e.target.value) })}
+            step="0.0001"
+            min="0.0001"
+            required
+          />
+          <p className="text-xs text-slate-500 mt-1 italic">
+            * Ratio aplicado para calcular el coste base real en euros.
+          </p>
 
           {formData.shares > 0 && formData.pricePerShare > 0 && (
             <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-lg space-y-1">
@@ -627,7 +655,7 @@ export default function Stocks() {
                 <strong>Total USD:</strong> {formatUSD(formData.shares * formData.pricePerShare + formData.fees)}
               </p>
               <p className="text-sm text-slate-600 dark:text-slate-400">
-                <strong>Equivalente EUR:</strong> {formatCurrency(Math.round((formData.shares * formData.pricePerShare + formData.fees) / fxRate))}
+                <strong>Equivalente EUR:</strong> {formatCurrency((formData.shares * formData.pricePerShare + formData.fees) / formData.exchangeRate)}
               </p>
             </div>
           )}

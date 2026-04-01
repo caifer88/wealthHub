@@ -242,7 +242,12 @@ async def upsert_history_from_transactions(session: AsyncSession, asset_id: str,
         if tx.transaction_date is None:
             continue
         if str(tx.type).upper() == 'BUY':
-            monthly_contribution += Decimal(str(tx.total_amount or 0))
+            amount = Decimal(str(tx.total_amount or 0))
+            ex_rate = Decimal(str(tx.exchange_rate or 1.08))
+            if tx.currency == 'USD' or ex_rate != Decimal("1.0"):
+                monthly_contribution += amount / ex_rate
+            else:
+                monthly_contribution += amount
 
     # Calculate running participations for the asset up to end of this month
     all_txs_up_to_month = [

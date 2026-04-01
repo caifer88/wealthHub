@@ -122,6 +122,7 @@ class TransactionResponseDTO(BaseModel):
     price_per_unit: float
     fees: float
     total_amount: float
+    exchange_rate: float
 
     @model_validator(mode='before')
     @classmethod
@@ -139,6 +140,7 @@ class TransactionResponseDTO(BaseModel):
             "price_per_unit": str(obj.price_per_unit) if getattr(obj, "price_per_unit", None) is not None else "0.0",
             "fees": str(obj.fees) if getattr(obj, "fees", None) is not None else "0.0",
             "total_amount": str(obj.total_amount) if getattr(obj, "total_amount", None) is not None else "0.0",
+            "exchange_rate": str(obj.exchange_rate) if getattr(obj, "exchange_rate", None) is not None else "1.0",
         }
 
 
@@ -157,6 +159,7 @@ class Transaction(SQLModel, table=True):
     price_per_unit: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
     fees: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
     total_amount: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
+    exchange_rate: Optional[Decimal] = Field(default=Decimal("1.0"), sa_column=Column(Numeric(15, 8)))
 
 
 class ExchangeRate(SQLModel, table=True):
