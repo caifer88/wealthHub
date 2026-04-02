@@ -1,8 +1,14 @@
 import asyncio
 import logging
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends, status
+from sqlmodel.ext.asyncio.session import AsyncSession
 import yfinance as yf
 from cachetools import cached, TTLCache
+from typing import List
+
+from database import get_session
+from models import BitcoinTransaction
+from services import db_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/bitcoin", tags=["Bitcoin"])
@@ -27,3 +33,45 @@ async def get_bitcoin_historical_prices():
     except Exception as e:
         logger.error(f"Error fetching historical BTC prices: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# ===== Bitcoin Transaction CRUD Endpoints =====
+
+@router.get("/transactions", response_model=List[BitcoinTransaction])
+async def get_all_bitcoin_transactions(session: AsyncSession = Depends(get_session)):
+    """Get all Bitcoin transactions"""
+    return await db_service.get_all_bitcoin_transactions(session)
+
+@router.get("/transactions/{transaction_id}", response_model=BitcoinTransaction)
+async def get_bitcoin_transaction(transaction_id: str, session: AsyncSession = Depends(get_session)):
+    """Get a specific Bitcoin transaction by ID"""
+    transaction = await db_service.get_bitcoin_transaction_by_id(session, transaction_id)
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Bitcoin transaction not found")
+    return transaction
+
+@router.post("/transactions", response_model=BitcoinTransaction, status_code=status.HTTP_201_CREATED)
+async def create_bitcoin_transaction(transaction: BitcoinTransaction, session: AsyncSession = Depends(get_session)):
+    """Create a new Bitcoin transaction"""
+    try:
+        result = await db_service.create_bitcoin_transaction(session, transaction)
+        return result
+    except Exception as e:
+        logger.error(f"Error creating Bitcoin transaction: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.put("/transactions/{transaction_id}", response_model=BitcoinTransaction)
+async def update_bitcoin_transaction(transaction_id: str, transaction: BitcoinTransaction, session: AsyncSession = Depends(get_session)):
+    """Update an existing Bitcoin transaction"""
+    result = await db_service.update_bitcoin_transaction(session, transaction_id, transaction)
+    if not result:
+        raise HTTPException(status_code=404, detail="Bitcoin transaction not found")
+    return result
+
+@router.delete("/transactions/{transaction_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_bitcoin_transaction(transaction_id: str, session: AsyncSession = Depends(get_session)):
+    """Delete a Bitcoin transaction"""
+    success = await db_service.delete_bitcoin_transaction(session, transaction_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Bitcoin transaction not found")
+    return None
+

@@ -74,13 +74,13 @@ export function useAssetMetrics(
       let btcShares = 0
       let btcCost = 0
       bitcoinTransactions.forEach(tx => {
-        if (tx.type === 'buy') {
-          btcShares += (tx.amountBTC || 0)
-          btcCost += (tx.totalCost || 0)
+        if (tx.type === 'BUY') {
+          btcShares += (tx.amountBtc || 0)
+          btcCost += (tx.totalAmountEur || 0)
         } else {
           const avg = btcShares > 0 ? btcCost / btcShares : 0
-          btcShares -= (tx.amountBTC || 0)
-          btcCost -= ((tx.amountBTC || 0) * avg)
+          btcShares -= (tx.amountBtc || 0)
+          btcCost -= ((tx.amountBtc || 0) * avg)
         }
       })
       participations = btcShares
@@ -94,18 +94,18 @@ export function useAssetMetrics(
     let positionsData: PositionData[] = []
 
     if (asset.name === 'Interactive Brokers') {
-      const ibTransactions = stockTransactions.filter(tx => tx.broker === 'Interactive Brokers')
+      const ibTransactions = stockTransactions
       const tickerMap = new Map<string, { shares: number; totalCost: number }>()
 
       for (const tx of ibTransactions) {
         const existing = tickerMap.get(tx.ticker) || { shares: 0, totalCost: 0 }
-        if (tx.type === 'buy') {
-          existing.shares += tx.shares
+        if (tx.type === 'BUY') {
+          existing.shares += tx.quantity
           existing.totalCost += tx.totalAmount
         } else {
           const avgPrice = existing.shares > 0 ? existing.totalCost / existing.shares : 0
-          existing.shares -= tx.shares
-          existing.totalCost -= (tx.shares * avgPrice)
+          existing.shares -= tx.quantity
+          existing.totalCost -= (tx.quantity * avgPrice)
         }
         tickerMap.set(tx.ticker, existing)
       }

@@ -1,5 +1,8 @@
 import { useMemo } from 'react'
 import { Asset, HistoryEntry } from '../types'
+export { useStockPortfolio } from './useStockPortfolio'
+export { useBitcoinTransactions } from './useBitcoinTransactions'
+export { useStockTransactions } from './useStockTransactions'
 
 const EXCLUDED_ASSETS = ['Cash']
 

@@ -17,7 +17,7 @@ from models import HealthResponse
 from services.monthly_fetch_service import process_monthly_prices
 
 # Routers
-from routes import assets, history, transactions, portfolio, metrics, bitcoin
+from routes import assets, history, transactions, portfolio, metrics, bitcoin, stocks
 
 logging.basicConfig(
     level=logging.INFO,
@@ -83,6 +83,7 @@ app.include_router(transactions.router)
 app.include_router(portfolio.router)
 app.include_router(metrics.router)
 app.include_router(bitcoin.router)
+app.include_router(stocks.router)
 
 if __name__ == "__main__":
     import uvicorn

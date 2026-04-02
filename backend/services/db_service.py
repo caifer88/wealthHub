@@ -8,7 +8,7 @@ from sqlalchemy import func, case
 from typing import List, Optional, Any
 import logging
 
-from models import Asset, HistoryEntry as AssetHistory, Transaction, TransactionType
+from models import Asset, HistoryEntry as AssetHistory, Transaction, BitcoinTransaction, StockTransaction, TransactionType
 
 logger = logging.getLogger(__name__)
 
@@ -327,4 +327,128 @@ async def get_latest_exchange_rate(session: AsyncSession, pair: str) -> float:
     ).order_by(ExchangeRate.date.desc())
     result = (await session.exec(statement)).first()
     return float(result.rate) if result else 0.0
+
+
+# ===== Bitcoin Transaction Methods =====
+
+async def get_all_bitcoin_transactions(session: AsyncSession) -> List[BitcoinTransaction]:
+    """Get all Bitcoin transactions ordered by date (descending)"""
+    statement = select(BitcoinTransaction).order_by(BitcoinTransaction.transaction_date.desc())
+    results = await session.exec(statement)
+    return results.all()
+
+
+async def get_bitcoin_transactions_by_asset(session: AsyncSession, asset_id: str) -> List[BitcoinTransaction]:
+    """Get all Bitcoin transactions for a specific asset"""
+    statement = select(BitcoinTransaction).where(
+        BitcoinTransaction.asset_id == asset_id
+    ).order_by(BitcoinTransaction.transaction_date.desc())
+    results = await session.exec(statement)
+    return results.all()
+
+
+async def get_bitcoin_transaction_by_id(session: AsyncSession, transaction_id: str) -> Optional[BitcoinTransaction]:
+    """Get a specific Bitcoin transaction by ID"""
+    return await session.get(BitcoinTransaction, transaction_id)
+
+
+async def create_bitcoin_transaction(session: AsyncSession, transaction: BitcoinTransaction) -> BitcoinTransaction:
+    """Create a new Bitcoin transaction"""
+    session.add(transaction)
+    await session.commit()
+    await session.refresh(transaction)
+    return transaction
+
+
+async def update_bitcoin_transaction(session: AsyncSession, transaction_id: str, transaction_data: BitcoinTransaction) -> Optional[BitcoinTransaction]:
+    """Update an existing Bitcoin transaction"""
+    transaction = await session.get(BitcoinTransaction, transaction_id)
+    if not transaction:
+        return None
+
+    update_data = transaction_data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(transaction, key, value)
+
+    session.add(transaction)
+    await session.commit()
+    await session.refresh(transaction)
+    return transaction
+
+
+async def delete_bitcoin_transaction(session: AsyncSession, transaction_id: str) -> bool:
+    """Delete a Bitcoin transaction"""
+    transaction = await session.get(BitcoinTransaction, transaction_id)
+    if not transaction:
+        return False
+    await session.delete(transaction)
+    await session.commit()
+    return True
+
+
+# ===== Stock Transaction Methods =====
+
+async def get_all_stock_transactions(session: AsyncSession) -> List[StockTransaction]:
+    """Get all Stock transactions ordered by date (descending)"""
+    statement = select(StockTransaction).order_by(StockTransaction.transaction_date.desc())
+    results = await session.exec(statement)
+    return results.all()
+
+
+async def get_stock_transactions_by_asset(session: AsyncSession, asset_id: str) -> List[StockTransaction]:
+    """Get all Stock transactions for a specific asset"""
+    statement = select(StockTransaction).where(
+        StockTransaction.asset_id == asset_id
+    ).order_by(StockTransaction.transaction_date.desc())
+    results = await session.exec(statement)
+    return results.all()
+
+
+async def get_stock_transactions_by_ticker(session: AsyncSession, ticker: str) -> List[StockTransaction]:
+    """Get all Stock transactions for a specific ticker"""
+    statement = select(StockTransaction).where(
+        StockTransaction.ticker == ticker
+    ).order_by(StockTransaction.transaction_date.desc())
+    results = await session.exec(statement)
+    return results.all()
+
+
+async def get_stock_transaction_by_id(session: AsyncSession, transaction_id: str) -> Optional[StockTransaction]:
+    """Get a specific Stock transaction by ID"""
+    return await session.get(StockTransaction, transaction_id)
+
+
+async def create_stock_transaction(session: AsyncSession, transaction: StockTransaction) -> StockTransaction:
+    """Create a new Stock transaction"""
+    session.add(transaction)
+    await session.commit()
+    await session.refresh(transaction)
+    return transaction
+
+
+async def update_stock_transaction(session: AsyncSession, transaction_id: str, transaction_data: StockTransaction) -> Optional[StockTransaction]:
+    """Update an existing Stock transaction"""
+    transaction = await session.get(StockTransaction, transaction_id)
+    if not transaction:
+        return None
+
+    update_data = transaction_data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(transaction, key, value)
+
+    session.add(transaction)
+    await session.commit()
+    await session.refresh(transaction)
+    return transaction
+
+
+async def delete_stock_transaction(session: AsyncSession, transaction_id: str) -> bool:
+    """Delete a Stock transaction"""
+    transaction = await session.get(StockTransaction, transaction_id)
+    if not transaction:
+        return False
+    await session.delete(transaction)
+    await session.commit()
+    return True
+
 

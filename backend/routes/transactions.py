@@ -1,65 +1,77 @@
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException,status
 from sqlmodel.ext.asyncio.session import AsyncSession
 from database import get_session
 from models import Transaction, TransactionResponseDTO
 from services import db_service
+from services.stock_asset_manager import get_or_create_stock_asset
+import json
 
 router = APIRouter(prefix="/api/transactions", tags=["Transactions"])
 
 @router.get("", response_model=List[TransactionResponseDTO])
 async def get_transactions(session: AsyncSession = Depends(get_session)):
-    return await db_service.get_all_transactions(session)
+    """
+    DEPRECATED: Get all transactions (Bitcoin + Stock combined).
+    Use GET /api/bitcoin/transactions or GET /api/stocks/transactions instead.
+    """
+    # Merge results from both new tables for backward compatibility
+    bitcoin_txns = await db_service.get_all_bitcoin_transactions(session)
+    stock_txns = await db_service.get_all_stock_transactions(session)
+    
+    # Convert both to Transaction-like format for response
+    all_txns = []
+    for btx in bitcoin_txns:
+        # Convert BitcoinTransaction to Transaction format
+        tx = Transaction(
+            id=btx.id,
+            asset_id=btx.asset_id,
+            transaction_date=btx.transaction_date,
+            type=btx.type,
+            ticker="BTC",
+            currency="EUR",
+            quantity=btx.amount_btc,
+            price_per_unit=btx.price_eur_per_btc,
+            fees=btx.fees_eur,
+            total_amount=btx.total_amount_eur,
+            exchange_rate=btx.exchange_rate_usd_eur
+        )
+        all_txns.append(tx)
+    
+    for stx in stock_txns:
+        # Convert StockTransaction to Transaction format
+        all_txns.append(stx)
+    
+    # Sort by date descending
+    all_txns.sort(key=lambda t: t.transaction_date, reverse=True)
+    return all_txns
 
-@router.get("/asset/{asset_id}", response_model=List[Transaction])
-async def get_asset_transactions(asset_id: str, session: AsyncSession = Depends(get_session)):
-    return await db_service.get_transactions_by_asset(session, asset_id)
+@router.post("", status_code=308)
+async def create_transaction_deprecated():
+    """
+    DEPRECATED: Use POST /api/bitcoin/transactions or POST /api/stocks/transactions instead.
+    """
+    raise HTTPException(
+        status_code=308,
+        detail="DEPRECATED: Use POST /api/bitcoin/transactions for Bitcoin or POST /api/stocks/transactions for Stocks"
+    )
 
-@router.post("", response_model=Transaction, status_code=status.HTTP_201_CREATED)
-async def create_transaction(transaction: Transaction, session: AsyncSession = Depends(get_session)):
-    if isinstance(transaction.transaction_date, str):
-        from datetime import datetime
-        transaction.transaction_date = datetime.strptime(transaction.transaction_date, "%Y-%m-%d").date()
-    if transaction.type:
-        transaction.type = transaction.type.upper()
-    result = await db_service.create_transaction(session, transaction)
-    # Auto-update history for the month of this transaction
-    if result.asset_id and result.transaction_date:
-        from datetime import date
-        month_date = date(result.transaction_date.year, result.transaction_date.month, 1)
-        await db_service.upsert_history_from_transactions(session, result.asset_id, month_date)
-    return result
+@router.put("/{transaction_id}", status_code=308)
+async def update_transaction_deprecated(transaction_id: str):
+    """
+    DEPRECATED: Use PUT /api/bitcoin/transactions/{id} or PUT /api/stocks/transactions/{id} instead.
+    """
+    raise HTTPException(
+        status_code=308,
+        detail="DEPRECATED: Use PUT /api/bitcoin/transactions/{id} for Bitcoin or PUT /api/stocks/transactions/{id} for Stocks"
+    )
 
-@router.put("/{transaction_id}", response_model=Transaction)
-async def update_transaction(transaction_id: str, transaction: Transaction, session: AsyncSession = Depends(get_session)):
-    if isinstance(transaction.transaction_date, str):
-        from datetime import datetime
-        transaction.transaction_date = datetime.strptime(transaction.transaction_date, "%Y-%m-%d").date()
-    if transaction.type:
-        transaction.type = transaction.type.upper()
-    updated = await db_service.update_transaction(session, transaction_id, transaction)
-    if not updated:
-        raise HTTPException(status_code=404, detail="Transaction not found")
-    # Auto-update history for the month of this transaction
-    if updated.asset_id and updated.transaction_date:
-        from datetime import date
-        month_date = date(updated.transaction_date.year, updated.transaction_date.month, 1)
-        await db_service.upsert_history_from_transactions(session, updated.asset_id, month_date)
-    return updated
-
-@router.delete("/{transaction_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_transaction(transaction_id: str, session: AsyncSession = Depends(get_session)):
-    # Load transaction before deleting to get its asset_id and date for history update
-    from sqlmodel import select
-    from models import Transaction as TxModel
-    tx = (await session.exec(select(TxModel).where(TxModel.id == transaction_id))).first()
-    asset_id_to_update = tx.asset_id if tx else None
-    month_date_to_update = None
-    if tx and tx.transaction_date:
-        from datetime import date
-        month_date_to_update = date(tx.transaction_date.year, tx.transaction_date.month, 1)
-    if not await db_service.delete_transaction(session, transaction_id):
-        raise HTTPException(status_code=404, detail="Transaction not found")
-    # Auto-update history after deletion
-    if asset_id_to_update and month_date_to_update:
-        await db_service.upsert_history_from_transactions(session, asset_id_to_update, month_date_to_update)
+@router.delete("/{transaction_id}", status_code=308)
+async def delete_transaction_deprecated(transaction_id: str):
+    """
+    DEPRECATED: Use DELETE /api/bitcoin/transactions/{id} or DELETE /api/stocks/transactions/{id} instead.
+    """
+    raise HTTPException(
+        status_code=308,
+        detail="DEPRECATED: Use DELETE /api/bitcoin/transactions/{id} for Bitcoin or DELETE /api/stocks/transactions/{id} for Stocks"
+    )

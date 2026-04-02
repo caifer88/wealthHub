@@ -102,56 +102,66 @@ export const SAMPLE_DATA = {
   bitcoinTransactions: [
     {
       id: 'btc-1',
-      date: '2024-01-15',
-      type: 'buy' as const,
-      amount: 10000,
-      amountBTC: 0.235294,
-      totalCost: 10000,
-      meanPrice: 42500
+      assetId: 'a4',
+      transactionDate: '2024-01-15',
+      type: 'BUY' as const,
+      amountBtc: 0.235294,
+      priceEurPerBtc: 42500,
+      feesEur: 0,
+      totalAmountEur: 10000,
+      exchangeRateUsdEur: 1.08
     },
     {
       id: 'btc-2',
-      date: '2024-02-10',
-      type: 'buy' as const,
-      amount: 8000,
-      amountBTC: 0.16,
-      totalCost: 8000,
-      meanPrice: 50000
+      assetId: 'a4',
+      transactionDate: '2024-02-10',
+      type: 'BUY' as const,
+      amountBtc: 0.16,
+      priceEurPerBtc: 50000,
+      feesEur: 0,
+      totalAmountEur: 8000,
+      exchangeRateUsdEur: 1.08
     }
   ] as BitcoinTransaction[],
   stockTransactions: [
     {
       id: 'stock-1',
+      assetId: 'asset-sp500',
       ticker: 'AAPL',
-      date: '2024-01-20',
-      type: 'buy' as const,
-      shares: 10,
-      pricePerShare: 150,
+      transactionDate: '2024-01-20',
+      type: 'BUY' as const,
+      currency: 'USD',
+      quantity: 10,
+      pricePerUnit: 150,
       fees: 5,
       totalAmount: 1505,
-      broker: 'Interactive Brokers'
+      exchangeRateEurUsd: 1.08
     },
     {
       id: 'stock-2',
+      assetId: 'asset-sp500',
       ticker: 'MSFT',
-      date: '2024-02-05',
-      type: 'buy' as const,
-      shares: 5,
-      pricePerShare: 380,
+      transactionDate: '2024-02-05',
+      type: 'BUY' as const,
+      currency: 'USD',
+      quantity: 5,
+      pricePerUnit: 380,
       fees: 3,
       totalAmount: 1903,
-      broker: 'Interactive Brokers'
+      exchangeRateEurUsd: 1.08
     },
     {
       id: 'stock-3',
+      assetId: 'asset-sp500',
       ticker: 'AAPL',
-      date: '2024-02-15',
-      type: 'buy' as const,
-      shares: 8,
-      pricePerShare: 160,
+      transactionDate: '2024-02-15',
+      type: 'BUY' as const,
+      currency: 'USD',
+      quantity: 8,
+      pricePerUnit: 160,
       fees: 4,
       totalAmount: 1284,
-      broker: 'Interactive Brokers'
+      exchangeRateEurUsd: 1.08
     }
   ] as StockTransaction[]
 }

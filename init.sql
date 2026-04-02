@@ -133,6 +133,13 @@ INSERT INTO public.asset VALUES ('a5', 'Cash', 'CASH', 'EUR', '#33a340', false, 
 INSERT INTO public.asset VALUES ('a6', 'Founds old', 'FUND', 'EUR', '#fca5a5', true, 'Medio', NULL, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset VALUES ('a7', 'Broker DeGiro', 'STOCK', 'EUR', '#60a5fa', true, 'Medio', NULL, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset VALUES ('a9', 'Interactive Brokers', 'STOCK', 'EUR', '#3b82f6', false, 'Medio', NULL, NULL, 'Cartera de acciones individuales', NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('stock-TSM-001', 'Taiwan Semiconductor (TSM)', 'STOCK', 'USD', '#1f2937', false, 'Medio', NULL, 'TSM', 'TSMC - Taiwan Semiconductor Manufacturing', 'a9') ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('stock-NVDA-001', 'NVIDIA Corporation (NVDA)', 'STOCK', 'USD', '#1f2937', false, 'Medio', NULL, 'NVDA', 'NVIDIA - AI and GPU manufacturer', 'a9') ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('stock-TSLA-001', 'Tesla Inc (TSLA)', 'STOCK', 'USD', '#1f2937', false, 'Alto', NULL, 'TSLA', 'Tesla - Electric vehicles', 'a9') ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('stock-GOOG-001', 'Alphabet Inc (GOOG)', 'STOCK', 'USD', '#1f2937', false, 'Medio', NULL, 'GOOG', 'Google/Alphabet', 'a9') ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('stock-ASML-001', 'ASML Holding (ASML)', 'STOCK', 'USD', '#1f2937', false, 'Medio', NULL, 'ASML', 'ASML - Semiconductor equipment', 'a9') ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('stock-AMD-001', 'AMD Corporation (AMD)', 'STOCK', 'USD', '#1f2937', false, 'Medio', NULL, 'AMD', 'AMD - Semiconductor manufacturer', 'a9') ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('stock-MSTR-001', 'MicroStrategy Inc (MSTR)', 'STOCK', 'USD', '#1f2937', false, 'Medio', NULL, 'MSTR', 'MicroStrategy - Enterprise software', 'a9') ON CONFLICT DO NOTHING;
 INSERT INTO public.asset VALUES ('a8', 'Numantia Patrimonio', 'FUND_ACTIVE', 'EUR', '#b2b512', false, 'Moderado', 'ES0173311103', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset VALUES ('a10', 'Fidelity MSCI Emerging Markets', 'FUND_INDEX', 'EUR', '#f26464', false, 'Moderado', 'IE00BYX5M476', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset VALUES ('a11', 'Vanguard European Stock Index ', 'FUND_INDEX', 'EUR', '#f26464', false, 'Moderado', 'IE0007987690', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
@@ -526,6 +533,22 @@ INSERT INTO public.asset_history VALUES ('8fa3f897-d3ca-4743-a131-ec908ec206b9',
 INSERT INTO public.asset_history VALUES ('3d7b724b-9364-4758-8661-3e68ca29766d', 'a4', '2026-04-01', 15440.1500, 0.0000, 0.26322570, 58657.4600, 73275.0000) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset_history VALUES ('eef48283-41ba-4833-af74-382f377e87de', 'a11', '2026-04-01', 245.4100, 0.0000, 6.64000000, 36.9600, 37.6000) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset_history VALUES ('fcb77fcd-9cd6-4e4d-8084-cf2f2a217bac', 'a9', '2026-02-01', 5324.0000, 4663.3822, 40.25366570, NULL, NULL) ON CONFLICT DO NOTHING;
+-- Stock prices (USD)
+INSERT INTO public.asset_history VALUES ('h-2026-04-stock-TSM', 'stock-TSM-001', '2026-04-01', NULL, NULL, 1.0, 326.8700, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset_history VALUES ('h-2026-04-stock-NVDA', 'stock-NVDA-001', '2026-04-01', NULL, NULL, 1.0, 167.4500, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset_history VALUES ('h-2026-04-stock-TSLA', 'stock-TSLA-001', '2026-04-01', NULL, NULL, 1.0, 362.1400, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset_history VALUES ('h-2026-04-stock-GOOG', 'stock-GOOG-001', '2026-04-01', NULL, NULL, 1.0, 274.6800, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset_history VALUES ('h-2026-04-stock-ASML', 'stock-ASML-001', '2026-04-01', NULL, NULL, 1.0, 1304.1300, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset_history VALUES ('h-2026-04-stock-AMD', 'stock-AMD-001', '2026-04-01', NULL, NULL, 1.0, 168.7700, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset_history VALUES ('h-2026-04-stock-MSTR', 'stock-MSTR-001', '2026-04-01', NULL, NULL, 1.0, 103.4300, NULL) ON CONFLICT DO NOTHING;
+-- Also add March 01 entries for price lookups
+INSERT INTO public.asset_history VALUES ('h-2026-03-stock-TSM', 'stock-TSM-001', '2026-03-01', NULL, NULL, 1.0, 326.8700, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset_history VALUES ('h-2026-03-stock-NVDA', 'stock-NVDA-001', '2026-03-01', NULL, NULL, 1.0, 167.4500, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset_history VALUES ('h-2026-03-stock-TSLA', 'stock-TSLA-001', '2026-03-01', NULL, NULL, 1.0, 362.1400, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset_history VALUES ('h-2026-03-stock-GOOG', 'stock-GOOG-001', '2026-03-01', NULL, NULL, 1.0, 274.6800, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset_history VALUES ('h-2026-03-stock-ASML', 'stock-ASML-001', '2026-03-01', NULL, NULL, 1.0, 1304.1300, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset_history VALUES ('h-2026-03-stock-AMD', 'stock-AMD-001', '2026-03-01', NULL, NULL, 1.0, 168.7700, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset_history VALUES ('h-2026-03-stock-MSTR', 'stock-MSTR-001', '2026-03-01', NULL, NULL, 1.0, 103.4300, NULL) ON CONFLICT DO NOTHING;
 
 
 --

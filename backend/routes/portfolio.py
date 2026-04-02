@@ -8,7 +8,7 @@ from models import (
     FetchMonthResponse
 )
 from services import portfolio_service
-from services.monthly_fetch_service import process_monthly_prices
+from services.monthly_fetch_service import process_monthly_prices, fetch_eur_usd_rate_with_fallback
 
 router = APIRouter(prefix="/api/portfolio", tags=["Portfolio"])
 
@@ -36,21 +36,21 @@ async def sync_month_prices(
 
 @router.get("/exchange-rate")
 async def get_exchange_rate(session: AsyncSession = Depends(get_session)):
-    """Get the latest EUR/USD exchange rate. Tries DB first, then live fetch."""
-    from services import db_service
-    from services.price_fetcher import PriceFetcher
+    """
+    Get the latest EUR/USD exchange rate with fallback strategy.
+    Tries: Live → DB history (7 days) → hardcoded 1.1
+    """
     import asyncio
-
-    # Try DB first
-    rate = await db_service.get_latest_exchange_rate(session, "EUR/USD")
-    if rate and rate > 0:
-        return {"pair": "EUR/USD", "rate": rate, "source": "database"}
-
-    # Fallback: live fetch
-    live_rate = await asyncio.to_thread(PriceFetcher.fetch_eur_usd_rate)
-    if live_rate and live_rate > 0:
-        return {"pair": "EUR/USD", "rate": live_rate, "source": "live"}
-
-    # Ultimate fallback
-    return {"pair": "EUR/USD", "rate": 1.08, "source": "fallback"}
+    from datetime import date
+    
+    try:
+        # Use the resilient fallback method from monthly_fetch_service
+        rate, source = await fetch_eur_usd_rate_with_fallback(session, date.today())
+        return {"pair": "EUR/USD", "rate": rate, "source": source}
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error fetching exchange rate: {str(e)}")
+        # Ultimate fallback
+        return {"pair": "EUR/USD", "rate": 1.1, "source": "fallback_hardcoded"}
 

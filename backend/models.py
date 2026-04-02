@@ -145,7 +145,7 @@ class TransactionResponseDTO(BaseModel):
 
 
 class Transaction(SQLModel, table=True):
-    """Unified transaction model for Crypto and Stocks"""
+    """DEPRECATED: Unified transaction model for Crypto and Stocks. Use BitcoinTransaction or StockTransaction instead."""
     __tablename__ = "transaction"
     model_config = frontend_config
 
@@ -160,6 +160,40 @@ class Transaction(SQLModel, table=True):
     fees: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
     total_amount: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
     exchange_rate: Optional[Decimal] = Field(default=Decimal("1.0"), sa_column=Column(Numeric(15, 8)))
+
+
+class BitcoinTransaction(SQLModel, table=True):
+    """Bitcoin-specific transaction model with optimized schema"""
+    __tablename__ = "bitcoin_transaction"
+    model_config = frontend_config
+
+    id: str = Field(primary_key=True, max_length=100)
+    asset_id: Optional[str] = Field(default=None, foreign_key="asset.id", max_length=50, index=True)
+    transaction_date: DateType
+    type: Optional[str] = Field(default=None)
+    amount_btc: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
+    price_eur_per_btc: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
+    fees_eur: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(10, 4)))
+    total_amount_eur: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(15, 4)))
+    exchange_rate_usd_eur: Optional[Decimal] = Field(default=Decimal("1.08"), sa_column=Column(Numeric(15, 8)))
+
+
+class StockTransaction(SQLModel, table=True):
+    """Stock-specific transaction model"""
+    __tablename__ = "stock_transaction"
+    model_config = frontend_config
+
+    id: str = Field(primary_key=True, max_length=100)
+    asset_id: Optional[str] = Field(default=None, foreign_key="asset.id", max_length=50, index=True)
+    transaction_date: DateType
+    type: Optional[str] = Field(default=None)
+    ticker: Optional[str] = Field(default=None, max_length=50, index=True)
+    currency: Optional[str] = Field(default="USD", max_length=10)
+    quantity: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
+    price_per_unit: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
+    fees: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(10, 4)))
+    total_amount: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(15, 4)))
+    exchange_rate_eur_usd: Optional[Decimal] = Field(default=Decimal("1.08"), sa_column=Column(Numeric(15, 8)))
 
 
 class ExchangeRate(SQLModel, table=True):
@@ -196,6 +230,8 @@ class FetchMonthResponse(BaseModel):
     last_business_day: str = Field(alias="lastBusinessDay")  # Date in YYYY-MM-DD format
     prices: List[PriceData]
     errors: List[str] = []
+    exchange_rate_eur_usd: Optional[float] = None  # EUR/USD rate used for conversion
+    exchange_rate_source: Optional[str] = None  # 'yfinance', 'fallback_db', 'fallback_hardcoded'
 
 
 class HealthResponse(BaseModel):
@@ -235,3 +271,35 @@ class AssetMetricsResponse(BaseModel):
     absolute_return: float
     percentage_return: float
     twr: float
+
+
+class StockMetricsDTO(BaseModel):
+    """Data Transfer Object for individual stock metrics in portfolio"""
+    model_config = frontend_config
+
+    ticker: str
+    shares: float
+    cost_basis_eur: float  # Total amount invested in EUR
+    cost_basis_usd: float  # Total amount invested in USD
+    average_price_usd: float  # Weighted average purchase price in USD
+    current_price_usd: float  # Latest price from asset_history
+    current_price_eur: float  # Current price converted to EUR
+    current_value_eur: float  # shares × current_price_eur
+    unrealized_gain_eur: float  # current_value_eur - cost_basis_eur
+    unrealized_gain_usd: float  # current_value_usd - cost_basis_usd
+    unrealized_gain_percent: float  # (unrealized_gain / cost_basis) × 100
+    last_price_update: Optional[str] = None  # ISO datetime of last price fetch
+
+
+class StockPortfolioSummaryDTO(BaseModel):
+    """Consolidated stock portfolio summary (single source of truth)"""
+    model_config = frontend_config
+
+    total_value_eur: float  # Sum of all current_value_eur across holdings
+    total_invested_eur: float  # Sum of all cost_basis_eur
+    total_unrealized_gain_eur: float  # total_value_eur - total_invested_eur
+    total_unrealized_gain_percent: float  # (total_unrealized_gain_eur / total_invested_eur) × 100
+    exchange_rate_eur_usd: float  # Latest EUR/USD rate used for conversion
+    last_update: str  # ISO datetime of last portfolio calculation
+    number_of_tickers: int  # Count of unique stock holdings
+    tickers: List[StockMetricsDTO]  # List of individual holdings

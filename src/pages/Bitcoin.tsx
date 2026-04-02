@@ -25,24 +25,24 @@ import {
 } from 'recharts'
 
 interface FormData {
-  date: string
-  type: 'buy' | 'sell'
-  amountEUR: number
-  meanPrice: number
+  transactionDate: string
+  type: 'BUY' | 'SELL'
+  amountBtc: number
+  priceEurPerBtc: number
 }
 
 const INITIAL_FORM_DATA: FormData = {
-  date: new Date().toISOString().split('T')[0],
-  type: 'buy',
-  amountEUR: 0,
-  meanPrice: 0
+  transactionDate: new Date().toISOString().split('T')[0],
+  type: 'BUY',
+  amountBtc: 0,
+  priceEurPerBtc: 0
 }
 
 export default function Bitcoin() {
   const { bitcoinTransactions, refetchData, assets, history } = useWealth()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingTransaction, setEditingTransaction] = useState<BitcoinTransaction | null>(null)
-  const [sortColumn, setSortColumn] = useState<'date' | 'type' | 'amount' | 'cost' | 'meanPrice'>('date')
+  const [sortColumn, setSortColumn] = useState<'transactionDate' | 'type' | 'amount' | 'cost' | 'priceEurPerBtc'>('transactionDate')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [formData, setFormData] = useState<FormData>(INITIAL_FORM_DATA)
   
@@ -85,14 +85,14 @@ export default function Bitcoin() {
     })
 
     // 2. Añadir las compras como puntos sueltos
-    validTransactions.filter(tx => tx.type === 'buy').forEach(tx => {
-      if (!tx.date || !tx.amountBTC) return
+    validTransactions.filter(tx => tx.type === 'BUY').forEach(tx => {
+      if (!tx.transactionDate || !tx.amountBtc) return
       data.push({
-        time: new Date(tx.date).getTime(),
-        dateStr: tx.date,
-        buyPrice: tx.meanPrice,
-        amountBTC: tx.amountBTC,
-        cost: tx.totalCost || tx.amount
+        time: new Date(tx.transactionDate).getTime(),
+        dateStr: tx.transactionDate,
+        buyPrice: tx.priceEurPerBtc,
+        amountBTC: tx.amountBtc,
+        cost: tx.totalAmountEur
       })
     })
 
@@ -117,13 +117,13 @@ export default function Bitcoin() {
   let currentBtcCost = 0
   
   validTransactions.forEach(tx => {
-     if (tx.type === 'buy') {
-        currentBtcShares += (tx.amountBTC || 0)
-        currentBtcCost += (tx.totalCost || 0)
+     if (tx.type === 'BUY') {
+        currentBtcShares += (tx.amountBtc || 0)
+        currentBtcCost += (tx.totalAmountEur || 0)
      } else {
         const avg = currentBtcShares > 0 ? currentBtcCost / currentBtcShares : 0
-        currentBtcShares -= (tx.amountBTC || 0)
-        currentBtcCost -= ((tx.amountBTC || 0) * avg)
+        currentBtcShares -= (tx.amountBtc || 0)
+        currentBtcCost -= ((tx.amountBtc || 0) * avg)
      }
   })
   
@@ -133,19 +133,19 @@ export default function Bitcoin() {
   
   const currentBTCValue = assetLatestNAV > 0 
     ? assetLatestNAV 
-    : (totalBTC * (validTransactions[validTransactions.length - 1]?.meanPrice || 0))
+    : (totalBTC * (validTransactions[validTransactions.length - 1]?.priceEurPerBtc || 0))
     
   const unrealizedGain = currentBTCValue - totalInvested
 
-  const getSortedTransactions = useCallback((txs: BitcoinTransaction[], column: 'date' | 'type' | 'amount' | 'cost' | 'meanPrice', direction: 'asc' | 'desc') => {
+  const getSortedTransactions = useCallback((txs: BitcoinTransaction[], column: 'transactionDate' | 'type' | 'amount' | 'cost' | 'priceEurPerBtc', direction: 'asc' | 'desc') => {
     const sorted = [...txs]
     const isAsc = direction === 'asc'
     
     switch (column) {
-      case 'date':
+      case 'transactionDate':
         return sorted.sort((a, b) => {
-          const timeA = new Date(a.date || '').getTime()
-          const timeB = new Date(b.date || '').getTime()
+          const timeA = new Date(a.transactionDate || '').getTime()
+          const timeB = new Date(b.transactionDate || '').getTime()
           return isAsc ? timeA - timeB : timeB - timeA
         })
       case 'type':
@@ -155,17 +155,17 @@ export default function Bitcoin() {
         })
       case 'amount':
         return sorted.sort((a, b) => {
-          const diff = (a.amountBTC || 0) - (b.amountBTC || 0)
+          const diff = (a.amountBtc || 0) - (b.amountBtc || 0)
           return isAsc ? diff : -diff
         })
       case 'cost':
         return sorted.sort((a, b) => {
-          const diff = (a.totalCost || 0) - (b.totalCost || 0)
+          const diff = (a.totalAmountEur || 0) - (b.totalAmountEur || 0)
           return isAsc ? diff : -diff
         })
-      case 'meanPrice':
+      case 'priceEurPerBtc':
         return sorted.sort((a, b) => {
-          const diff = (a.meanPrice || 0) - (b.meanPrice || 0)
+          const diff = (a.priceEurPerBtc || 0) - (b.priceEurPerBtc || 0)
           return isAsc ? diff : -diff
         })
       default:
@@ -178,29 +178,28 @@ export default function Bitcoin() {
     [validTransactions, sortColumn, sortDirection, getSortedTransactions]
   )
 
-  const createTransaction = useCallback((data: FormData): BitcoinTransaction => {
-    const amountBTC = data.amountEUR / data.meanPrice
+  const createTransaction = useCallback((data: FormData): Partial<BitcoinTransaction> => {
+    const amountBtc = data.amountBtc
     return {
       id: generateUUID(),
-      date: data.date,
+      transactionDate: data.transactionDate,
       type: data.type,
-      amount: data.amountEUR,
-      amountBTC,
-      totalCost: data.amountEUR,
-      meanPrice: data.meanPrice
+      amountBtc,
+      totalAmountEur: data.amountBtc * data.priceEurPerBtc,
+      priceEurPerBtc: data.priceEurPerBtc
     }
   }, [])
 
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault()
-    if (formData.amountEUR <= 0 || formData.meanPrice <= 0) return
+    if (formData.amountBtc <= 0 || formData.priceEurPerBtc <= 0) return
 
-    if (editingTransaction && !isCurrentMonth(getMonthFromDate(editingTransaction.date || ''))) {
+    if (editingTransaction && !isCurrentMonth(getMonthFromDate(editingTransaction.transactionDate || ''))) {
       alert('No se pueden editar transacciones de meses anteriores')
       return
     }
     
-    if (!editingTransaction && !isCurrentMonth(getMonthFromDate(formData.date))) {
+    if (!editingTransaction && !isCurrentMonth(getMonthFromDate(formData.transactionDate))) {
       alert('Solo se pueden crear transacciones del mes actual')
       return
     }
@@ -213,13 +212,13 @@ export default function Bitcoin() {
         const assetId = btcAsset ? btcAsset.id : undefined;
 
         const backendPayload = {
-            transactionDate: txData.date,
+            transactionDate: txData.transactionDate,
             type: txData.type,
             ticker: 'BTC',
-            quantity: txData.amountBTC,
-            pricePerUnit: txData.meanPrice,
+            quantity: txData.amountBtc,
+            pricePerUnit: txData.priceEurPerBtc,
             fees: 0,
-            totalAmount: txData.totalCost,
+            totalAmount: txData.totalAmountEur,
             asset_id: assetId,
         };
 
@@ -247,17 +246,17 @@ export default function Bitcoin() {
   }, [formData, editingTransaction, createTransaction, refetchData, assets])
 
   const handleOpenModal = useCallback((transaction?: BitcoinTransaction) => {
-    if (transaction && !isCurrentMonth(getMonthFromDate(transaction.date || ''))) {
+    if (transaction && !isCurrentMonth(getMonthFromDate(transaction.transactionDate || ''))) {
       return
     }
     
     if (transaction) {
       setEditingTransaction(transaction)
       setFormData({
-        date: transaction.date,
+        transactionDate: transaction.transactionDate,
         type: transaction.type,
-        amountEUR: transaction.amount,
-        meanPrice: transaction.meanPrice
+        amountBtc: transaction.amountBtc,
+        priceEurPerBtc: transaction.priceEurPerBtc
       })
     } else {
       setEditingTransaction(null)
@@ -269,7 +268,7 @@ export default function Bitcoin() {
   const handleDelete = useCallback((id: string) => {
     const transaction = bitcoinTransactions.find(t => t.id === id)
     
-    if (transaction && !isCurrentMonth(getMonthFromDate(transaction.date || ''))) {
+    if (transaction && !isCurrentMonth(getMonthFromDate(transaction.transactionDate || ''))) {
       alert('No se pueden eliminar transacciones de meses anteriores')
       return
     }
@@ -434,10 +433,10 @@ export default function Bitcoin() {
               <tr className="border-b border-slate-200 dark:border-slate-800">
                 <th 
                   onClick={() => {
-                    if (sortColumn === 'date') {
+                    if (sortColumn === 'transactionDate') {
                       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
                     } else {
-                      setSortColumn('date')
+                      setSortColumn('transactionDate')
                       setSortDirection('desc')
                     }
                   }}
@@ -445,7 +444,7 @@ export default function Bitcoin() {
                 >
                   <div className="flex items-center gap-2">
                     Fecha
-                    {sortColumn === 'date' && (sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />)}
+                    {sortColumn === 'transactionDate' && (sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />)}
                   </div>
                 </th>
                 <th 
@@ -498,10 +497,10 @@ export default function Bitcoin() {
                 </th>
                 <th 
                   onClick={() => {
-                    if (sortColumn === 'meanPrice') {
+                    if (sortColumn === 'priceEurPerBtc') {
                       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
                     } else {
-                      setSortColumn('meanPrice')
+                      setSortColumn('priceEurPerBtc')
                       setSortDirection('desc')
                     }
                   }}
@@ -509,7 +508,7 @@ export default function Bitcoin() {
                 >
                   <div className="flex items-center justify-end gap-2">
                     Precio Medio
-                    {sortColumn === 'meanPrice' && (sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />)}
+                    {sortColumn === 'priceEurPerBtc' && (sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />)}
                   </div>
                 </th>
                 <th className="text-center py-3 px-4 font-bold text-slate-600 dark:text-slate-400">Acciones</th>
@@ -520,19 +519,19 @@ export default function Bitcoin() {
                 if (!tx || !tx.id) return null
                 return (
                 <tr key={tx.id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900">
-                  <td className="py-3 px-4 font-semibold dark:text-white">{formatDate(tx.date || '')}</td>
+                  <td className="py-3 px-4 font-semibold dark:text-white">{formatDate(tx.transactionDate || '')}</td>
                   <td className="py-3 px-4">
                     <span className={`px-2 py-1 rounded text-xs font-bold ${
-                      tx.type === 'buy' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-200' : 'bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-200'
+                      tx.type === 'BUY' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-200' : 'bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-200'
                     }`}>
-                      {tx.type === 'buy' ? '▲ Compra' : '▼ Venta'}
+                      {tx.type === 'BUY' ? '▲ Compra' : '▼ Venta'}
                     </span>
                   </td>
-                  <td className="py-3 px-4 text-right font-bold dark:text-white">{(tx.amountBTC || 0).toFixed(6)}</td>
-                  <td className="py-3 px-4 text-right font-bold dark:text-white">{formatCurrency(Math.round(tx.totalCost || 0))}</td>
-                  <td className="py-3 px-4 text-right font-bold text-indigo-600">{formatCurrency(Math.round(tx.meanPrice || 0))}</td>
+                  <td className="py-3 px-4 text-right font-bold dark:text-white">{(tx.amountBtc || 0).toFixed(6)}</td>
+                  <td className="py-3 px-4 text-right font-bold dark:text-white">{formatCurrency(Math.round(tx.totalAmountEur || 0))}</td>
+                  <td className="py-3 px-4 text-right font-bold text-indigo-600">{formatCurrency(Math.round(tx.priceEurPerBtc || 0))}</td>
                   <td className="py-3 px-4 text-center flex gap-2 justify-center">
-                    {isCurrentMonth(getMonthFromDate(tx.date || '')) ? (
+                    {isCurrentMonth(getMonthFromDate(tx.transactionDate || '')) ? (
                       <>
                         <button
                           onClick={() => handleOpenModal(tx)}
@@ -580,45 +579,45 @@ export default function Bitcoin() {
           <Input
             label="Fecha"
             type="date"
-            value={formData.date}
-            onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+            value={formData.transactionDate}
+            onChange={(e) => setFormData({ ...formData, transactionDate: e.target.value })}
             required
           />
 
           <Select
             label="Tipo de Transacción"
             value={formData.type}
-            onChange={(e) => setFormData({ ...formData, type: e.target.value as 'buy' | 'sell' })}
+            onChange={(e) => setFormData({ ...formData, type: e.target.value as 'BUY' | 'SELL' })}
             options={[
-              { value: 'buy', label: 'Compra' },
-              { value: 'sell', label: 'Venta' }
+              { value: 'BUY', label: 'Compra' },
+              { value: 'SELL', label: 'Venta' }
             ]}
           />
 
           <Input
-            label="Cantidad (EUR)"
+            label="Cantidad (BTC)"
             type="number"
-            value={formData.amountEUR}
-            onChange={(e) => setFormData({ ...formData, amountEUR: parseFloat(e.target.value) })}
-            step="0.01"
+            value={formData.amountBtc}
+            onChange={(e) => setFormData({ ...formData, amountBtc: parseFloat(e.target.value) || 0 })}
+            step="0.000001"
             min="0"
             required
           />
 
           <Input
-            label="Precio Medio (EUR)"
+            label="Precio por BTC (EUR)"
             type="number"
-            value={formData.meanPrice}
-            onChange={(e) => setFormData({ ...formData, meanPrice: parseFloat(e.target.value) })}
+            value={formData.priceEurPerBtc}
+            onChange={(e) => setFormData({ ...formData, priceEurPerBtc: parseFloat(e.target.value) || 0 })}
             step="0.01"
             min="0"
             required
           />
 
-          {formData.amountEUR > 0 && formData.meanPrice > 0 && (
+          {formData.amountBtc > 0 && formData.priceEurPerBtc > 0 && (
             <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-lg">
               <p className="text-sm text-slate-600 dark:text-slate-400">
-                <strong>BTC a recibir:</strong> {(formData.amountEUR / formData.meanPrice).toFixed(6)} BTC
+                <strong>Coste Total (EUR):</strong> {(formData.amountBtc * formData.priceEurPerBtc).toFixed(2)} EUR
               </p>
             </div>
           )}

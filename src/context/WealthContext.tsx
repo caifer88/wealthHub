@@ -8,21 +8,23 @@ import { config } from '../config'
 const sanitizeBitcoinTransactions = (txs: any[]): BitcoinTransaction[] => {
   if (!Array.isArray(txs)) return []
   return txs.map((tx: any) => {
-    let txType: 'buy' | 'sell' = 'buy'
-    if (tx.type === 'Compra' || tx.type === 'buy') {
-      txType = 'buy'
-    } else if (tx.type === 'Venta' || tx.type === 'sell') {
-      txType = 'sell'
+    let txType: 'BUY' | 'SELL' = 'BUY'
+    if (tx.type === 'Compra' || tx.type === 'buy' || tx.type === 'BUY') {
+      txType = 'BUY'
+    } else if (tx.type === 'Venta' || tx.type === 'sell' || tx.type === 'SELL') {
+      txType = 'SELL'
     }
-    const amountBTC = parseFloat(tx.amountBTC) || 0
+    const amountBtc = parseFloat(tx.amountBtc || tx.amountBTC) || 0
     return {
       id: tx.id || generateUUID(),
-      date: tx.date || new Date().toISOString().split('T')[0],
+      assetId: tx.assetId || tx.asset_id || '',
+      transactionDate: tx.transactionDate || tx.date || new Date().toISOString().split('T')[0],
       type: txType,
-      amount: parseFloat(tx.amount) || parseFloat(tx.totalCost) || 0,
-      amountBTC: amountBTC,
-      totalCost: parseFloat(tx.totalCost) || parseFloat(tx.amount) || 0,
-      meanPrice: parseFloat(tx.meanPrice) || 0
+      amountBtc: amountBtc,
+      priceEurPerBtc: parseFloat(tx.priceEurPerBtc || tx.meanPrice) || 0,
+      feesEur: parseFloat(tx.feesEur || tx.fees) || 0,
+      totalAmountEur: parseFloat(tx.totalAmountEur || tx.totalCost || tx.amount) || 0,
+      exchangeRateUsdEur: parseFloat(tx.exchangeRateUsdEur) || 1.08
     } as BitcoinTransaction
   })
 }
@@ -30,23 +32,24 @@ const sanitizeBitcoinTransactions = (txs: any[]): BitcoinTransaction[] => {
 export const sanitizeStockTransactions = (txs: any[]): StockTransaction[] => {
   if (!Array.isArray(txs)) return []
   return txs.map((tx: any) => {
-    let txType: 'buy' | 'sell' = 'buy'
-    if (tx.type === 'Compra' || tx.type === 'buy') {
-      txType = 'buy'
-    } else if (tx.type === 'Venta' || tx.type === 'sell') {
-      txType = 'sell'
+    let txType: 'BUY' | 'SELL' = 'BUY'
+    if (tx.type === 'Compra' || tx.type === 'buy' || tx.type === 'BUY') {
+      txType = 'BUY'
+    } else if (tx.type === 'Venta' || tx.type === 'sell' || tx.type === 'SELL') {
+      txType = 'SELL'
     }
     return {
       id: tx.id || generateUUID(),
-      ticker: tx.ticker || '',
-      date: tx.date || new Date().toISOString().split('T')[0],
+      assetId: tx.assetId || tx.asset_id || '',
+      transactionDate: tx.transactionDate || tx.date || new Date().toISOString().split('T')[0],
       type: txType,
-      shares: parseFloat(tx.shares) || 0,
-      pricePerShare: parseFloat(tx.pricePerShare) || 0,
+      ticker: tx.ticker || '',
+      currency: tx.currency || 'USD',
+      quantity: parseFloat(tx.quantity || tx.shares) || 0,
+      pricePerUnit: parseFloat(tx.pricePerUnit || tx.pricePerShare) || 0,
       fees: parseFloat(tx.fees) || 0,
       totalAmount: parseFloat(tx.totalAmount) || 0,
-      exchangeRate: parseFloat(tx.exchangeRate || tx.exchange_rate) || 1.08,
-      broker: tx.broker || undefined
+      exchangeRateEurUsd: parseFloat(tx.exchangeRateEurUsd || tx.exchangeRate || tx.exchange_rate) || 1.08
     } as StockTransaction
   })
 }
@@ -117,7 +120,7 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 if (Array.isArray(dbTxs)) {
                     dbTxs.forEach((tx: any) => {
                         // ✅ CORRECCIÓN 2: Protegemos contra nulos
-                        const safeType = (tx.type || 'buy').toLowerCase();
+                        const safeType = (tx.type || 'BUY').toUpperCase();
                         
                         const asset = dbAssets.find((a: any) => a.id === tx.asset_id);
                         const isCrypto = asset?.category?.toUpperCase() === 'CRYPTO' || tx.ticker === 'BTC';
@@ -125,26 +128,28 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                         if (isCrypto) {
                             btcTxs.push({
                                 id: tx.id,
-                                date: tx.date,
+                                assetId: tx.asset_id,
+                                transactionDate: tx.transactionDate || tx.date,
                                 type: safeType,
-                                amountBTC: tx.quantity,
-                                meanPrice: tx.pricePerUnit,
-                                totalCost: tx.totalAmount,
-                                amount: tx.totalAmount
+                                amountBtc: tx.quantity,
+                                priceEurPerBtc: tx.pricePerUnit,
+                                feesEur: tx.fees || 0,
+                                totalAmountEur: tx.totalAmount,
+                                exchangeRateUsdEur: tx.exchangeRateEurUsd || 1.08
                             });
                         } else {
-                            const brokerAsset = dbAssets.find((a: any) => a.id === tx.asset_id);
                             stockTxs.push({
                                 id: tx.id,
+                                assetId: tx.asset_id,
                                 ticker: tx.ticker,
-                                date: tx.date,
+                                transactionDate: tx.transactionDate || tx.date,
                                 type: safeType,
-                                shares: tx.quantity,
-                                pricePerShare: tx.pricePerUnit,
+                                currency: tx.currency || 'USD',
+                                quantity: tx.quantity,
+                                pricePerUnit: tx.pricePerUnit,
                                 fees: tx.fees,
                                 totalAmount: tx.totalAmount,
-                                exchangeRate: tx.exchangeRate || tx.exchange_rate,
-                                broker: brokerAsset ? brokerAsset.name : undefined
+                                exchangeRateEurUsd: tx.exchangeRateEurUsd || 1.08
                             });
                         }
                     });

@@ -1,7 +1,7 @@
 import logging
 import asyncio
-from typing import List, Optional
-from datetime import datetime
+from typing import List, Optional, Tuple
+from datetime import datetime, timedelta
 from decimal import Decimal
 import uuid
 
@@ -13,8 +13,57 @@ from utils import get_last_business_day, validate_month, format_date, format_dat
 from services.price_fetcher import PriceFetcher
 from services.fund_scraper import FundScraper
 from services import db_service
+from services.stock_asset_manager import (
+    get_or_create_stock_asset,
+    ensure_all_transaction_tickers_exist,
+    get_ticker_to_asset_mapping
+)
 
 logger = logging.getLogger(__name__)
+
+
+async def fetch_eur_usd_rate_with_fallback(session: AsyncSession, date_obj) -> Tuple[float, str]:
+    """
+    Fetch EUR/USD exchange rate with resilient fallback strategy.
+    
+    Strategy:
+    1. Try live source (yfinance) → source: 'yfinance'
+    2. Fallback to DB history (last 7 days) → source: 'fallback_db'
+    3. Ultimate fallback: hardcoded 1.1 → source: 'fallback_hardcoded'
+    
+    Args:
+        session: Database session
+        date_obj: The date for which we're fetching the rate
+    
+    Returns:
+        Tuple of (rate_value, source_label)
+    """
+    # Strategy 1: Try live fetch
+    try:
+        live_rate = await asyncio.to_thread(PriceFetcher.fetch_eur_usd_rate)
+        if live_rate and live_rate > 0:
+            logger.info(f"💱 EUR/USD rate from live source (yfinance): {live_rate:.4f}")
+            return (live_rate, "yfinance")
+    except Exception as e:
+        logger.warning(f"⚠️ Live EUR/USD fetch failed: {str(e)}")
+    
+    # Strategy 2: Try DB history (last 7 days)
+    try:
+        seven_days_ago = date_obj - timedelta(days=7)
+        
+        # Get latest rate from DB
+        db_rate = await db_service.get_latest_exchange_rate(session, "EUR/USD")
+        
+        if db_rate and db_rate > 0:
+            # Verify it's recent enough (within 7 days)
+            logger.info(f"💱 EUR/USD rate from DB history: {db_rate:.4f}")
+            return (db_rate, "fallback_db")
+    except Exception as e:
+        logger.warning(f"⚠️ DB EUR/USD lookup failed: {str(e)}")
+    
+    # Strategy 3: Ultimate fallback
+    logger.warning(f"⚠️ Using hardcoded EUR/USD fallback rate: 1.1")
+    return (1.1, "fallback_hardcoded")
 
 async def process_monthly_prices(year: int, month: int, session: AsyncSession) -> FetchMonthResponse:
     logger.info(f"📊 Fetch-month request: {year}-{month:02d}")
@@ -27,6 +76,8 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
 
     errors: List[str] = []
     prices: List[PriceData] = []
+    eur_usd_rate = None
+    eur_usd_rate_source = "unknown"
 
     try:
         last_business_day = get_last_business_day(year, month)
@@ -41,7 +92,9 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                 month=month,
                 last_business_day=format_date(last_business_day), 
                 prices=[],
-                errors=["No assets available"]
+                errors=["No assets available"],
+                exchange_rate_eur_usd=None,
+                exchange_rate_source=None
             )
 
         assets = [asset.model_dump() for asset in db_assets]
@@ -75,15 +128,29 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
 
         broker_assets = list(broker_assets_dict.values())
 
-        # Fetch EUR/USD exchange rate for stock price conversion (stocks are priced in USD)
-        eur_usd_rate = None
+        # ===== PHASE 1: Ensure all stock transaction tickers have real Assets =====
         if broker_assets:
-            eur_usd_rate = await asyncio.to_thread(PriceFetcher.fetch_eur_usd_rate)
-            if eur_usd_rate:
-                logger.info(f"💱 EUR/USD rate for conversion: {eur_usd_rate:.4f}")
-            else:
-                logger.warning("⚠️ Could not fetch EUR/USD rate, stock prices will NOT be converted")
-
+            logger.info("🔄 PHASE 1: Ensuring all transaction tickers have real Stock Assets...")
+            try:
+                ticker_asset_map = await ensure_all_transaction_tickers_exist(session)
+                logger.info(f"✅ PHASE 1 complete: Verified/created assets for {len(ticker_asset_map)} tickers")
+            except Exception as e:
+                logger.error(f"⚠️ PHASE 1 partially failed: {str(e)} (continuing with existing assets)")
+        
+        # ===== PHASE 2: Fetch EUR/USD exchange rate with fallback =====
+        month_date = datetime.strptime(f"{year}-{month:02d}-01", "%Y-%m-%d").date()
+        
+        if broker_assets:
+            logger.info("🔄 PHASE 2: Fetching EUR/USD exchange rate...")
+            try:
+                eur_usd_rate, eur_usd_rate_source = await fetch_eur_usd_rate_with_fallback(session, month_date)
+                logger.info(f"✅ EUR/USD rate: {eur_usd_rate:.4f} (source: {eur_usd_rate_source})")
+            except Exception as e:
+                logger.error(f"❌ PHASE 2 failed: {str(e)}")
+                eur_usd_rate = 1.1
+                eur_usd_rate_source = "fallback_hardcoded"
+        
+        # ===== Build tasks for price fetching =====
         tasks = []
 
         def fetch_btc():
@@ -113,7 +180,13 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                 continue
             tasks.append(asyncio.to_thread(make_fund_fetcher(fund)))
 
-        def make_broker_fetcher(broker, fx_rate):
+        # ===== Get ticker to real asset_id mapping =====
+        ticker_asset_map = {}
+        if broker_assets:
+            ticker_asset_map = await get_ticker_to_asset_mapping(session)
+            logger.info(f"📋 Loaded mapping for {len(ticker_asset_map)} stock tickers to real asset IDs")
+
+        def make_broker_fetcher(broker, fx_rate, ticker_asset_map):
             def fetch():
                 component_tickers = broker.get("componentTickers", [])
                 holdings = broker.get("holdings", {})
@@ -141,7 +214,18 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                         p.price = Decimal(str(eur_price))
                     p.currency = "EUR"
                     total_broker_value += float(p.price) * shares
-                    p.asset_id = f"ticker-{p.ticker}"
+                    
+                    # ===== Use REAL asset_id instead of fake ticker-X =====
+                    # Look up the real Stock Asset ID from the mapping
+                    ticker_upper = p.ticker.upper()
+                    if ticker_upper in ticker_asset_map:
+                        p.asset_id = ticker_asset_map[ticker_upper]
+                        logger.debug(f"✓ Using real asset_id for {p.ticker}: {p.asset_id}")
+                    else:
+                        # Fallback: use fake ID if real asset not found (shouldn't happen after Phase 1)
+                        p.asset_id = f"ticker-{p.ticker}"
+                        logger.warning(f"⚠️ Real asset not found for {p.ticker}, using placeholder ID")
+                    
                     p.asset_name = f"Stock {p.ticker}"
                     copied_individual_prices.append(p)
 
@@ -162,7 +246,7 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
 
         for broker in broker_assets:
             if broker.get("componentTickers"):
-                tasks.append(asyncio.to_thread(make_broker_fetcher(broker, eur_usd_rate)))
+                tasks.append(asyncio.to_thread(make_broker_fetcher(broker, eur_usd_rate, ticker_asset_map)))
 
         results = await asyncio.gather(*tasks)
 
@@ -199,7 +283,9 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                 month=month,
                 last_business_day=format_date(last_business_day),
                 prices=[],
-                errors=errors
+                errors=errors,
+                exchange_rate_eur_usd=eur_usd_rate if eur_usd_rate else None,
+                exchange_rate_source=eur_usd_rate_source
             )
 
         saved_count = 0
@@ -300,7 +386,14 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
 
                     for ticker, shares in active_tickers.items():
                         if shares > 0:
-                            ticker_asset_id = f"ticker-{ticker}"
+                            # ===== Use REAL asset_id instead of fake ticker-X =====
+                            ticker_upper = ticker.upper()
+                            if ticker_upper in ticker_asset_map:
+                                ticker_asset_id = ticker_asset_map[ticker_upper]
+                            else:
+                                # Fallback: use fake ID if real asset not found
+                                ticker_asset_id = f"ticker-{ticker}"
+                            
                             ticker_val = 0.0
 
                             # First check if we managed to fetch THIS specific ticker's price
@@ -360,47 +453,6 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                 await db_service.create_history_entry(session, history_entry)
             saved_count += 1
 
-        # Also, create entries for the individual stock tickers under broker assets
-        # that were fetched and placed in nav_mapping.
-        # Note: They have asset_id like "ticker-AAPL" in nav_mapping but they might not be in active_assets.
-        for asset_id, val in nav_mapping.items():
-            if asset_id.startswith("ticker-"):
-                prev_history_all = await db_service.get_history_by_asset(session, asset_id)
-                prev_history = [h for h in prev_history_all if h.snapshot_date < date_obj]
-
-                prev_mean_cost = Decimal("0.0")
-                if prev_history and prev_history[0].mean_cost is not None:
-                    prev_mean_cost = prev_history[0].mean_cost
-
-                nav_val = Decimal(str(val))
-                liquid_nav = Decimal(str(val))
-                participations = Decimal("1.0")
-                contribution = Decimal("0.0")
-                mean_cost = prev_mean_cost
-
-                existing_entries = [h for h in prev_history_all if h.snapshot_date == date_obj]
-                if existing_entries:
-                    history_entry = existing_entries[0]
-                    history_entry.liquid_nav_value = liquid_nav
-                    history_entry.nav = nav_val
-                    # ✅ Preserve contribution (user-managed)
-                    history_entry.participations = participations
-                    history_entry.mean_cost = mean_cost
-                    await db_service.update_history_entry(session, history_entry.id, history_entry)
-                else:
-                    history_entry = HistoryEntry(
-                        id=str(uuid.uuid4()),
-                        asset_id=asset_id,
-                        snapshot_date=date_obj,
-                        liquid_nav_value=liquid_nav,
-                        nav=nav_val,
-                        contribution=contribution,
-                        participations=participations,
-                        mean_cost=mean_cost
-                    )
-                    await db_service.create_history_entry(session, history_entry)
-                saved_count += 1
-
         logger.info(f"💾 Saved {saved_count} history entries to database")
 
         return FetchMonthResponse(
@@ -410,7 +462,9 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
             month=month,
             last_business_day=format_date(last_business_day),
             prices=prices,
-            errors=errors
+            errors=errors,
+            exchange_rate_eur_usd=eur_usd_rate if eur_usd_rate else None,
+            exchange_rate_source=eur_usd_rate_source
         )
 
     except HTTPException:
