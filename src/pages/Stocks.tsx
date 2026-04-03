@@ -127,25 +127,23 @@ export default function Stocks() {
         const assetId = tickerAsset ? tickerAsset.id : (fbAsset ? fbAsset.id : undefined);
 
         const txData = {
+          id: editingTransaction ? editingTransaction.id : generateUUID(),
+          assetId: assetId,
           ticker: searchTicker,
           transactionDate: formData.transactionDate,
           type: formData.type,
+          currency: formData.currency,
           quantity: formData.quantity,
           pricePerUnit: formData.pricePerUnit,
           fees: formData.fees,
           totalAmount: totalAmount,
-          currency: formData.currency,
-          assetId: assetId,
           exchangeRateEurUsd: formData.exchangeRateEurUsd
         };
 
         if (editingTransaction) {
-          await api.updateTransaction(editingTransaction.id, txData);
+          await api.updateStockTransaction(editingTransaction.id, txData as any);
         } else {
-          await api.createTransaction({
-            id: generateUUID(),
-            ...txData
-          });
+          await api.createStockTransaction(txData as any);
         }
 
         // Refetch both context data and portfolio data
@@ -212,7 +210,7 @@ export default function Stocks() {
     if (confirm('¿Está seguro de que desea eliminar esta transacción?')) {
       const runDelete = async () => {
         try {
-          await api.deleteTransaction(id);
+          await api.deleteStockTransaction(id);
           await refetchData();
           await refetchPortfolio();
         } catch (error) {

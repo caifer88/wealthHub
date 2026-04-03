@@ -17,7 +17,7 @@ from models import HealthResponse
 from services.monthly_fetch_service import process_monthly_prices
 
 # Routers
-from routes import assets, history, transactions, portfolio, metrics, bitcoin, stocks
+from routes import assets, history, portfolio, metrics, bitcoin, stocks
 
 logging.basicConfig(
     level=logging.INFO,
@@ -60,9 +60,9 @@ logger.info(f"🔧 CORS configured for: {', '.join(frontend_urls)}")
 
 @app.on_event("startup")
 async def on_startup():
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
-    logger.info("📦 Database tables created or verified")
+    # Schema is managed by init.sql; skip automatic table creation
+    # to avoid conflicts with the pre-initialized database
+    logger.info("📦 Database tables already initialized via init.sql")
     
     scheduler.add_job(scheduled_update_nav, 'cron', hour=9, minute=00)
     scheduler.start()
@@ -79,7 +79,6 @@ async def health_check():
 # Include routers
 app.include_router(assets.router)
 app.include_router(history.router)
-app.include_router(transactions.router)
 app.include_router(portfolio.router)
 app.include_router(metrics.router)
 app.include_router(bitcoin.router)

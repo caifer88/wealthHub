@@ -109,58 +109,6 @@ class HistoryResponseDTO(BaseModel):
         }
 
 
-class TransactionResponseDTO(BaseModel):
-    """Data Transfer Object for returning transactions from the API"""
-    model_config = frontend_config
-
-    id: str
-    asset_id: Optional[str] = Field(default=None, alias="asset_id")
-    date: str
-    type: Optional[str] = None
-    ticker: Optional[str] = None
-    quantity: float
-    price_per_unit: float
-    fees: float
-    total_amount: float
-    exchange_rate: float
-
-    @model_validator(mode='before')
-    @classmethod
-    def format_attributes(cls, obj: Any) -> Any:
-        if isinstance(obj, dict):
-            return obj
-
-        return {
-            "id": obj.id,
-            "asset_id": obj.asset_id,
-            "date": obj.transaction_date.strftime("%Y-%m-%d") if hasattr(obj, "transaction_date") else getattr(obj, "date", ""),
-            "type": obj.type,
-            "ticker": obj.ticker,
-            "quantity": str(obj.quantity) if getattr(obj, "quantity", None) is not None else "0.0",
-            "price_per_unit": str(obj.price_per_unit) if getattr(obj, "price_per_unit", None) is not None else "0.0",
-            "fees": str(obj.fees) if getattr(obj, "fees", None) is not None else "0.0",
-            "total_amount": str(obj.total_amount) if getattr(obj, "total_amount", None) is not None else "0.0",
-            "exchange_rate": str(obj.exchange_rate) if getattr(obj, "exchange_rate", None) is not None else "1.0",
-        }
-
-
-class Transaction(SQLModel, table=True):
-    """DEPRECATED: Unified transaction model for Crypto and Stocks. Use BitcoinTransaction or StockTransaction instead."""
-    __tablename__ = "transaction"
-    model_config = frontend_config
-
-    id: str = Field(primary_key=True, max_length=100)
-    asset_id: Optional[str] = Field(default=None, foreign_key="asset.id", max_length=50, index=True)
-    transaction_date: DateType
-    type: Optional[str] = Field(default=None)
-    ticker: Optional[str] = Field(default=None, max_length=50, index=True)
-    currency: Optional[str] = Field(default="EUR", max_length=10)
-    quantity: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
-    price_per_unit: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
-    fees: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
-    total_amount: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
-    exchange_rate: Optional[Decimal] = Field(default=Decimal("1.0"), sa_column=Column(Numeric(15, 8)))
-
 
 class BitcoinTransaction(SQLModel, table=True):
     """Bitcoin-specific transaction model with optimized schema"""

@@ -37,7 +37,8 @@ CREATE TABLE public.asset (
     isin character varying(50),
     ticker character varying(50),
     description text,
-    parent_asset_id character varying(50)
+    parent_asset_id character varying(50),
+    CONSTRAINT asset_pkey PRIMARY KEY (id)
 );
 
 
@@ -98,25 +99,51 @@ ALTER SEQUENCE public.exchange_rates_id_seq OWNED BY public.exchange_rates.id;
 
 
 --
--- Name: transaction; Type: TABLE; Schema: public; Owner: wealthhub
+-- Name: bitcoin_transaction; Type: TABLE; Schema: public; Owner: wealthhub
 --
 
-CREATE TABLE public.transaction (
+CREATE TABLE public.bitcoin_transaction (
+    id character varying(100) NOT NULL,
+    asset_id character varying(50),
+    transaction_date date NOT NULL,
+    type character varying(20),
+    amount_btc numeric(18,8),
+    price_eur_per_btc numeric(18,8),
+    fees_eur numeric(10,4),
+    total_amount_eur numeric(15,4),
+    exchange_rate_usd_eur numeric(15,8) DEFAULT 1.08,
+    CONSTRAINT bitcoin_transaction_pkey PRIMARY KEY (id),
+    CONSTRAINT bitcoin_transaction_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.asset(id)
+);
+
+ALTER TABLE public.bitcoin_transaction OWNER TO wealthhub;
+
+CREATE INDEX ix_bitcoin_transaction_asset_id ON public.bitcoin_transaction USING btree (asset_id);
+
+--
+-- Name: stock_transaction; Type: TABLE; Schema: public; Owner: wealthhub
+--
+
+CREATE TABLE public.stock_transaction (
     id character varying(100) NOT NULL,
     asset_id character varying(50),
     transaction_date date NOT NULL,
     type character varying(20),
     ticker character varying(50),
-    currency character varying(10) DEFAULT 'EUR'::character varying,
+    currency character varying(10) DEFAULT 'USD'::character varying,
     quantity numeric(18,8),
     price_per_unit numeric(18,8),
     fees numeric(10,4),
     total_amount numeric(15,4),
-    exchange_rate numeric(15,8) DEFAULT 1.08
+    exchange_rate_eur_usd numeric(15,8) DEFAULT 1.08,
+    CONSTRAINT stock_transaction_pkey PRIMARY KEY (id),
+    CONSTRAINT stock_transaction_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.asset(id)
 );
 
+ALTER TABLE public.stock_transaction OWNER TO wealthhub;
 
-ALTER TABLE public.transaction OWNER TO wealthhub;
+CREATE INDEX ix_stock_transaction_asset_id ON public.stock_transaction USING btree (asset_id);
+CREATE INDEX ix_stock_transaction_ticker ON public.stock_transaction USING btree (ticker);
 
 --
 -- Name: exchange_rates id; Type: DEFAULT; Schema: public; Owner: wealthhub
@@ -560,74 +587,79 @@ INSERT INTO public.exchange_rates VALUES (2, '2026-04-01', 'EUR/USD', 1.16144000
 
 
 --
--- Data for Name: transaction; Type: TABLE DATA; Schema: public; Owner: wealthhub
+-- Data for Name: bitcoin_transaction; Type: TABLE DATA; Schema: public; Owner: wealthhub
 --
 
-INSERT INTO public.transaction VALUES ('tx-btc-058', 'a4', '2026-03-26', 'BUY', 'BTC', 'EUR', 0.00468000, 60687.00000000, 0.0000, 284.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-057', 'a4', '2026-03-15', 'BUY', 'BTC', 'EUR', 0.00488000, 64955.00000000, 0.0000, 317.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-056', 'a4', '2026-02-19', 'BUY', 'BTC', 'EUR', 0.00603547, 57493.45120000, 0.0000, 347.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-001', 'a4', '2026-02-05', 'BUY', 'BTC', 'EUR', 0.00494981, 60608.38698859, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-002', 'a4', '2026-01-30', 'BUY', 'BTC', 'EUR', 0.00355157, 72643.92930450, 0.0000, 258.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-003', 'a4', '2026-01-26', 'BUY', 'BTC', 'EUR', 0.00403177, 74409.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-004', 'a4', '2026-01-20', 'BUY', 'BTC', 'EUR', 0.00378417, 79277.62230555, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-005', 'a4', '2025-12-30', 'BUY', 'BTC', 'EUR', 0.00413175, 75755.00000000, 0.0000, 313.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-006', 'a4', '2025-12-24', 'BUY', 'BTC', 'EUR', 0.00286554, 75029.00000000, 0.0000, 215.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-007', 'a4', '2025-12-15', 'BUY', 'BTC', 'EUR', 0.00377916, 79383.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-008', 'a4', '2025-12-09', 'BUY', 'BTC', 'EUR', 0.00379876, 78973.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-009', 'a4', '2025-12-01', 'BUY', 'BTC', 'EUR', 0.00565864, 74046.00000000, 0.0000, 419.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-010', 'a4', '2025-11-14', 'BUY', 'BTC', 'EUR', 0.00531948, 84595.00000000, 0.0000, 450.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-011', 'a4', '2025-11-07', 'BUY', 'BTC', 'EUR', 0.00343580, 87316.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-012', 'a4', '2025-11-05', 'BUY', 'BTC', 'EUR', 0.00327402, 91630.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-013', 'a4', '2025-10-09', 'BUY', 'BTC', 'EUR', 0.00280005, 107141.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-014', 'a4', '2025-09-29', 'BUY', 'BTC', 'EUR', 0.00562893, 97710.00000000, 0.0000, 550.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-015', 'a4', '2025-09-24', 'BUY', 'BTC', 'EUR', 0.00302828, 99066.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-016', 'a4', '2025-08-19', 'BUY', 'BTC', 'EUR', 0.00295000, 101695.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-017', 'a4', '2025-08-12', 'BUY', 'BTC', 'EUR', 0.00472221, 103553.00000000, 0.0000, 489.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-018', 'a4', '2025-07-22', 'BUY', 'BTC', 'EUR', 0.00289669, 103566.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-019', 'a4', '2025-07-10', 'BUY', 'BTC', 'EUR', 0.00309578, 96906.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-020', 'a4', '2025-07-09', 'BUY', 'BTC', 'EUR', 0.00313702, 95632.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-021', 'a4', '2025-07-02', 'BUY', 'BTC', 'EUR', 0.00322030, 93159.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-022', 'a4', '2025-06-27', 'BUY', 'BTC', 'EUR', 0.00322403, 93051.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-023', 'a4', '2025-06-23', 'BUY', 'BTC', 'EUR', 0.00337507, 88887.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-024', 'a4', '2025-06-16', 'BUY', 'BTC', 'EUR', 0.00537127, 93088.00000000, 0.0000, 500.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-025', 'a4', '2025-06-13', 'BUY', 'BTC', 'EUR', 0.00107682, 92866.00000000, 0.0000, 100.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-026', 'a4', '2025-06-09', 'BUY', 'BTC', 'EUR', 0.00312661, 95951.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-027', 'a4', '2025-06-02', 'BUY', 'BTC', 'EUR', 0.00326634, 91846.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-028', 'a4', '2025-05-26', 'BUY', 'BTC', 'EUR', 0.00313500, 95694.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-029', 'a4', '2025-05-22', 'BUY', 'BTC', 'EUR', 0.00305481, 98206.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-030', 'a4', '2025-05-13', 'BUY', 'BTC', 'EUR', 0.00340230, 88176.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-031', 'a4', '2025-05-08', 'BUY', 'BTC', 'EUR', 0.00340295, 88159.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-032', 'a4', '2025-05-01', 'BUY', 'BTC', 'EUR', 0.00352112, 85200.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-033', 'a4', '2025-04-29', 'BUY', 'BTC', 'EUR', 0.00355248, 84448.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-034', 'a4', '2025-04-27', 'BUY', 'BTC', 'EUR', 0.00361362, 83019.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-035', 'a4', '2025-04-23', 'BUY', 'BTC', 'EUR', 0.00360960, 83112.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-036', 'a4', '2025-04-22', 'BUY', 'BTC', 'EUR', 0.00377874, 79392.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-037', 'a4', '2025-04-15', 'BUY', 'BTC', 'EUR', 0.00379307, 79092.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-038', 'a4', '2025-03-28', 'BUY', 'BTC', 'EUR', 0.00369986, 81084.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-039', 'a4', '2025-03-18', 'BUY', 'BTC', 'EUR', 0.00319400, 78272.00000000, 0.0000, 250.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-040', 'a4', '2025-03-08', 'BUY', 'BTC', 'EUR', 0.00300867, 83093.00000000, 0.0000, 250.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-041', 'a4', '2025-02-25', 'BUY', 'BTC', 'EUR', 0.00338876, 88528.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-042', 'a4', '2025-02-15', 'BUY', 'BTC', 'EUR', 0.00320238, 93680.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-043', 'a4', '2025-01-31', 'BUY', 'BTC', 'EUR', 0.00282031, 106371.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-044', 'a4', '2025-01-20', 'BUY', 'BTC', 'EUR', 0.00259190, 115745.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-045', 'a4', '2024-12-08', 'BUY', 'BTC', 'EUR', 0.00411919, 97106.00000000, 0.0000, 400.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-046', 'a4', '2024-10-04', 'BUY', 'BTC', 'EUR', 0.00890313, 56160.00000000, 0.0000, 500.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-047', 'a4', '2024-10-04', 'BUY', 'BTC', 'EUR', 0.01294550, 56367.00000000, 0.0000, 730.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-048', 'a4', '2024-09-03', 'BUY', 'BTC', 'EUR', 0.00932731, 53606.00000000, 0.0000, 500.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-049', 'a4', '2024-08-21', 'BUY', 'BTC', 'EUR', 0.00935314, 53458.00000000, 0.0000, 500.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-050', 'a4', '2024-03-20', 'BUY', 'BTC', 'EUR', 0.00522273, 62228.00000000, 0.0000, 325.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-051', 'a4', '2024-03-20', 'BUY', 'BTC', 'EUR', 0.00177403, 65952.00000000, 0.0000, 117.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-052', 'a4', '2024-01-04', 'BUY', 'BTC', 'EUR', 0.01119961, 44644.00000000, 0.0000, 500.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-053', 'a4', '2023-08-09', 'BUY', 'BTC', 'EUR', 0.00599970, 26515.00000000, 0.0000, 159.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-054', 'a4', '2022-10-27', 'BUY', 'BTC', 'EUR', 0.01062000, 20742.00000000, 0.0000, 220.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-btc-055', 'a4', '2021-08-20', 'BUY', 'BTC', 'EUR', 0.01189645, 42029.00000000, 0.0000, 500.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('aabf05d2-4766-495a-ac87-51c20b66d729', 'a9', '2026-03-27', 'BUY', 'TSM', 'USD', 4.00000000, 326.87000000, 0.0000, 1307.4800, 1.15070000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('80d72ca8-8738-457f-993c-f4086a3d2dcb', 'a9', '2026-03-27', 'BUY', 'NVDA', 'USD', 7.00000000, 167.45000000, 0.0000, 1172.1500, 1.15070000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('2faf916e-88b6-43d0-899d-8958fd8aa8d2', 'a9', '2026-03-27', 'BUY', 'TSLA', 'USD', 2.00000000, 362.14000000, 0.0000, 724.2800, 1.15070000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('18d1b614-7e6b-49a2-b49f-7d76dedcc858', 'a9', '2026-03-27', 'BUY', 'GOOG', 'USD', 5.00000000, 274.68000000, 0.0000, 1373.4000, 1.15070000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('1ec9a9f0-13cf-4f6d-9313-862665cb332b', 'a9', '2026-03-27', 'BUY', 'ASML', 'USD', 1.00000000, 1304.13000000, 0.0000, 1304.1300, 1.15070000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-stock-001', 'a9', '2026-02-05', 'BUY', 'AMD', 'USD', 10.00000000, 168.77000000, 0.0000, 1687.7000, 1.17870000) ON CONFLICT DO NOTHING;
-INSERT INTO public.transaction VALUES ('tx-stock-002', 'a9', '2026-02-05', 'BUY', 'MSTR', 'USD', 30.00000000, 103.43000000, 0.0000, 3102.9000, 1.17870000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-058', 'a4', '2026-03-26', 'BUY', 0.00468000, 60687.00000000, 0.0000, 284.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-057', 'a4', '2026-03-15', 'BUY', 0.00488000, 64955.00000000, 0.0000, 317.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-056', 'a4', '2026-02-19', 'BUY', 0.00603547, 57493.45120000, 0.0000, 347.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-001', 'a4', '2026-02-05', 'BUY', 0.00494981, 60608.38698859, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-002', 'a4', '2026-01-30', 'BUY', 0.00355157, 72643.92930450, 0.0000, 258.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-003', 'a4', '2026-01-26', 'BUY', 0.00403177, 74409.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-004', 'a4', '2026-01-20', 'BUY', 0.00378417, 79277.62230555, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-005', 'a4', '2025-12-30', 'BUY', 0.00413175, 75755.00000000, 0.0000, 313.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-006', 'a4', '2025-12-24', 'BUY', 0.00286554, 75029.00000000, 0.0000, 215.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-007', 'a4', '2025-12-15', 'BUY', 0.00377916, 79383.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-008', 'a4', '2025-12-09', 'BUY', 0.00379876, 78973.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-009', 'a4', '2025-12-01', 'BUY', 0.00565864, 74046.00000000, 0.0000, 419.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-010', 'a4', '2025-11-14', 'BUY', 0.00531948, 84595.00000000, 0.0000, 450.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-011', 'a4', '2025-11-07', 'BUY', 0.00343580, 87316.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-012', 'a4', '2025-11-05', 'BUY', 0.00327402, 91630.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-013', 'a4', '2025-10-09', 'BUY', 0.00280005, 107141.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-014', 'a4', '2025-09-29', 'BUY', 0.00562893, 97710.00000000, 0.0000, 550.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-015', 'a4', '2025-09-24', 'BUY', 0.00302828, 99066.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-016', 'a4', '2025-08-19', 'BUY', 0.00295000, 101695.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-017', 'a4', '2025-08-12', 'BUY', 0.00472221, 103553.00000000, 0.0000, 489.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-018', 'a4', '2025-07-22', 'BUY', 0.00289669, 103566.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-019', 'a4', '2025-07-10', 'BUY', 0.00309578, 96906.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-020', 'a4', '2025-07-09', 'BUY', 0.00313702, 95632.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-021', 'a4', '2025-07-02', 'BUY', 0.00322030, 93159.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-022', 'a4', '2025-06-27', 'BUY', 0.00322403, 93051.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-023', 'a4', '2025-06-23', 'BUY', 0.00337507, 88887.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-024', 'a4', '2025-06-16', 'BUY', 0.00537127, 93088.00000000, 0.0000, 500.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-025', 'a4', '2025-06-13', 'BUY', 0.00107682, 92866.00000000, 0.0000, 100.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-026', 'a4', '2025-06-09', 'BUY', 0.00312661, 95951.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-027', 'a4', '2025-06-02', 'BUY', 0.00326634, 91846.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-028', 'a4', '2025-05-26', 'BUY', 0.00313500, 95694.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-029', 'a4', '2025-05-22', 'BUY', 0.00305481, 98206.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-030', 'a4', '2025-05-13', 'BUY', 0.00340230, 88176.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-031', 'a4', '2025-05-08', 'BUY', 0.00340295, 88159.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-032', 'a4', '2025-05-01', 'BUY', 0.00352112, 85200.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-033', 'a4', '2025-04-29', 'BUY', 0.00355248, 84448.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-034', 'a4', '2025-04-27', 'BUY', 0.00361362, 83019.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-035', 'a4', '2025-04-23', 'BUY', 0.00360960, 83112.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-036', 'a4', '2025-04-22', 'BUY', 0.00377874, 79392.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-037', 'a4', '2025-04-15', 'BUY', 0.00379307, 79092.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-038', 'a4', '2025-03-28', 'BUY', 0.00369986, 81084.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-039', 'a4', '2025-03-18', 'BUY', 0.00319400, 78272.00000000, 0.0000, 250.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-040', 'a4', '2025-03-08', 'BUY', 0.00300867, 83093.00000000, 0.0000, 250.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-041', 'a4', '2025-02-25', 'BUY', 0.00338876, 88528.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-042', 'a4', '2025-02-15', 'BUY', 0.00320238, 93680.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-043', 'a4', '2025-01-31', 'BUY', 0.00282031, 106371.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-044', 'a4', '2025-01-20', 'BUY', 0.00259190, 115745.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-045', 'a4', '2024-12-08', 'BUY', 0.00411919, 97106.00000000, 0.0000, 400.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-046', 'a4', '2024-10-04', 'BUY', 0.00890313, 56160.00000000, 0.0000, 500.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-047', 'a4', '2024-10-04', 'BUY', 0.01294550, 56367.00000000, 0.0000, 730.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-048', 'a4', '2024-09-03', 'BUY', 0.00932731, 53606.00000000, 0.0000, 500.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-049', 'a4', '2024-08-21', 'BUY', 0.00935314, 53458.00000000, 0.0000, 500.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-050', 'a4', '2024-03-20', 'BUY', 0.00522273, 62228.00000000, 0.0000, 325.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-051', 'a4', '2024-03-20', 'BUY', 0.00177403, 65952.00000000, 0.0000, 117.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-052', 'a4', '2024-01-04', 'BUY', 0.01119961, 44644.00000000, 0.0000, 500.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-053', 'a4', '2023-08-09', 'BUY', 0.00599970, 26515.00000000, 0.0000, 159.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-054', 'a4', '2022-10-27', 'BUY', 0.01062000, 20742.00000000, 0.0000, 220.0000, 1.08000000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-055', 'a4', '2021-08-20', 'BUY', 0.01189645, 42029.00000000, 0.0000, 500.0000, 1.08000000) ON CONFLICT DO NOTHING;
+
+--
+-- Data for Name: stock_transaction; Type: TABLE DATA; Schema: public; Owner: wealthhub
+--
+
+INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('aabf05d2-4766-495a-ac87-51c20b66d729', 'a9', '2026-03-27', 'BUY', 'TSM', 'USD', 4.00000000, 326.87000000, 0.0000, 1307.4800, 1.15070000) ON CONFLICT DO NOTHING;
+INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('80d72ca8-8738-457f-993c-f4086a3d2dcb', 'a9', '2026-03-27', 'BUY', 'NVDA', 'USD', 7.00000000, 167.45000000, 0.0000, 1172.1500, 1.15070000) ON CONFLICT DO NOTHING;
+INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('2faf916e-88b6-43d0-899d-8958fd8aa8d2', 'a9', '2026-03-27', 'BUY', 'TSLA', 'USD', 2.00000000, 362.14000000, 0.0000, 724.2800, 1.15070000) ON CONFLICT DO NOTHING;
+INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('18d1b614-7e6b-49a2-b49f-7d76dedcc858', 'a9', '2026-03-27', 'BUY', 'GOOG', 'USD', 5.00000000, 274.68000000, 0.0000, 1373.4000, 1.15070000) ON CONFLICT DO NOTHING;
+INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('1ec9a9f0-13cf-4f6d-9313-862665cb332b', 'a9', '2026-03-27', 'BUY', 'ASML', 'USD', 1.00000000, 1304.13000000, 0.0000, 1304.1300, 1.15070000) ON CONFLICT DO NOTHING;
+INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('tx-stock-001', 'a9', '2026-02-05', 'BUY', 'AMD', 'USD', 10.00000000, 168.77000000, 0.0000, 1687.7000, 1.17870000) ON CONFLICT DO NOTHING;
+INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('tx-stock-002', 'a9', '2026-02-05', 'BUY', 'MSTR', 'USD', 30.00000000, 103.43000000, 0.0000, 3102.9000, 1.17870000) ON CONFLICT DO NOTHING;
 
 
 --
@@ -646,27 +678,11 @@ ALTER TABLE ONLY public.asset_history
 
 
 --
--- Name: asset asset_pkey; Type: CONSTRAINT; Schema: public; Owner: wealthhub
---
-
-ALTER TABLE ONLY public.asset
-    ADD CONSTRAINT asset_pkey PRIMARY KEY (id);
-
-
---
 -- Name: exchange_rates exchange_rates_pkey; Type: CONSTRAINT; Schema: public; Owner: wealthhub
 --
 
 ALTER TABLE ONLY public.exchange_rates
     ADD CONSTRAINT exchange_rates_pkey PRIMARY KEY (id);
-
-
---
--- Name: transaction transaction_pkey; Type: CONSTRAINT; Schema: public; Owner: wealthhub
---
-
-ALTER TABLE ONLY public.transaction
-    ADD CONSTRAINT transaction_pkey PRIMARY KEY (id);
 
 
 --
@@ -697,14 +713,6 @@ ALTER TABLE ONLY public.asset_history
 
 ALTER TABLE ONLY public.asset
     ADD CONSTRAINT asset_parent_asset_id_fkey FOREIGN KEY (parent_asset_id) REFERENCES public.asset(id);
-
-
---
--- Name: transaction transaction_asset_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: wealthhub
---
-
-ALTER TABLE ONLY public.transaction
-    ADD CONSTRAINT transaction_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.asset(id);
 
 
 --

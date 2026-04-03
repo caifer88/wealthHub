@@ -8,7 +8,7 @@ from sqlalchemy import func, case
 from typing import List, Optional, Any
 import logging
 
-from models import Asset, HistoryEntry as AssetHistory, Transaction, BitcoinTransaction, StockTransaction, TransactionType
+from models import Asset, HistoryEntry as AssetHistory, BitcoinTransaction, StockTransaction, TransactionType
 
 logger = logging.getLogger(__name__)
 
@@ -100,63 +100,128 @@ async def get_latest_portfolio_history(session: AsyncSession) -> List[AssetHisto
     return (await session.exec(statement)).all()
 
 
-async def get_all_transactions(session: AsyncSession) -> List[Transaction]:
-    statement = select(Transaction).order_by(Transaction.transaction_date.desc())
-    results = await session.exec(statement)
-    return results.all()
+async def get_all_transactions(session: AsyncSession) -> List[dict]:
+    """Get all transactions (both Bitcoin and Stock) in a unified format, ordered by date (descending)"""
+    btc_txs = await get_all_bitcoin_transactions(session)
+    stock_txs = await get_all_stock_transactions(session)
+    
+    # Convert to unified format for backward compatibility with history calculations
+    all_txs = []
+    for btc_tx in btc_txs:
+        all_txs.append({
+            'id': btc_tx.id,
+            'asset_id': btc_tx.asset_id,
+            'transaction_date': btc_tx.transaction_date,
+            'type': btc_tx.type,
+            'ticker': 'BTC',
+            'quantity': btc_tx.amount_btc,
+            'total_amount': btc_tx.total_amount_eur,
+            'currency': 'EUR',
+            'exchange_rate': 1.0  # EUR is base, no exchange needed
+        })
+    
+    for stock_tx in stock_txs:
+        all_txs.append({
+            'id': stock_tx.id,
+            'asset_id': stock_tx.asset_id,
+            'transaction_date': stock_tx.transaction_date,
+            'type': stock_tx.type,
+            'ticker': stock_tx.ticker,
+            'quantity': stock_tx.quantity,
+            'total_amount': stock_tx.total_amount,
+            'currency': stock_tx.currency,
+            'exchange_rate': stock_tx.exchange_rate_eur_usd
+        })
+    
+    # Sort by transaction_date descending
+    all_txs.sort(key=lambda x: x['transaction_date'] if x['transaction_date'] else '', reverse=True)
+    return all_txs
 
-async def get_transactions_by_asset(session: AsyncSession, asset_id: str) -> List[Transaction]:
-    statement = select(Transaction).where(Transaction.asset_id == asset_id).order_by(Transaction.transaction_date.desc())
-    results = await session.exec(statement)
-    return results.all()
+async def get_transactions_by_asset(session: AsyncSession, asset_id: str) -> List[dict]:
+    """Get all transactions for an asset (both Bitcoin and Stock) in unified format"""
+    btc_txs = await get_bitcoin_transactions_by_asset(session, asset_id)
+    stock_txs = await get_stock_transactions_by_asset(session, asset_id)
+    
+    # Convert to unified format
+    all_txs = []
+    for btc_tx in btc_txs:
+        all_txs.append({
+            'id': btc_tx.id,
+            'asset_id': btc_tx.asset_id,
+            'transaction_date': btc_tx.transaction_date,
+            'type': btc_tx.type,
+            'ticker': 'BTC',
+            'quantity': btc_tx.amount_btc,
+            'total_amount': btc_tx.total_amount_eur,
+            'currency': 'EUR',
+            'exchange_rate': 1.0
+        })
+    
+    for stock_tx in stock_txs:
+        all_txs.append({
+            'id': stock_tx.id,
+            'asset_id': stock_tx.asset_id,
+            'transaction_date': stock_tx.transaction_date,
+            'type': stock_tx.type,
+            'ticker': stock_tx.ticker,
+            'quantity': stock_tx.quantity,
+            'total_amount': stock_tx.total_amount,
+            'currency': stock_tx.currency,
+            'exchange_rate': stock_tx.exchange_rate_eur_usd
+        })
+    
+    # Sort by transaction_date descending
+    all_txs.sort(key=lambda x: x['transaction_date'] if x['transaction_date'] else '', reverse=True)
+    return all_txs
 
 async def get_asset_holdings(session: AsyncSession, asset_id: str) -> dict:
+    """Get stock holdings (quantities) by ticker for an asset"""
     statement = select(
-        Transaction.ticker,
+        StockTransaction.ticker,
         func.sum(
             case(
-                (func.upper(Transaction.type) == TransactionType.BUY.value, Transaction.quantity),
-                (func.upper(Transaction.type) == TransactionType.SELL.value, -Transaction.quantity),
+                (func.upper(StockTransaction.type) == TransactionType.BUY.value, StockTransaction.quantity),
+                (func.upper(StockTransaction.type) == TransactionType.SELL.value, -StockTransaction.quantity),
                 else_=0
             )
         ).label('total_quantity')
-    ).where(Transaction.asset_id == asset_id).where(Transaction.ticker != None).group_by(Transaction.ticker)
+    ).where(StockTransaction.asset_id == asset_id).group_by(StockTransaction.ticker)
 
     results = (await session.exec(statement)).all()
     return {ticker: float(qty) for ticker, qty in results if qty > 0.0001}
 
 async def get_total_btc_holdings(session: AsyncSession, asset_id: str, to_date: Optional[Any] = None) -> float:
+    """Get total Bitcoin holdings (in BTC) for an asset up to a specific date"""
     statement = select(
         func.sum(
             case(
-                (func.upper(Transaction.type) == TransactionType.BUY.value, Transaction.quantity),
-                (func.upper(Transaction.type) == TransactionType.SELL.value, -Transaction.quantity),
+                (func.upper(BitcoinTransaction.type) == TransactionType.BUY.value, BitcoinTransaction.amount_btc),
+                (func.upper(BitcoinTransaction.type) == TransactionType.SELL.value, -BitcoinTransaction.amount_btc),
                 else_=0
             )
         )
-    ).where(
-        (Transaction.asset_id == asset_id) | (Transaction.ticker == 'BTC')
-    )
+    ).where(BitcoinTransaction.asset_id == asset_id)
     
     if to_date:
-        statement = statement.where(Transaction.transaction_date <= to_date)
+        statement = statement.where(BitcoinTransaction.transaction_date <= to_date)
         
     result = (await session.exec(statement)).first()
     return float(result) if result else 0.0
 
 async def get_asset_total_quantity(session: AsyncSession, asset_id: str, to_date: Optional[Any] = None) -> float:
+    """Get total stock quantity for an asset up to a specific date"""
     statement = select(
         func.sum(
             case(
-                (func.upper(Transaction.type) == TransactionType.BUY.value, Transaction.quantity),
-                (func.upper(Transaction.type) == TransactionType.SELL.value, -Transaction.quantity),
+                (func.upper(StockTransaction.type) == TransactionType.BUY.value, StockTransaction.quantity),
+                (func.upper(StockTransaction.type) == TransactionType.SELL.value, -StockTransaction.quantity),
                 else_=0
             )
         )
-    ).where(Transaction.asset_id == asset_id)
+    ).where(StockTransaction.asset_id == asset_id)
     
     if to_date:
-        statement = statement.where(Transaction.transaction_date <= to_date)
+        statement = statement.where(StockTransaction.transaction_date <= to_date)
         
     result = (await session.exec(statement)).first()
     return float(result) if result else 0.0
@@ -177,33 +242,7 @@ async def get_asset_total_contributed(session: AsyncSession, asset_id: str) -> f
     return float(result) if result is not None else 0.0
 
 
-async def create_transaction(session: AsyncSession, transaction: Transaction) -> Transaction:
-    session.add(transaction)
-    await session.commit()
-    await session.refresh(transaction)
-    return transaction
 
-async def update_transaction(session: AsyncSession, transaction_id: str, transaction_data: Transaction) -> Optional[Transaction]:
-    transaction = await session.get(Transaction, transaction_id)
-    if not transaction:
-        return None
-
-    update_data = transaction_data.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(transaction, key, value)
-
-    session.add(transaction)
-    await session.commit()
-    await session.refresh(transaction)
-    return transaction
-
-async def delete_transaction(session: AsyncSession, transaction_id: str) -> bool:
-    transaction = await session.get(Transaction, transaction_id)
-    if not transaction:
-        return False
-    await session.delete(transaction)
-    await session.commit()
-    return True
 
 
 async def upsert_history_from_transactions(session: AsyncSession, asset_id: str, month_date) -> None:
@@ -211,6 +250,8 @@ async def upsert_history_from_transactions(session: AsyncSession, asset_id: str,
     After saving a transaction, recalculate and upsert the asset_history entry
     for the corresponding month. This keeps contribution and participations in sync
     without touching the NAV/price data set during monthly syncs.
+    
+    Works with split bitcoin_transaction and stock_transaction tables.
     """
     from decimal import Decimal
     from datetime import date
@@ -227,38 +268,68 @@ async def upsert_history_from_transactions(session: AsyncSession, asset_id: str,
     else:
         month_end = date(year, month + 1, 1)
 
-    # Get all transactions for this asset in the transaction's month
-    all_asset_txs = await get_all_transactions(session)
-    month_txs = [
-        tx for tx in all_asset_txs
-        if (tx.asset_id == asset_id or (tx.ticker == 'BTC' and asset_id is not None))
-        and tx.transaction_date is not None
+    # Get Bitcoin transactions for this asset in the month
+    btc_txs = await get_bitcoin_transactions_by_asset(session, asset_id)
+    month_btc_txs = [
+        tx for tx in btc_txs
+        if tx.transaction_date is not None
         and month_start <= tx.transaction_date < month_end
     ]
 
-    # Sum contributions for the month (only BUY type transactions, total_amount)
+    # Get Stock transactions for this asset in the month
+    stock_txs = await get_stock_transactions_by_asset(session, asset_id)
+    month_stock_txs = [
+        tx for tx in stock_txs
+        if tx.transaction_date is not None
+        and month_start <= tx.transaction_date < month_end
+    ]
+
+    # Sum contributions for the month (only BUY type transactions)
     monthly_contribution = Decimal("0.0")
-    for tx in month_txs:
-        if tx.transaction_date is None:
-            continue
+    
+    # Bitcoin contributions (already in EUR)
+    for tx in month_btc_txs:
+        if str(tx.type).upper() == 'BUY':
+            amount = Decimal(str(tx.total_amount_eur or 0))
+            monthly_contribution += amount
+
+    # Stock contributions (may need currency conversion)
+    for tx in month_stock_txs:
         if str(tx.type).upper() == 'BUY':
             amount = Decimal(str(tx.total_amount or 0))
-            ex_rate = Decimal(str(tx.exchange_rate or 1.08))
+            ex_rate = Decimal(str(tx.exchange_rate_eur_usd or 1.0))
             if tx.currency == 'USD' or ex_rate != Decimal("1.0"):
                 monthly_contribution += amount / ex_rate
             else:
                 monthly_contribution += amount
 
     # Calculate running participations for the asset up to end of this month
-    all_txs_up_to_month = [
-        tx for tx in all_asset_txs
-        if (tx.asset_id == asset_id or (tx.ticker == 'BTC' and asset_id is not None))
-        and tx.transaction_date is not None
+    all_btc_txs = await get_bitcoin_transactions_by_asset(session, asset_id)
+    all_btc_up_to_month = [
+        tx for tx in all_btc_txs
+        if tx.transaction_date is not None
+        and tx.transaction_date < month_end
+    ]
+
+    all_stock_txs = await get_stock_transactions_by_asset(session, asset_id)
+    all_stock_up_to_month = [
+        tx for tx in all_stock_txs
+        if tx.transaction_date is not None
         and tx.transaction_date < month_end
     ]
 
     running_qty = Decimal("0.0")
-    for tx in all_txs_up_to_month:
+    
+    # Bitcoin participations (in BTC)
+    for tx in all_btc_up_to_month:
+        qty = Decimal(str(tx.amount_btc or 0))
+        if str(tx.type).upper() == 'BUY':
+            running_qty += qty
+        elif str(tx.type).upper() == 'SELL':
+            running_qty -= qty
+
+    # Stock participations (sum of all stock quantities)
+    for tx in all_stock_up_to_month:
         qty = Decimal(str(tx.quantity or 0))
         if str(tx.type).upper() == 'BUY':
             running_qty += qty

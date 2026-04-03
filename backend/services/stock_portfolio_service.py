@@ -11,7 +11,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, func
 
 from models import (
-    Transaction, 
+    StockTransaction,
     HistoryEntry as AssetHistory,
     StockMetricsDTO, 
     StockPortfolioSummaryDTO,
@@ -133,7 +133,7 @@ async def get_stock_portfolio_summary(session: AsyncSession) -> StockPortfolioSu
 async def calculate_stock_metrics(
     session: AsyncSession,
     ticker: str,
-    transactions: List[Transaction],
+    transactions: List[StockTransaction],
     eur_usd_rate: float,
     ticker_asset_map: Dict[str, str]
 ) -> StockMetricsDTO:
@@ -160,7 +160,7 @@ async def calculate_stock_metrics(
         price_per_unit = float(txn.price_per_unit) if txn.price_per_unit else 0.0
         
         # Use transaction exchange rate to convert to original USD cost
-        txn_eur_to_usd = float(txn.exchange_rate) if txn.exchange_rate else 1.0
+        txn_eur_to_usd = float(txn.exchange_rate_eur_usd) if txn.exchange_rate_eur_usd else 1.0
         
         if txn.type and txn.type.upper() == "BUY":
             # USD cost = quantity × price_per_unit (price already in USD)

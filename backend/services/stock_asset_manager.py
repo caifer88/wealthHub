@@ -9,7 +9,7 @@ from typing import Optional, Dict
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 
-from models import Asset, Transaction, AssetCategory
+from models import Asset, AssetCategory
 from services import db_service
 
 logger = logging.getLogger(__name__)

@@ -212,23 +212,21 @@ export default function Bitcoin() {
         const assetId = btcAsset ? btcAsset.id : undefined;
 
         const backendPayload = {
+            id: txData.id,
+            assetId: assetId,
             transactionDate: txData.transactionDate,
             type: txData.type,
-            ticker: 'BTC',
-            quantity: txData.amountBtc,
-            pricePerUnit: txData.priceEurPerBtc,
-            fees: 0,
-            totalAmount: txData.totalAmountEur,
-            asset_id: assetId,
+            amountBtc: txData.amountBtc,
+            priceEurPerBtc: txData.priceEurPerBtc,
+            feesEur: 0,
+            totalAmountEur: txData.totalAmountEur,
+            exchangeRateUsdEur: 1.08,
         };
 
         if (editingTransaction) {
-          await api.updateTransaction(editingTransaction.id, backendPayload);
+          await api.updateBitcoinTransaction(editingTransaction.id, backendPayload as any);
         } else {
-          await api.createTransaction({
-            id: txData.id,
-            ...backendPayload
-          });
+          await api.createBitcoinTransaction(backendPayload as any);
         }
         
         await refetchData();
@@ -276,7 +274,7 @@ export default function Bitcoin() {
     if (confirm('¿Está seguro de que desea eliminar esta transacción?')) {
       const runDelete = async () => {
         try {
-          await api.deleteTransaction(id);
+          await api.deleteBitcoinTransaction(id);
           await refetchData();
         } catch (error) {
           console.error("Error deleting transaction", error);
