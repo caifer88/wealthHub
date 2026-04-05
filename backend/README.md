@@ -142,6 +142,87 @@ Assets need to be configured with proper identifiers:
 - `ticker` or `isin`: Identifier for the plan
 - Category: "Pension Plan"
 
+## Hierarchical Asset Structure
+
+The system supports a hierarchical organization of assets to group related items (e.g., stocks under a broker, funds under a bank account).
+
+### Hierarchy Levels
+
+1. **Root Assets** (`parent_asset_id = NULL`): Top-level containers like brokers or bank accounts
+   - Example: "Interactive Brokers", "BBVA Cuenta Corriente"
+
+2. **Child Assets**: Assets that belong to a root asset
+   - Example: "AAPL" (child of "Interactive Brokers")
+
+### API Endpoints for Hierarchical Assets
+
+```
+GET /api/assets                             # Returns root assets only (default)
+GET /api/assets?parent_id={parent_id}       # Returns children of specified parent
+GET /api/assets?include_all=true            # Returns all assets (root + children)
+```
+
+**Example Requests:**
+
+```bash
+# Get all brokers/accounts (root assets)
+curl http://localhost:8000/api/assets
+
+# Get all stocks in a specific broker
+curl http://localhost:8000/api/assets?parent_id=interactive-brokers
+
+# Get everything (for internal use)
+curl http://localhost:8000/api/assets?include_all=true
+```
+
+**Frontend Usage:**
+
+By default, the Assets Management page shows root assets. Users can expand each root asset to see its children.
+
+### Creating Hierarchical Assets
+
+**Root Asset (e.g., Broker):**
+```json
+POST /api/assets
+
+{
+  "id": "interactive-brokers",
+  "name": "Interactive Brokers",
+  "category": "CASH",
+  "currency": "USD",
+  "parentAssetId": null
+}
+```
+
+**Child Asset (e.g., Stock in Broker):**
+```json
+POST /api/assets
+
+{
+  "id": "aapl-ib",
+  "name": "Apple Inc",
+  "category": "STOCK",
+  "ticker": "AAPL",
+  "currency": "USD",
+  "parentAssetId": "interactive-brokers"
+}
+```
+
+### Database Structure
+
+The `asset` table includes:
+- `parent_asset_id`: Foreign key to another asset (NULL for root assets)
+- Indexed for efficient hierarchical queries
+
+#### Indexes for Performance
+
+```sql
+CREATE INDEX idx_asset_parent_id ON asset(parent_asset_id);
+CREATE INDEX idx_asset_parent_null ON asset(parent_asset_id) WHERE parent_asset_id IS NULL;
+```
+
+See [HIERARCHICAL_ASSETS.md](../HIERARCHICAL_ASSETS.md) for complete documentation.
+
 ## Data Persistence
 
 Prices are automatically persisted to Google Apps Script in the `history` array with format:

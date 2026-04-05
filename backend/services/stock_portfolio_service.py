@@ -93,6 +93,7 @@ async def get_stock_portfolio_summary(session: AsyncSession) -> StockPortfolioSu
                 stock_metrics_list.append(metrics)
                 total_value_eur += metrics.current_value_eur
                 total_invested_eur += metrics.cost_basis_eur
+                logger.info(f"Ticker: {metrics.ticker} | Coste: {metrics.average_price_usd} | Precio Mercado: {metrics.current_price_usd}")
                 
             except Exception as e:
                 logger.error(f"❌ Error calculating metrics for {ticker}: {str(e)}")

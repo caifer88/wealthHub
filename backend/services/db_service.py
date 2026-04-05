@@ -13,9 +13,28 @@ from models import Asset, HistoryEntry as AssetHistory, BitcoinTransaction, Stoc
 logger = logging.getLogger(__name__)
 
 async def get_all_assets(session: AsyncSession) -> List[Asset]:
+    """Get all assets (including root and child assets)"""
     statement = select(Asset)
     results = await session.exec(statement)
     return results.all()
+
+async def get_root_assets(session: AsyncSession) -> List[Asset]:
+    """Get only root assets (where parent_asset_id IS NULL)"""
+    statement = select(Asset).where(Asset.parent_asset_id.is_(None))
+    results = await session.exec(statement)
+    return results.all()
+
+async def get_child_assets(session: AsyncSession, parent_asset_id: str) -> List[Asset]:
+    """Get child assets for a given parent"""
+    statement = select(Asset).where(Asset.parent_asset_id == parent_asset_id)
+    results = await session.exec(statement)
+    return results.all()
+
+async def get_assets_by_parent(session: AsyncSession, parent_asset_id: Optional[str] = None) -> List[Asset]:
+    """Get assets filtered by parent. If parent_asset_id is None, returns root assets"""
+    if parent_asset_id is None:
+        return await get_root_assets(session)
+    return await get_child_assets(session, parent_asset_id)
 
 async def get_asset_by_id(session: AsyncSession, asset_id: str) -> Optional[Asset]:
     return await session.get(Asset, asset_id)

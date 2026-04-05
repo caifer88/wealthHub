@@ -1,5 +1,5 @@
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlmodel.ext.asyncio.session import AsyncSession
 from database import get_session
 from models import Asset
@@ -8,8 +8,22 @@ from services import db_service
 router = APIRouter(prefix="/api/assets", tags=["Assets"])
 
 @router.get("", response_model=List[Asset])
-async def get_assets(session: AsyncSession = Depends(get_session)):
-    return await db_service.get_all_assets(session)
+async def get_assets(
+    parent_id: Optional[str] = Query(None, description="Filter by parent asset ID. If null, returns only root assets."),
+    include_all: bool = Query(False, description="If true, returns all assets including children. Overrides parent_id filter."),
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Get assets with hierarchical filtering.
+    
+    - By default, returns only root assets (parent_asset_id IS NULL)
+    - If parent_id is specified, returns only children of that parent
+    - If include_all=true, returns all assets regardless of hierarchy
+    """
+    if include_all:
+        return await db_service.get_all_assets(session)
+    
+    return await db_service.get_assets_by_parent(session, parent_id)
 
 @router.post("", response_model=Asset, status_code=status.HTTP_201_CREATED)
 async def create_asset(asset: Asset, session: AsyncSession = Depends(get_session)):

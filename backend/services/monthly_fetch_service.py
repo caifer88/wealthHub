@@ -270,8 +270,9 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                 _, broker, broker_prices, _ = result
                 prices.extend(broker_prices)
                 for p in broker_prices:
-                    if p.ticker is None:
-                         nav_mapping[p.asset_id] = p.price
+                    # ✅ FIXED: Add ALL prices to nav_mapping, not just broker aggregates
+                    # Individual stock prices (with ticker) were being skipped!
+                    nav_mapping[p.asset_id] = p.price
 
         logger.info(f"✅ Fetched {len(prices)} prices successfully")
 
@@ -348,7 +349,7 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                     liquid_nav = Decimal(str(val))
                 elif asset.get("category") == AssetCategory.STOCK.value:
                     nav_val = Decimal(str(val))
-                    liquid_nav = Decimal("1.0") if float(val) > 0 else Decimal("0.0")
+                    liquid_nav = Decimal(str(val))  # ✅ FIXED: Store actual price, not 1.0
                 else:
                     fund_holdings = await db_service.get_asset_total_quantity(session, asset_id, to_date=last_business_day)
                     participations = Decimal(str(round(fund_holdings, 8))) if fund_holdings > 0 else prev_participations
@@ -412,7 +413,7 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
 
                     if active_tickers:
                         nav_val = Decimal(str(round(total_broker_value, 2)))
-                        liquid_nav = Decimal("1.0") if total_broker_value > 0 else Decimal("0.0")
+                        liquid_nav = Decimal(str(round(total_broker_value, 2)))  # ✅ FIXED: Store actual broker value, not 1.0
                     else:
                         nav_val = prev_nav
                         liquid_nav = prev_liquid_nav
