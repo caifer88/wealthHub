@@ -251,3 +251,36 @@ class StockPortfolioSummaryDTO(BaseModel):
     last_update: str  # ISO datetime of last portfolio calculation
     number_of_tickers: int  # Count of unique stock holdings
     tickers: List[StockMetricsDTO]  # List of individual holdings
+
+
+# Añade esto en backend/models.py
+
+class BitcoinTransactionDTO(BaseModel):
+    """DTO para comunicación API de Bitcoin Transactions"""
+    model_config = frontend_config
+
+    id: str
+    asset_id: Optional[str] = None
+    transaction_date: DateType
+    type: Optional[str] = None
+    amount_btc: Optional[Decimal] = None
+    price_eur_per_btc: Optional[Decimal] = None
+    fees_eur: Optional[Decimal] = None
+    total_amount_eur: Optional[Decimal] = None
+    exchange_rate_usd_eur: Optional[Decimal] = None
+
+class StockTransactionDTO(BaseModel):
+    """DTO para comunicación API de Stock Transactions"""
+    model_config = frontend_config
+
+    id: str
+    asset_id: Optional[str] = None
+    transaction_date: DateType
+    type: Optional[str] = None
+    ticker: Optional[str] = None
+    currency: Optional[str] = None
+    quantity: Optional[Decimal] = None
+    price_per_unit: Optional[Decimal] = None
+    fees: Optional[Decimal] = None
+    total_amount: Optional[Decimal] = None
+    exchange_rate_eur_usd: Optional[Decimal] = None

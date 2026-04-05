@@ -7,7 +7,7 @@ from cachetools import cached, TTLCache
 from typing import List
 
 from database import get_session
-from models import BitcoinTransaction
+from models import BitcoinTransaction, BitcoinTransactionDTO
 from services import db_service
 
 logger = logging.getLogger(__name__)
@@ -36,12 +36,11 @@ async def get_bitcoin_historical_prices():
 
 # ===== Bitcoin Transaction CRUD Endpoints =====
 
-@router.get("/transactions", response_model=List[BitcoinTransaction])
+@router.get("/transactions", response_model=List[BitcoinTransactionDTO])
 async def get_all_bitcoin_transactions(session: AsyncSession = Depends(get_session)):
-    """Get all Bitcoin transactions"""
     return await db_service.get_all_bitcoin_transactions(session)
 
-@router.get("/transactions/{transaction_id}", response_model=BitcoinTransaction)
+@router.get("/transactions/{transaction_id}", response_model=BitcoinTransactionDTO)
 async def get_bitcoin_transaction(transaction_id: str, session: AsyncSession = Depends(get_session)):
     """Get a specific Bitcoin transaction by ID"""
     transaction = await db_service.get_bitcoin_transaction_by_id(session, transaction_id)
@@ -49,20 +48,22 @@ async def get_bitcoin_transaction(transaction_id: str, session: AsyncSession = D
         raise HTTPException(status_code=404, detail="Bitcoin transaction not found")
     return transaction
 
-@router.post("/transactions", response_model=BitcoinTransaction, status_code=status.HTTP_201_CREATED)
-async def create_bitcoin_transaction(transaction: BitcoinTransaction, session: AsyncSession = Depends(get_session)):
-    """Create a new Bitcoin transaction"""
+@router.post("/transactions", response_model=BitcoinTransactionDTO, status_code=status.HTTP_201_CREATED)
+async def create_bitcoin_transaction(transaction: BitcoinTransactionDTO, session: AsyncSession = Depends(get_session)):
     try:
-        result = await db_service.create_bitcoin_transaction(session, transaction)
+        # Transformamos el DTO de entrada (camelCase del front) a un modelo de Base de Datos
+        db_transaction = BitcoinTransaction(**transaction.model_dump(exclude_unset=True))
+        result = await db_service.create_bitcoin_transaction(session, db_transaction)
         return result
     except Exception as e:
         logger.error(f"Error creating Bitcoin transaction: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.put("/transactions/{transaction_id}", response_model=BitcoinTransaction)
-async def update_bitcoin_transaction(transaction_id: str, transaction: BitcoinTransaction, session: AsyncSession = Depends(get_session)):
-    """Update an existing Bitcoin transaction"""
-    result = await db_service.update_bitcoin_transaction(session, transaction_id, transaction)
+@router.put("/transactions/{transaction_id}", response_model=BitcoinTransactionDTO)
+async def update_bitcoin_transaction(transaction_id: str, transaction: BitcoinTransactionDTO, session: AsyncSession = Depends(get_session)):
+    # Transformamos de nuevo al modelo de SQLModel
+    db_transaction = BitcoinTransaction(**transaction.model_dump(exclude_unset=True))
+    result = await db_service.update_bitcoin_transaction(session, transaction_id, db_transaction)
     if not result:
         raise HTTPException(status_code=404, detail="Bitcoin transaction not found")
     return result

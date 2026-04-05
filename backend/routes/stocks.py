@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import List
 from database import get_session
-from models import StockPortfolioSummaryDTO, StockTransaction
+from models import StockPortfolioSummaryDTO, StockTransaction, StockTransactionDTO
 from services import db_service
 from services.stock_portfolio_service import (
     get_stock_portfolio_summary,
@@ -117,33 +117,33 @@ async def health_check():
 
 # ===== Stock Transaction CRUD Endpoints =====
 
-@router.get("/transactions", response_model=List[StockTransaction])
+@router.get("/transactions", response_model=List[StockTransactionDTO])
 async def get_all_stock_transactions(session: AsyncSession = Depends(get_session)):
-    """Get all Stock transactions"""
+    """Get all Stock transactions ordered by date (descending)"""
     return await db_service.get_all_stock_transactions(session)
 
-@router.get("/transactions/{transaction_id}", response_model=StockTransaction)
-async def get_stock_transaction(transaction_id: str, session: AsyncSession = Depends(get_session)):
+@router.get("/transactions/{transaction_id}", response_model=StockTransactionDTO)
+async def get_stock_transaction_by_id(transaction_id: str, session: AsyncSession = Depends(get_session)):
     """Get a specific Stock transaction by ID"""
     transaction = await db_service.get_stock_transaction_by_id(session, transaction_id)
     if not transaction:
         raise HTTPException(status_code=404, detail="Stock transaction not found")
     return transaction
 
-@router.post("/transactions", response_model=StockTransaction, status_code=status.HTTP_201_CREATED)
-async def create_stock_transaction(transaction: StockTransaction, session: AsyncSession = Depends(get_session)):
-    """Create a new Stock transaction"""
+@router.post("/transactions", response_model=StockTransactionDTO, status_code=status.HTTP_201_CREATED)
+async def create_stock_transaction(transaction: StockTransactionDTO, session: AsyncSession = Depends(get_session)):
     try:
-        result = await db_service.create_stock_transaction(session, transaction)
+        db_transaction = StockTransaction(**transaction.model_dump(exclude_unset=True))
+        result = await db_service.create_stock_transaction(session, db_transaction)
         return result
     except Exception as e:
         logger.error(f"Error creating Stock transaction: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.put("/transactions/{transaction_id}", response_model=StockTransaction)
-async def update_stock_transaction(transaction_id: str, transaction: StockTransaction, session: AsyncSession = Depends(get_session)):
-    """Update an existing Stock transaction"""
-    result = await db_service.update_stock_transaction(session, transaction_id, transaction)
+@router.put("/transactions/{transaction_id}", response_model=StockTransactionDTO)
+async def update_stock_transaction(transaction_id: str, transaction: StockTransactionDTO, session: AsyncSession = Depends(get_session)):
+    db_transaction = StockTransaction(**transaction.model_dump(exclude_unset=True))
+    result = await db_service.update_stock_transaction(session, transaction_id, db_transaction)
     if not result:
         raise HTTPException(status_code=404, detail="Stock transaction not found")
     return result

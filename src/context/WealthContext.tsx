@@ -93,81 +93,46 @@ export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const fetchFromDatabase = async () => {
       try {
-                // ✅ CORRECCIÓN 1: Traemos summaryRes en el Promise.all
-                const [assetsRes, historyRes, txsRes, summaryRes, exchangeRateRes] = await Promise.all([
-                    fetch(`${config.backendUrl}/api/assets`),
-                    fetch(`${config.backendUrl}/api/history`),
-                    fetch(`${config.backendUrl}/api/transactions`),
-                    fetch(`${config.backendUrl}/api/portfolio/summary`),
-                    fetch(`${config.backendUrl}/api/portfolio/exchange-rate`)
-                ]);
+          // 1. Añadimos las dos nuevas rutas de transacciones en lugar de la genérica
+          const [assetsRes, historyRes, btcTxsRes, stockTxsRes, summaryRes, exchangeRateRes] = await Promise.all([
+              fetch(`${config.backendUrl}/api/assets`),
+              fetch(`${config.backendUrl}/api/history`),
+              fetch(`${config.backendUrl}/api/bitcoin/transactions`), // ✅ Nueva ruta BTC
+              fetch(`${config.backendUrl}/api/stocks/transactions`),   // ✅ Nueva ruta Stocks
+              fetch(`${config.backendUrl}/api/portfolio/summary`),
+              fetch(`${config.backendUrl}/api/portfolio/exchange-rate`)
+          ]);
 
-                if (!assetsRes.ok || !historyRes.ok || !txsRes.ok) {
-                    throw new Error("Fallo al conectar con la API");
-                }
+          // 2. Comprobamos que no falle ninguna de las peticiones principales
+          if (!assetsRes.ok || !historyRes.ok || !btcTxsRes.ok || !stockTxsRes.ok) {
+              throw new Error("Fallo al conectar con la API");
+          }
 
-                const dbAssets = await assetsRes.json();
-                const dbHistory = await historyRes.json();
-                const dbTxs = await txsRes.json();
-                const dbSummary = summaryRes.ok ? await summaryRes.json() : null;
+          const dbAssets = await assetsRes.json();
+          const dbHistory = await historyRes.json();
+          const dbBtcTxs = await btcTxsRes.json();     // JSON de Bitcoin
+          const dbStockTxs = await stockTxsRes.json(); // JSON de Stocks
+          const dbSummary = summaryRes.ok ? await summaryRes.json() : null;
 
-                setAssets(dbAssets || []);
-                setHistory(dbHistory || []);
+          setAssets(dbAssets || []);
+          setHistory(dbHistory || []);
 
-                const btcTxs: any[] = [];
-                const stockTxs: any[] = [];
+          // 3. Como el backend ya nos devuelve las transacciones separadas, 
+          // Pasamos los datos directamente a tus funciones sanitizadoras:
+          setBitcoinTransactions(sanitizeBitcoinTransactions(dbBtcTxs || []));
+          setStockTransactions(sanitizeStockTransactions(dbStockTxs || []));
+          
+          setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }));
 
-                if (Array.isArray(dbTxs)) {
-                    dbTxs.forEach((tx: any) => {
-                        // ✅ CORRECCIÓN 2: Protegemos contra nulos
-                        const safeType = (tx.type || 'BUY').toUpperCase();
-                        
-                        const asset = dbAssets.find((a: any) => a.id === tx.asset_id);
-                        const isCrypto = asset?.category?.toUpperCase() === 'CRYPTO' || tx.ticker === 'BTC';
-                        
-                        if (isCrypto) {
-                            btcTxs.push({
-                                id: tx.id,
-                                assetId: tx.asset_id,
-                                transactionDate: tx.transactionDate || tx.date,
-                                type: safeType,
-                                amountBtc: tx.quantity,
-                                priceEurPerBtc: tx.pricePerUnit,
-                                feesEur: tx.fees || 0,
-                                totalAmountEur: tx.totalAmount,
-                                exchangeRateUsdEur: tx.exchangeRateEurUsd || 1.08
-                            });
-                        } else {
-                            stockTxs.push({
-                                id: tx.id,
-                                assetId: tx.asset_id,
-                                ticker: tx.ticker,
-                                transactionDate: tx.transactionDate || tx.date,
-                                type: safeType,
-                                currency: tx.currency || 'USD',
-                                quantity: tx.quantity,
-                                pricePerUnit: tx.pricePerUnit,
-                                fees: tx.fees,
-                                totalAmount: tx.totalAmount,
-                                exchangeRateEurUsd: tx.exchangeRateEurUsd || 1.08
-                            });
-                        }
-                    });
-                }
-
-                setBitcoinTransactions(sanitizeBitcoinTransactions(btcTxs));
-                setStockTransactions(sanitizeStockTransactions(stockTxs));
-                setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }));
-
-                if (dbSummary) {
-                    setMetrics({
-                        totalNAV: dbSummary.totalValue || 0,
-                        totalInv: dbSummary.totalInvested || 0,
-                        totalProfit: dbSummary.absoluteRoi || 0,
-                        roi: dbSummary.percentageRoi || 0,
-                        cash: dbSummary.cashValue || 0
-                    });
-                }
+          if (dbSummary) {
+              setMetrics({
+                  totalNAV: dbSummary.totalValue || 0,
+                  totalInv: dbSummary.totalInvested || 0,
+                  totalProfit: dbSummary.absoluteRoi || 0,
+                  roi: dbSummary.percentageRoi || 0,
+                  cash: dbSummary.cashValue || 0
+              });
+          }
 
                 // Load exchange rate
                 if (exchangeRateRes.ok) {
