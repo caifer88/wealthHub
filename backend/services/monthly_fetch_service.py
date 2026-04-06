@@ -93,7 +93,7 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                 last_business_day=format_date(last_business_day), 
                 prices=[],
                 errors=["No assets available"],
-                exchange_rate_eur_usd=None,
+                exchange_rate_to_eur=None,
                 exchange_rate_source=None
             )
 
@@ -104,7 +104,6 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
         fund_assets = [
             a for a in active_assets 
             if a.get("category") in (
-                AssetCategory.FUND.value, 
                 AssetCategory.FUND_ACTIVE.value, 
                 AssetCategory.FUND_INDEX.value,
                 AssetCategory.PENSION.value
@@ -222,9 +221,8 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                         p.asset_id = ticker_asset_map[ticker_upper]
                         logger.debug(f"✓ Using real asset_id for {p.ticker}: {p.asset_id}")
                     else:
-                        # Fallback: use fake ID if real asset not found (shouldn't happen after Phase 1)
-                        p.asset_id = f"ticker-{p.ticker}"
-                        logger.warning(f"⚠️ Real asset not found for {p.ticker}, using placeholder ID")
+                        # Stock asset must exist for UUID FK constraints
+                        raise ValueError(f"Stock asset not found for ticker {p.ticker}. Please ensure all tickers are added to the system as assets before fetching prices.")
                     
                     p.asset_name = f"Stock {p.ticker}"
                     copied_individual_prices.append(p)
@@ -285,7 +283,7 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                 last_business_day=format_date(last_business_day),
                 prices=[],
                 errors=errors,
-                exchange_rate_eur_usd=eur_usd_rate if eur_usd_rate else None,
+                exchange_rate_to_eur=eur_usd_rate if eur_usd_rate else None,
                 exchange_rate_source=eur_usd_rate_source
             )
 
@@ -464,7 +462,7 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
             last_business_day=format_date(last_business_day),
             prices=prices,
             errors=errors,
-            exchange_rate_eur_usd=eur_usd_rate if eur_usd_rate else None,
+            exchange_rate_to_eur=eur_usd_rate if eur_usd_rate else None,
             exchange_rate_source=eur_usd_rate_source
         )
 

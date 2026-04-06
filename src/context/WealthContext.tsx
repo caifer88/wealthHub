@@ -14,13 +14,12 @@ const sanitizeBitcoinTransactions = (txs: any[]): BitcoinTransaction[] => {
     } else if (tx.type === 'Venta' || tx.type === 'sell' || tx.type === 'SELL') {
       txType = 'SELL'
     }
-    const amountBtc = parseFloat(tx.amountBtc || tx.amountBTC) || 0
     return {
       id: tx.id || generateUUID(),
-      assetId: tx.assetId || tx.asset_id || '',
+      assetId: tx.assetId || '',
       transactionDate: tx.transactionDate || tx.date || new Date().toISOString().split('T')[0],
       type: txType,
-      amountBtc: amountBtc,
+      amountBtc: parseFloat(tx.amountBtc) || 0,
       priceEurPerBtc: parseFloat(tx.priceEurPerBtc || tx.meanPrice) || 0,
       feesEur: parseFloat(tx.feesEur || tx.fees) || 0,
       totalAmountEur: parseFloat(tx.totalAmountEur || tx.totalCost || tx.amount) || 0,
@@ -40,7 +39,7 @@ export const sanitizeStockTransactions = (txs: any[]): StockTransaction[] => {
     }
     return {
       id: tx.id || generateUUID(),
-      assetId: tx.assetId || tx.asset_id || '',
+      assetId: tx.assetId || '',
       transactionDate: tx.transactionDate || tx.date || new Date().toISOString().split('T')[0],
       type: txType,
       ticker: tx.ticker || '',

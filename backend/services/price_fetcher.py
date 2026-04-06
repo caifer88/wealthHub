@@ -19,6 +19,11 @@ class PriceFetcher:
     @staticmethod
     @cached(cache=TTLCache(maxsize=10, ttl=3600))  # 1 hour cache
     def fetch_bitcoin_price(date: datetime, asset_id: str = None, asset_name: str = "Bitcoin") -> Optional[PriceData]:
+        # Require asset_id for proper foreign key reference with UUID constraints
+        if not asset_id:
+            logger.error("Bitcoin asset_id is required for price fetching with UUID primary keys")
+            raise ValueError("asset_id required: Bitcoin asset must exist with valid UUID")
+            
         # Attempt 1: Yahoo Finance
         try:
             ticker = yf.Ticker("BTC-EUR")
@@ -33,7 +38,7 @@ class PriceFetcher:
                     close_price = float(close_value)
                     
                 return PriceData(
-                    asset_id=asset_id or "btc",
+                    asset_id=asset_id,
                     asset_name=asset_name,
                     ticker="BTC-EUR",
                     price=round(close_price, 2),
@@ -51,7 +56,7 @@ class PriceFetcher:
             if res.status_code == 200:
                 data = res.json()
                 return PriceData(
-                    asset_id=asset_id or "btc",
+                    asset_id=asset_id,
                     asset_name=asset_name,
                     ticker="BTC-EUR",
                     price=round(float(data['bitcoin']['eur']), 2),

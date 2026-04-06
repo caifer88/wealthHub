@@ -149,7 +149,7 @@ async def get_all_transactions(session: AsyncSession) -> List[dict]:
             'quantity': stock_tx.quantity,
             'total_amount': stock_tx.total_amount,
             'currency': stock_tx.currency,
-            'exchange_rate': stock_tx.exchange_rate_eur_usd
+            'exchange_rate': stock_tx.exchange_rate_to_eur
         })
     
     # Sort by transaction_date descending
@@ -186,7 +186,7 @@ async def get_transactions_by_asset(session: AsyncSession, asset_id: str) -> Lis
             'quantity': stock_tx.quantity,
             'total_amount': stock_tx.total_amount,
             'currency': stock_tx.currency,
-            'exchange_rate': stock_tx.exchange_rate_eur_usd
+            'exchange_rate': stock_tx.exchange_rate_to_eur
         })
     
     # Sort by transaction_date descending
@@ -316,7 +316,7 @@ async def upsert_history_from_transactions(session: AsyncSession, asset_id: str,
     for tx in month_stock_txs:
         if str(tx.type).upper() == 'BUY':
             amount = Decimal(str(tx.total_amount or 0))
-            ex_rate = Decimal(str(tx.exchange_rate_eur_usd or 1.0))
+            ex_rate = Decimal(str(tx.exchange_rate_to_eur or 1.0))
             if tx.currency == 'USD' or ex_rate != Decimal("1.0"):
                 monthly_contribution += amount / ex_rate
             else:

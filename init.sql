@@ -1,11 +1,13 @@
 --
--- PostgreSQL database dump
+-- PostgreSQL database dump (MODERNIZED - UUID PRIMARY KEYS)
 --
-
-\restrict YySOLClStRpVYY9SJLZwIam760iHy8dvx02vYQ3EVPMhsyUf6f8M4MNGHMarAzU
-
--- Dumped from database version 15.17
--- Dumped by pg_dump version 15.17
+-- This schema has been modernized to:
+-- 1. Use UUID instead of VARCHAR for primary keys (better performance, scalability, security)
+-- 2. Enforce type safety with CHECK constraints on enum-like fields
+-- 3. Add UNIQUE constraint on exchange_rates (date, currency_pair)
+-- 4. Remove legacy FUND category
+-- 5. Standardize exchange_rate field naming to exchange_rate_to_eur
+--
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -19,15 +21,18 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 SET default_tablespace = '';
-
 SET default_table_access_method = heap;
+
+-- Create UUID extension if it doesn't exist
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 --
 -- Name: asset; Type: TABLE; Schema: public; Owner: wealthhub
+-- UUID Primary Key for better performance and scalability
 --
 
 CREATE TABLE public.asset (
-    id character varying(50) NOT NULL,
+    id uuid NOT NULL DEFAULT uuid_generate_v4(),
     name character varying(255) NOT NULL,
     category character varying(50) NOT NULL,
     currency character varying(10) DEFAULT 'EUR'::character varying,
@@ -37,42 +42,60 @@ CREATE TABLE public.asset (
     isin character varying(50),
     ticker character varying(50),
     description text,
-    parent_asset_id character varying(50),
-    CONSTRAINT asset_pkey PRIMARY KEY (id)
+    parent_asset_id uuid,
+    CONSTRAINT asset_pkey PRIMARY KEY (id),
+    CONSTRAINT asset_parent_fkey FOREIGN KEY (parent_asset_id) REFERENCES public.asset(id) ON DELETE SET NULL,
+    CONSTRAINT asset_category_valid CHECK (category IN ('CRYPTO', 'FUND_ACTIVE', 'FUND_INDEX', 'STOCK', 'PENSION', 'CASH', 'OTHER')),
+    CONSTRAINT asset_risk_level_valid CHECK (risk_level IN ('LOW', 'MEDIUM', 'HIGH'))
 );
 
+CREATE INDEX ix_asset_category ON public.asset USING btree (category);
+CREATE INDEX ix_asset_ticker ON public.asset USING btree (ticker);
+CREATE INDEX ix_asset_parent_id ON public.asset USING btree (parent_asset_id);
 
 ALTER TABLE public.asset OWNER TO wealthhub;
 
 --
 -- Name: asset_history; Type: TABLE; Schema: public; Owner: wealthhub
+-- UUID Primary Key and Foreign Key for consistency
 --
 
 CREATE TABLE public.asset_history (
-    id character varying(100) NOT NULL,
-    asset_id character varying(50),
+    id uuid NOT NULL DEFAULT uuid_generate_v4(),
+    asset_id uuid NOT NULL,
     snapshot_date date NOT NULL,
     nav numeric(15,4),
     contribution numeric(15,4),
     participations numeric(18,8),
     liquid_nav_value numeric(15,4),
-    mean_cost numeric(15,4)
+    mean_cost numeric(15,4),
+    CONSTRAINT asset_history_pkey PRIMARY KEY (id),
+    CONSTRAINT asset_history_asset_fkey FOREIGN KEY (asset_id) REFERENCES public.asset(id) ON DELETE CASCADE
 );
 
+CREATE INDEX ix_asset_history_asset_id ON public.asset_history USING btree (asset_id);
+CREATE INDEX ix_asset_history_snapshot_date ON public.asset_history USING btree (snapshot_date);
+CREATE UNIQUE INDEX ix_asset_history_unique_snapshot ON public.asset_history (asset_id, snapshot_date);
 
 ALTER TABLE public.asset_history OWNER TO wealthhub;
 
 --
 -- Name: exchange_rates; Type: TABLE; Schema: public; Owner: wealthhub
+-- Added UNIQUE constraint to prevent duplicate date/currency_pair combinations
 --
 
 CREATE TABLE public.exchange_rates (
-    id integer NOT NULL,
+    id integer NOT NULL DEFAULT nextval('public.exchange_rates_id_seq'::regclass),
     date date NOT NULL,
     currency_pair character varying NOT NULL,
-    rate numeric(18,8)
+    rate numeric(18,8) NOT NULL,
+    CONSTRAINT exchange_rates_pkey PRIMARY KEY (id),
+    CONSTRAINT exchange_rates_unique_pair CHECK (currency_pair IN ('EUR/USD', 'USD/EUR', 'BTC/EUR', 'BTC/USD')),
+    CONSTRAINT exchange_rates_unique_date_pair UNIQUE (date, currency_pair)
 );
 
+CREATE INDEX ix_exchange_rates_date ON public.exchange_rates USING btree (date);
+CREATE INDEX ix_exchange_rates_pair ON public.exchange_rates USING btree (currency_pair);
 
 ALTER TABLE public.exchange_rates OWNER TO wealthhub;
 
@@ -88,68 +111,61 @@ CREATE SEQUENCE public.exchange_rates_id_seq
     NO MAXVALUE
     CACHE 1;
 
-
 ALTER TABLE public.exchange_rates_id_seq OWNER TO wealthhub;
-
---
--- Name: exchange_rates_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: wealthhub
---
-
 ALTER SEQUENCE public.exchange_rates_id_seq OWNED BY public.exchange_rates.id;
-
 
 --
 -- Name: bitcoin_transaction; Type: TABLE; Schema: public; Owner: wealthhub
+-- UUID Primary Key, renamed exchange_rate_usd_eur -> exchange_rate_to_eur for clarity
 --
 
 CREATE TABLE public.bitcoin_transaction (
-    id character varying(100) NOT NULL,
-    asset_id character varying(50),
+    id uuid NOT NULL DEFAULT uuid_generate_v4(),
+    asset_id uuid NOT NULL,
     transaction_date date NOT NULL,
-    type character varying(20),
-    amount_btc numeric(18,8),
-    price_eur_per_btc numeric(18,8),
-    fees_eur numeric(10,4),
-    total_amount_eur numeric(15,4),
-    exchange_rate_usd_eur numeric(15,8) DEFAULT 1.08,
+    type character varying(20) NOT NULL,
+    amount_btc numeric(18,8) NOT NULL,
+    price_eur_per_btc numeric(18,8) NOT NULL,
+    fees_eur numeric(10,4) DEFAULT 0,
+    total_amount_eur numeric(15,4) NOT NULL,
+    exchange_rate_to_eur numeric(15,8) DEFAULT 1.08,
     CONSTRAINT bitcoin_transaction_pkey PRIMARY KEY (id),
-    CONSTRAINT bitcoin_transaction_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.asset(id)
+    CONSTRAINT bitcoin_transaction_asset_fkey FOREIGN KEY (asset_id) REFERENCES public.asset(id) ON DELETE CASCADE,
+    CONSTRAINT bitcoin_transaction_type_valid CHECK (type IN ('BUY', 'SELL'))
 );
+
+CREATE INDEX ix_bitcoin_transaction_asset_id ON public.bitcoin_transaction USING btree (asset_id);
+CREATE INDEX ix_bitcoin_transaction_date ON public.bitcoin_transaction USING btree (transaction_date);
 
 ALTER TABLE public.bitcoin_transaction OWNER TO wealthhub;
 
-CREATE INDEX ix_bitcoin_transaction_asset_id ON public.bitcoin_transaction USING btree (asset_id);
-
 --
 -- Name: stock_transaction; Type: TABLE; Schema: public; Owner: wealthhub
+-- UUID Primary Key, renamed exchange_rate_eur_usd -> exchange_rate_to_eur for standardization
 --
 
 CREATE TABLE public.stock_transaction (
-    id character varying(100) NOT NULL,
-    asset_id character varying(50),
+    id uuid NOT NULL DEFAULT uuid_generate_v4(),
+    asset_id uuid NOT NULL,
     transaction_date date NOT NULL,
-    type character varying(20),
-    ticker character varying(50),
+    type character varying(20) NOT NULL,
+    ticker character varying(50) NOT NULL,
     currency character varying(10) DEFAULT 'USD'::character varying,
-    quantity numeric(18,8),
-    price_per_unit numeric(18,8),
-    fees numeric(10,4),
-    total_amount numeric(15,4),
-    exchange_rate_eur_usd numeric(15,8) DEFAULT 1.08,
+    quantity numeric(18,8) NOT NULL,
+    price_per_unit numeric(18,8) NOT NULL,
+    fees numeric(10,4) DEFAULT 0,
+    total_amount numeric(15,4) NOT NULL,
+    exchange_rate_to_eur numeric(15,8) DEFAULT 1.08,
     CONSTRAINT stock_transaction_pkey PRIMARY KEY (id),
-    CONSTRAINT stock_transaction_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.asset(id)
+    CONSTRAINT stock_transaction_asset_fkey FOREIGN KEY (asset_id) REFERENCES public.asset(id) ON DELETE CASCADE,
+    CONSTRAINT stock_transaction_type_valid CHECK (type IN ('BUY', 'SELL'))
 );
-
-ALTER TABLE public.stock_transaction OWNER TO wealthhub;
 
 CREATE INDEX ix_stock_transaction_asset_id ON public.stock_transaction USING btree (asset_id);
 CREATE INDEX ix_stock_transaction_ticker ON public.stock_transaction USING btree (ticker);
+CREATE INDEX ix_stock_transaction_date ON public.stock_transaction USING btree (transaction_date);
 
---
--- Name: exchange_rates id; Type: DEFAULT; Schema: public; Owner: wealthhub
---
-
-ALTER TABLE ONLY public.exchange_rates ALTER COLUMN id SET DEFAULT nextval('public.exchange_rates_id_seq'::regclass);
+ALTER TABLE public.stock_transaction OWNER TO wealthhub;
 
 
 --

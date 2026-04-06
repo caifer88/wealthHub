@@ -11,11 +11,11 @@ from typing import Optional, List, Dict
 from enum import Enum
 from decimal import Decimal
 from datetime import date as DateType, datetime
+from uuid import UUID
 
 class AssetCategory(str, Enum):
-    """Asset category types"""
+    """Asset category types - FUND (legacy generic) removed in favor of FUND_ACTIVE/FUND_INDEX"""
     CRYPTO      = "CRYPTO"
-    FUND        = "FUND"         # genérico / legacy
     FUND_ACTIVE = "FUND_ACTIVE"  # gestión activa
     FUND_INDEX  = "FUND_INDEX"   # fondos indexados
     STOCK       = "STOCK"
@@ -25,10 +25,10 @@ class AssetCategory(str, Enum):
 
 
 class RiskLevel(str, Enum):
-    """Risk level types"""
-    LOW = "Bajo"
-    MEDIUM = "Medio"
-    HIGH = "Alto"
+    """Risk level types - standardized to English"""
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
 
 
 class TransactionType(str, Enum):
@@ -46,30 +46,30 @@ frontend_config = ConfigDict(
 
 
 class Asset(SQLModel, table=True):
-    """Asset model with DB fields"""
+    """Asset model with DB fields - modernized with UUID PKs and enum enforcement"""
     __tablename__ = "asset"
     model_config = frontend_config
 
-    id: str = Field(primary_key=True, max_length=50)
+    id: Optional[str] = Field(primary_key=True, default=None)
     name: str = Field(max_length=255)
-    category: str = Field(max_length=50)
+    category: AssetCategory = Field(default=AssetCategory.CASH)
     currency: Optional[str] = Field(default="EUR", max_length=10)
     color: Optional[str] = Field(default=None, max_length=20)
     is_archived: bool = Field(default=False)
-    risk_level: Optional[str] = Field(default=None, max_length=50)
+    risk_level: Optional[RiskLevel] = Field(default=None)
     isin: Optional[str] = Field(default=None, max_length=50)
     ticker: Optional[str] = Field(default=None, max_length=50)
     description: Optional[str] = Field(default="")
-    parent_asset_id: Optional[str] = Field(default=None, foreign_key="asset.id", max_length=50)
+    parent_asset_id: Optional[str] = Field(default=None, foreign_key="asset.id")
 
 
 class HistoryEntry(SQLModel, table=True):
-    """History entry model corresponding to asset_history"""
+    """History entry model corresponding to asset_history - modernized with UUID PKs"""
     __tablename__ = "asset_history"
     model_config = frontend_config
 
-    id: str = Field(primary_key=True, max_length=100)
-    asset_id: Optional[str] = Field(default=None, foreign_key="asset.id", max_length=50, index=True)
+    id: Optional[str] = Field(primary_key=True, default=None)
+    asset_id: Optional[str] = Field(default=None, foreign_key="asset.id", index=True)
     snapshot_date: DateType = Field(index=True)
     nav: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
     contribution: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
@@ -82,8 +82,8 @@ class HistoryResponseDTO(BaseModel):
     """Data Transfer Object for returning history entries from the API"""
     model_config = frontend_config
 
-    id: str
-    asset_id: Optional[str] = Field(default=None, alias="asset_id")
+    id: str  # UUID as string for frontend
+    asset_id: Optional[str] = Field(default=None, alias="asset_id")  # UUID as string for frontend
     month: str
     nav: float
     contribution: float
@@ -111,37 +111,37 @@ class HistoryResponseDTO(BaseModel):
 
 
 class BitcoinTransaction(SQLModel, table=True):
-    """Bitcoin-specific transaction model with optimized schema"""
+    """Bitcoin-specific transaction model with optimized schema - modernized with UUID PKs and enum types"""
     __tablename__ = "bitcoin_transaction"
     model_config = frontend_config
 
-    id: str = Field(primary_key=True, max_length=100)
-    asset_id: Optional[str] = Field(default=None, foreign_key="asset.id", max_length=50, index=True)
+    id: Optional[str] = Field(primary_key=True, default=None)
+    asset_id: Optional[str] = Field(default=None, foreign_key="asset.id", index=True)
     transaction_date: DateType
-    type: Optional[str] = Field(default=None)
+    type: Optional[TransactionType] = Field(default=None)
     amount_btc: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
     price_eur_per_btc: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
-    fees_eur: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(10, 4)))
+    fees_eur: Optional[Decimal] = Field(default=Decimal("0"), sa_column=Column(Numeric(10, 4)))
     total_amount_eur: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(15, 4)))
-    exchange_rate_usd_eur: Optional[Decimal] = Field(default=Decimal("1.08"), sa_column=Column(Numeric(15, 8)))
+    exchange_rate_to_eur: Optional[Decimal] = Field(default=Decimal("1.08"), sa_column=Column(Numeric(15, 8)))
 
 
 class StockTransaction(SQLModel, table=True):
-    """Stock-specific transaction model"""
+    """Stock-specific transaction model - modernized with UUID PKs and enum types"""
     __tablename__ = "stock_transaction"
     model_config = frontend_config
 
-    id: str = Field(primary_key=True, max_length=100)
-    asset_id: Optional[str] = Field(default=None, foreign_key="asset.id", max_length=50, index=True)
+    id: Optional[str] = Field(primary_key=True, default=None)
+    asset_id: Optional[str] = Field(default=None, foreign_key="asset.id", index=True)
     transaction_date: DateType
-    type: Optional[str] = Field(default=None)
+    type: Optional[TransactionType] = Field(default=None)
     ticker: Optional[str] = Field(default=None, max_length=50, index=True)
     currency: Optional[str] = Field(default="USD", max_length=10)
     quantity: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
     price_per_unit: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
-    fees: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(10, 4)))
+    fees: Optional[Decimal] = Field(default=Decimal("0"), sa_column=Column(Numeric(10, 4)))
     total_amount: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(15, 4)))
-    exchange_rate_eur_usd: Optional[Decimal] = Field(default=Decimal("1.08"), sa_column=Column(Numeric(15, 8)))
+    exchange_rate_to_eur: Optional[Decimal] = Field(default=Decimal("1.08"), sa_column=Column(Numeric(15, 8)))
 
 
 class ExchangeRate(SQLModel, table=True):
@@ -178,7 +178,7 @@ class FetchMonthResponse(BaseModel):
     last_business_day: str = Field(alias="lastBusinessDay")  # Date in YYYY-MM-DD format
     prices: List[PriceData]
     errors: List[str] = []
-    exchange_rate_eur_usd: Optional[float] = None  # EUR/USD rate used for conversion
+    exchange_rate_to_eur: Optional[float] = None  # Rate to convert FROM base currency TO EUR
     exchange_rate_source: Optional[str] = None  # 'yfinance', 'fallback_db', 'fallback_hardcoded'
 
 
@@ -247,7 +247,7 @@ class StockPortfolioSummaryDTO(BaseModel):
     total_invested_eur: float  # Sum of all cost_basis_eur
     total_unrealized_gain_eur: float  # total_value_eur - total_invested_eur
     total_unrealized_gain_percent: float  # (total_unrealized_gain_eur / total_invested_eur) × 100
-    exchange_rate_eur_usd: float  # Latest EUR/USD rate used for conversion
+    exchange_rate_to_eur: float  # Latest rate to convert FROM USD TO EUR
     last_update: str  # ISO datetime of last portfolio calculation
     number_of_tickers: int  # Count of unique stock holdings
     tickers: List[StockMetricsDTO]  # List of individual holdings
@@ -256,31 +256,31 @@ class StockPortfolioSummaryDTO(BaseModel):
 # Añade esto en backend/models.py
 
 class BitcoinTransactionDTO(BaseModel):
-    """DTO para comunicación API de Bitcoin Transactions"""
+    """DTO para comunicación API de Bitcoin Transactions - modernized with enum types"""
     model_config = frontend_config
 
-    id: str
-    asset_id: Optional[str] = None
+    id: str  # UUID as string for frontend
+    asset_id: Optional[str] = None  # UUID as string for frontend
     transaction_date: DateType
-    type: Optional[str] = None
+    type: Optional[str] = None  # TransactionType enum value
     amount_btc: Optional[Decimal] = None
     price_eur_per_btc: Optional[Decimal] = None
     fees_eur: Optional[Decimal] = None
     total_amount_eur: Optional[Decimal] = None
-    exchange_rate_usd_eur: Optional[Decimal] = None
+    exchange_rate_to_eur: Optional[Decimal] = None  # Renamed from exchange_rate_usd_eur
 
 class StockTransactionDTO(BaseModel):
-    """DTO para comunicación API de Stock Transactions"""
+    """DTO para comunicación API de Stock Transactions - modernized with enum types"""
     model_config = frontend_config
 
-    id: str
-    asset_id: Optional[str] = None
+    id: str  # UUID as string for frontend
+    asset_id: Optional[str] = None  # UUID as string for frontend
     transaction_date: DateType
-    type: Optional[str] = None
+    type: Optional[str] = None  # TransactionType enum value
     ticker: Optional[str] = None
     currency: Optional[str] = None
     quantity: Optional[Decimal] = None
     price_per_unit: Optional[Decimal] = None
     fees: Optional[Decimal] = None
     total_amount: Optional[Decimal] = None
-    exchange_rate_eur_usd: Optional[Decimal] = None
+    exchange_rate_to_eur: Optional[Decimal] = None  # Renamed from exchange_rate_eur_usd for standardization
