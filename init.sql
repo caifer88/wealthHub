@@ -157,7 +157,7 @@ ALTER TABLE ONLY public.exchange_rates ALTER COLUMN id SET DEFAULT nextval('publ
 --
 
 INSERT INTO public.asset VALUES ('a5', 'Cash', 'CASH', 'EUR', '#33a340', false, 'Moderado', NULL, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset VALUES ('a6', 'Founds old', 'FUND', 'EUR', '#fca5a5', true, 'Medio', NULL, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('a6', 'Funds old', 'FUND_ACTIVE', 'EUR', '#fca5a5', true, 'Medio', NULL, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset VALUES ('a7', 'Broker DeGiro', 'STOCK', 'EUR', '#60a5fa', true, 'Medio', NULL, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset VALUES ('a9', 'Interactive Brokers', 'STOCK', 'EUR', '#3b82f6', false, 'Medio', NULL, NULL, 'Cartera de acciones individuales', NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset VALUES ('stock-TSM-001', 'Taiwan Semiconductor (TSM)', 'STOCK', 'USD', '#1f2937', false, 'Medio', NULL, 'TSM', 'TSMC - Taiwan Semiconductor Manufacturing', 'a9') ON CONFLICT DO NOTHING;
