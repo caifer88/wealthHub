@@ -283,4 +283,4 @@ class StockTransactionDTO(BaseModel):
     price_per_unit: Optional[Decimal] = None
     fees: Optional[Decimal] = None
     total_amount: Optional[Decimal] = None
-    exchange_rate_to_eur: Optional[Decimal] = None  # Renamed from exchange_rate_eur_usd for standardization
+    exchange_rate_to_eur: Optional[Decimal] = None  # Renamed from exchange_rate_to_eur for standardization

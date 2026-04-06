@@ -419,6 +419,67 @@ async def get_latest_exchange_rate(session: AsyncSession, pair: str) -> float:
     return float(result.rate) if result else 0.0
 
 
+async def get_exchange_rate_for_date(session: AsyncSession, pair: str, target_date) -> Optional[float]:
+    """
+    Get exchange rate for a specific date or the closest available date.
+    
+    Strategy:
+    1. Try exact date match
+    2. If not found, get the closest date (most recent before or after)
+    3. Return None if no data exists
+    
+    Args:
+        session: Database session
+        pair: Currency pair (e.g., 'EUR/USD')
+        target_date: Target date for the rate
+    
+    Returns:
+        Exchange rate as float, or None if not found
+    """
+    from models import ExchangeRate
+    from datetime import date
+    
+    # Ensure we're working with a date object
+    if hasattr(target_date, 'date'):  # If it's a datetime
+        target_date = target_date.date()
+    
+    # Strategy 1: Try exact date match
+    statement = select(ExchangeRate).where(
+        (ExchangeRate.currency_pair == pair) &
+        (ExchangeRate.date == target_date)
+    )
+    result = (await session.exec(statement)).first()
+    if result:
+        logger.debug(f"💱 Found exact rate for {pair} on {target_date}: {result.rate}")
+        return float(result.rate)
+    
+    # Strategy 2: Get closest date (most recent before, or after if none before)
+    # First try to get the most recent rate BEFORE the target date
+    statement = select(ExchangeRate).where(
+        (ExchangeRate.currency_pair == pair) &
+        (ExchangeRate.date <= target_date)
+    ).order_by(ExchangeRate.date.desc())
+    result = (await session.exec(statement)).first()
+    
+    if result:
+        logger.debug(f"💱 Using closest rate for {pair} on {result.date} (before {target_date}): {result.rate}")
+        return float(result.rate)
+    
+    # If no rate before, get the first one after
+    statement = select(ExchangeRate).where(
+        (ExchangeRate.currency_pair == pair) &
+        (ExchangeRate.date > target_date)
+    ).order_by(ExchangeRate.date.asc())
+    result = (await session.exec(statement)).first()
+    
+    if result:
+        logger.debug(f"💱 Using closest rate for {pair} on {result.date} (after {target_date}): {result.rate}")
+        return float(result.rate)
+    
+    logger.warning(f"⚠️ No exchange rate found for {pair}")
+    return None
+
+
 # ===== Bitcoin Transaction Methods =====
 
 async def get_all_bitcoin_transactions(session: AsyncSession) -> List[BitcoinTransaction]:

@@ -53,6 +53,19 @@ async def create_bitcoin_transaction(transaction: BitcoinTransactionDTO, session
     try:
         # Transformamos el DTO de entrada (camelCase del front) a un modelo de Base de Datos
         db_transaction = BitcoinTransaction(**transaction.model_dump(exclude_unset=True))
+        
+        # Auto-fetch exchange rate for transaction date if not provided
+        if not db_transaction.exchange_rate_to_eur or db_transaction.exchange_rate_to_eur <= 0:
+            rate = await db_service.get_exchange_rate_for_date(
+                session, "EUR/USD", db_transaction.transaction_date
+            )
+            if rate:
+                db_transaction.exchange_rate_to_eur = rate
+                logger.info(f"✅ Auto-fetched EUR/USD rate {rate} for {db_transaction.transaction_date}")
+            else:
+                logger.warning(f"⚠️ No rate found, using fallback 1.15")
+                db_transaction.exchange_rate_to_eur = 1.15
+        
         result = await db_service.create_bitcoin_transaction(session, db_transaction)
         return result
     except Exception as e:
@@ -63,6 +76,19 @@ async def create_bitcoin_transaction(transaction: BitcoinTransactionDTO, session
 async def update_bitcoin_transaction(transaction_id: str, transaction: BitcoinTransactionDTO, session: AsyncSession = Depends(get_session)):
     # Transformamos de nuevo al modelo de SQLModel
     db_transaction = BitcoinTransaction(**transaction.model_dump(exclude_unset=True))
+    
+    # Auto-fetch exchange rate for transaction date if not provided or is default
+    if not db_transaction.exchange_rate_to_eur or db_transaction.exchange_rate_to_eur <= 0:
+        rate = await db_service.get_exchange_rate_for_date(
+            session, "EUR/USD", db_transaction.transaction_date
+        )
+        if rate:
+            db_transaction.exchange_rate_to_eur = rate
+            logger.info(f"✅ Auto-fetched EUR/USD rate {rate} for {db_transaction.transaction_date}")
+        else:
+            logger.warning(f"⚠️ No rate found, using fallback 1.15")
+            db_transaction.exchange_rate_to_eur = 1.15
+    
     result = await db_service.update_bitcoin_transaction(session, transaction_id, db_transaction)
     if not result:
         raise HTTPException(status_code=404, detail="Bitcoin transaction not found")

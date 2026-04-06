@@ -181,7 +181,7 @@ SELECT
     sto.currency,
     sto.fees,
     sto.total_amount,
-    sto.exchange_rate_eur_usd as exchange_rate_to_eur,
+    sto.exchange_rate_to_eur as exchange_rate_to_eur,
     sto.created_at
 FROM stock_transaction_old sto
 LEFT JOIN id_map_old_new im ON sto.asset_id = im.old_id AND im.table_name = 'asset'
@@ -194,7 +194,7 @@ SELECT
     im.new_id as asset_id,
     aho.total_amount_eur,
     aho.total_invested_eur,
-    aho.exchange_rate_eur_usd as exchange_rate_to_eur,
+    aho.exchange_rate_to_eur as exchange_rate_to_eur,
     aho.snapshot_date,
     aho.created_at
 FROM asset_history_old aho

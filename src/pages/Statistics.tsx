@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { useWealth } from '../context/WealthContext'
+import { useWealthData } from '../hooks'
 import { Card } from '../components/ui/Card'
 import { MetricCard } from '../components/ui/MetricCard'
 import { formatCurrency } from '../utils'
 import { useROIMetrics } from '../hooks'
 import { useAllocationByCategory } from '../hooks/useAllocation'
+import type { Asset, HistoryEntry } from '../types'
 
 interface YearlyMetrics {
   year: number
@@ -19,7 +20,7 @@ interface YearlyMetrics {
 }
 
 export default function Statistics() {
-  const { assets, history, metrics } = useWealth()
+  const { assets, history, metrics } = useWealthData()
   const roiMetrics = useROIMetrics(assets, history)
   const allocations = useAllocationByCategory(assets, history, roiMetrics)
   const [expandedYears, setExpandedYears] = useState<number[]>([])
@@ -34,10 +35,10 @@ export default function Statistics() {
     if (history.length === 0) return []
 
     // Sort history by month for correct period calculations
-    const sortedHistory = [...history].sort((a, b) => a.month.localeCompare(b.month))
+    const sortedHistory = [...history].sort((a: HistoryEntry, b: HistoryEntry) => a.month.localeCompare(b.month))
 
     // Find Cash asset ID
-    const cashAsset = assets.find(a => a.name === 'Cash')
+    const cashAsset = assets.find((a: Asset) => a.name === 'Cash')
     const cashasset_id = cashAsset?.id
 
     // Group history by year
@@ -348,10 +349,10 @@ export default function Statistics() {
             </thead>
             <tbody>
               {Object.entries(cumulativeInvestment)
-                .filter(([asset_id]) => asset_id !== assets.find(a => a.name === 'Cash')?.id)
+                .filter(([asset_id]) => asset_id !== assets.find((a: Asset) => a.name === 'Cash')?.id)
                 .sort(([, a], [, b]) => b.total - a.total)
                 .map(([asset_id, data]) => {
-                  const asset = assets.find(a => a.id === asset_id)
+                  const asset = assets.find((a: Asset) => a.id === asset_id)
                   const percentage = metrics.totalInv > 0
                     ? (data.total / metrics.totalInv) * 100
                     : 0
@@ -403,7 +404,7 @@ export default function Statistics() {
               {yearlyMetrics.map(year => {
                 const isExpanded = expandedYears.includes(year.year)
                 const assetCount = Object.keys(year.investmentByAsset).filter(
-                  asset_id => asset_id !== assets.find(a => a.name === 'Cash')?.id
+                  asset_id => asset_id !== assets.find((a: Asset) => a.name === 'Cash')?.id
                 ).length
 
                 return (
@@ -438,10 +439,10 @@ export default function Statistics() {
 
                     {/* Expanded Asset Rows */}
                     {isExpanded && Object.entries(year.investmentByAsset)
-                      .filter(([asset_id]) => asset_id !== assets.find(a => a.name === 'Cash')?.id)
+                      .filter(([asset_id]) => asset_id !== assets.find((a: Asset) => a.name === 'Cash')?.id)
                       .sort(([, a], [, b]) => b.invested - a.invested)
                       .map(([asset_id, data]) => {
-                        const asset = assets.find(a => a.id === asset_id)
+                        const asset = assets.find((a: Asset) => a.id === asset_id)
 
                         return (
                           <tr 

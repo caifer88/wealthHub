@@ -52,3 +52,6 @@ logs/
 # Environment
 .env.local
 .env.*.local
+
+# Initial database
+init.sql

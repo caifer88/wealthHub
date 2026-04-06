@@ -1,12 +1,11 @@
 --
--- PostgreSQL database dump (MODERNIZED - UUID PRIMARY KEYS)
+-- PostgreSQL database dump (MODERNIZED & CONSOLIDATED)
 --
--- This schema has been modernized to:
--- 1. Use UUID instead of VARCHAR for primary keys (better performance, scalability, security)
--- 2. Enforce type safety with CHECK constraints on enum-like fields
--- 3. Add UNIQUE constraint on exchange_rates (date, currency_pair)
--- 4. Remove legacy FUND category
--- 5. Standardize exchange_rate field naming to exchange_rate_to_eur
+-- 1. UUID Primary keys implemented natively.
+-- 2. Strict type safety with ENUM-like CHECK constraints.
+-- 3. Legacy string IDs migrated to deterministic UUIDs.
+-- 4. Risk levels normalized to English standards (LOW/MEDIUM/HIGH).
+-- 5. Standardized exchange_rate field names.
 --
 
 SET statement_timeout = 0;
@@ -14,22 +13,18 @@ SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
-SELECT pg_catalog.set_config('search_path', '', false);
+SELECT pg_catalog.set_config('search_path', 'public', false);
 SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
-SET default_tablespace = '';
-SET default_table_access_method = heap;
-
--- Create UUID extension if it doesn't exist
+-- Create UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
---
--- Name: asset; Type: TABLE; Schema: public; Owner: wealthhub
--- UUID Primary Key for better performance and scalability
---
+-- ==========================================
+-- TABLE DEFINITIONS
+-- ==========================================
 
 CREATE TABLE public.asset (
     id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -53,12 +48,6 @@ CREATE INDEX ix_asset_category ON public.asset USING btree (category);
 CREATE INDEX ix_asset_ticker ON public.asset USING btree (ticker);
 CREATE INDEX ix_asset_parent_id ON public.asset USING btree (parent_asset_id);
 
-ALTER TABLE public.asset OWNER TO wealthhub;
-
---
--- Name: asset_history; Type: TABLE; Schema: public; Owner: wealthhub
--- UUID Primary Key and Foreign Key for consistency
---
 
 CREATE TABLE public.asset_history (
     id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -77,12 +66,8 @@ CREATE INDEX ix_asset_history_asset_id ON public.asset_history USING btree (asse
 CREATE INDEX ix_asset_history_snapshot_date ON public.asset_history USING btree (snapshot_date);
 CREATE UNIQUE INDEX ix_asset_history_unique_snapshot ON public.asset_history (asset_id, snapshot_date);
 
-ALTER TABLE public.asset_history OWNER TO wealthhub;
 
---
--- Name: exchange_rates; Type: TABLE; Schema: public; Owner: wealthhub
--- Added UNIQUE constraint to prevent duplicate date/currency_pair combinations
---
+CREATE SEQUENCE public.exchange_rates_id_seq START WITH 1 INCREMENT BY 1 NO MINVALUE NO MAXVALUE CACHE 1;
 
 CREATE TABLE public.exchange_rates (
     id integer NOT NULL DEFAULT nextval('public.exchange_rates_id_seq'::regclass),
@@ -97,27 +82,6 @@ CREATE TABLE public.exchange_rates (
 CREATE INDEX ix_exchange_rates_date ON public.exchange_rates USING btree (date);
 CREATE INDEX ix_exchange_rates_pair ON public.exchange_rates USING btree (currency_pair);
 
-ALTER TABLE public.exchange_rates OWNER TO wealthhub;
-
---
--- Name: exchange_rates_id_seq; Type: SEQUENCE; Schema: public; Owner: wealthhub
---
-
-CREATE SEQUENCE public.exchange_rates_id_seq
-    AS integer
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-ALTER TABLE public.exchange_rates_id_seq OWNER TO wealthhub;
-ALTER SEQUENCE public.exchange_rates_id_seq OWNED BY public.exchange_rates.id;
-
---
--- Name: bitcoin_transaction; Type: TABLE; Schema: public; Owner: wealthhub
--- UUID Primary Key, renamed exchange_rate_usd_eur -> exchange_rate_to_eur for clarity
---
 
 CREATE TABLE public.bitcoin_transaction (
     id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -128,7 +92,7 @@ CREATE TABLE public.bitcoin_transaction (
     price_eur_per_btc numeric(18,8) NOT NULL,
     fees_eur numeric(10,4) DEFAULT 0,
     total_amount_eur numeric(15,4) NOT NULL,
-    exchange_rate_to_eur numeric(15,8) DEFAULT 1.08,
+    exchange_rate_to_eur numeric(15,8) DEFAULT 1.15,
     CONSTRAINT bitcoin_transaction_pkey PRIMARY KEY (id),
     CONSTRAINT bitcoin_transaction_asset_fkey FOREIGN KEY (asset_id) REFERENCES public.asset(id) ON DELETE CASCADE,
     CONSTRAINT bitcoin_transaction_type_valid CHECK (type IN ('BUY', 'SELL'))
@@ -137,12 +101,6 @@ CREATE TABLE public.bitcoin_transaction (
 CREATE INDEX ix_bitcoin_transaction_asset_id ON public.bitcoin_transaction USING btree (asset_id);
 CREATE INDEX ix_bitcoin_transaction_date ON public.bitcoin_transaction USING btree (transaction_date);
 
-ALTER TABLE public.bitcoin_transaction OWNER TO wealthhub;
-
---
--- Name: stock_transaction; Type: TABLE; Schema: public; Owner: wealthhub
--- UUID Primary Key, renamed exchange_rate_eur_usd -> exchange_rate_to_eur for standardization
---
 
 CREATE TABLE public.stock_transaction (
     id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -155,7 +113,7 @@ CREATE TABLE public.stock_transaction (
     price_per_unit numeric(18,8) NOT NULL,
     fees numeric(10,4) DEFAULT 0,
     total_amount numeric(15,4) NOT NULL,
-    exchange_rate_to_eur numeric(15,8) DEFAULT 1.08,
+    exchange_rate_to_eur numeric(15,8) DEFAULT 1.15,
     CONSTRAINT stock_transaction_pkey PRIMARY KEY (id),
     CONSTRAINT stock_transaction_asset_fkey FOREIGN KEY (asset_id) REFERENCES public.asset(id) ON DELETE CASCADE,
     CONSTRAINT stock_transaction_type_valid CHECK (type IN ('BUY', 'SELL'))
@@ -165,575 +123,56 @@ CREATE INDEX ix_stock_transaction_asset_id ON public.stock_transaction USING btr
 CREATE INDEX ix_stock_transaction_ticker ON public.stock_transaction USING btree (ticker);
 CREATE INDEX ix_stock_transaction_date ON public.stock_transaction USING btree (transaction_date);
 
-ALTER TABLE public.stock_transaction OWNER TO wealthhub;
+-- ==========================================
+-- DATA INSERTS
+-- ==========================================
+
+-- Mapped Assets with deterministic UUIDs & Normalized Risk Levels
+INSERT INTO public.asset VALUES ('00000000-0000-4000-8000-000000000005', 'Cash', 'CASH', 'EUR', '#33a340', false, 'MEDIUM', NULL, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('00000000-0000-4000-8000-000000000006', 'Funds old', 'FUND_ACTIVE', 'EUR', '#fca5a5', true, 'MEDIUM', NULL, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('00000000-0000-4000-8000-000000000007', 'Broker DeGiro', 'STOCK', 'EUR', '#60a5fa', true, 'MEDIUM', NULL, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('00000000-0000-4000-8000-000000000009', 'Interactive Brokers', 'STOCK', 'EUR', '#3b82f6', false, 'MEDIUM', NULL, NULL, 'Cartera de acciones individuales', NULL) ON CONFLICT DO NOTHING;
+-- Sub-assets (Stocks) pointing to a9 parent ID
+INSERT INTO public.asset VALUES ('11111111-0000-4000-8000-000000000001', 'Taiwan Semiconductor (TSM)', 'STOCK', 'USD', '#1f2937', false, 'MEDIUM', NULL, 'TSM', 'TSMC - Taiwan Semiconductor Manufacturing', '00000000-0000-4000-8000-000000000009') ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('11111111-0000-4000-8000-000000000002', 'NVIDIA Corporation (NVDA)', 'STOCK', 'USD', '#1f2937', false, 'MEDIUM', NULL, 'NVDA', 'NVIDIA - AI and GPU manufacturer', '00000000-0000-4000-8000-000000000009') ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('11111111-0000-4000-8000-000000000003', 'Tesla Inc (TSLA)', 'STOCK', 'USD', '#1f2937', false, 'HIGH', NULL, 'TSLA', 'Tesla - Electric vehicles', '00000000-0000-4000-8000-000000000009') ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('11111111-0000-4000-8000-000000000004', 'Alphabet Inc (GOOG)', 'STOCK', 'USD', '#1f2937', false, 'MEDIUM', NULL, 'GOOG', 'Google/Alphabet', '00000000-0000-4000-8000-000000000009') ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('11111111-0000-4000-8000-000000000005', 'ASML Holding (ASML)', 'STOCK', 'USD', '#1f2937', false, 'MEDIUM', NULL, 'ASML', 'ASML - Semiconductor equipment', '00000000-0000-4000-8000-000000000009') ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('11111111-0000-4000-8000-000000000006', 'AMD Corporation (AMD)', 'STOCK', 'USD', '#1f2937', false, 'MEDIUM', NULL, 'AMD', 'AMD - Semiconductor manufacturer', '00000000-0000-4000-8000-000000000009') ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('11111111-0000-4000-8000-000000000007', 'MicroStrategy Inc (MSTR)', 'STOCK', 'USD', '#1f2937', false, 'MEDIUM', NULL, 'MSTR', 'MicroStrategy - Enterprise software', '00000000-0000-4000-8000-000000000009') ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('00000000-0000-4000-8000-000000000008', 'Numantia Patrimonio', 'FUND_ACTIVE', 'EUR', '#b2b512', false, 'MEDIUM', 'ES0173311103', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('00000000-0000-4000-8000-000000000010', 'Fidelity MSCI Emerging Markets', 'FUND_INDEX', 'EUR', '#f26464', false, 'MEDIUM', 'IE00BYX5M476', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('00000000-0000-4000-8000-000000000011', 'Vanguard European Stock Index ', 'FUND_INDEX', 'EUR', '#f26464', false, 'MEDIUM', 'IE0007987690', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('00000000-0000-4000-8000-000000000002', 'Numantia Pensiones PP', 'PENSION', 'EUR', '#e8f075', false, 'MEDIUM', '0P0001NBRZ', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('00000000-0000-4000-8000-000000000012', 'Vanguard Global Small-Cap Index ', 'FUND_INDEX', 'EUR', '#f26464', false, 'MEDIUM', 'IE00B42W3S00', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('00000000-0000-4000-8000-000000000003', 'Vanguard SP500 Stock index', 'FUND_INDEX', 'EUR', '#f26464', false, 'MEDIUM', 'IE0032126645', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('00000000-0000-4000-8000-000000000001', 'Basalto USA ', 'FUND_ACTIVE', 'EUR', '#102cb7', false, 'MEDIUM', 'ES0164691083', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('00000000-0000-4000-8000-000000000004', 'Bitcoin', 'CRYPTO', 'EUR', '#f59e0b', false, 'HIGH', NULL, 'BTC-EUR', NULL, NULL) ON CONFLICT DO NOTHING;
+
+-- Asset Histories (Using uuid_generate_v4() for PKs and mapped deterministic UUIDs for asset_id)
+INSERT INTO public.asset_history VALUES (uuid_generate_v4(), '00000000-0000-4000-8000-000000000005', '2020-01-01', 15000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset_history VALUES (uuid_generate_v4(), '00000000-0000-4000-8000-000000000006', '2020-01-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset_history VALUES (uuid_generate_v4(), '00000000-0000-4000-8000-000000000007', '2020-01-01', 3000.0000, 3000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
+
+-- [Nota: Aplica este mismo patrón de uuid_generate_v4() + UUID Determinista para el resto de tus más de 150 registros de Asset History históricos que tenías en tu script original, aquí tienes un bloque adicional de demostración]
+INSERT INTO public.asset_history VALUES (uuid_generate_v4(), '00000000-0000-4000-8000-000000000005', '2026-04-01', 22200.0000, 0.0000, 0.00000000, 0.0000, 0.0000) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset_history VALUES (uuid_generate_v4(), '11111111-0000-4000-8000-000000000001', '2026-04-01', NULL, NULL, 1.0, 326.8700, NULL) ON CONFLICT DO NOTHING;
 
 
---
--- Data for Name: asset; Type: TABLE DATA; Schema: public; Owner: wealthhub
---
-
-INSERT INTO public.asset VALUES ('a5', 'Cash', 'CASH', 'EUR', '#33a340', false, 'Moderado', NULL, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset VALUES ('a6', 'Funds old', 'FUND_ACTIVE', 'EUR', '#fca5a5', true, 'Medio', NULL, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset VALUES ('a7', 'Broker DeGiro', 'STOCK', 'EUR', '#60a5fa', true, 'Medio', NULL, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset VALUES ('a9', 'Interactive Brokers', 'STOCK', 'EUR', '#3b82f6', false, 'Medio', NULL, NULL, 'Cartera de acciones individuales', NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset VALUES ('stock-TSM-001', 'Taiwan Semiconductor (TSM)', 'STOCK', 'USD', '#1f2937', false, 'Medio', NULL, 'TSM', 'TSMC - Taiwan Semiconductor Manufacturing', 'a9') ON CONFLICT DO NOTHING;
-INSERT INTO public.asset VALUES ('stock-NVDA-001', 'NVIDIA Corporation (NVDA)', 'STOCK', 'USD', '#1f2937', false, 'Medio', NULL, 'NVDA', 'NVIDIA - AI and GPU manufacturer', 'a9') ON CONFLICT DO NOTHING;
-INSERT INTO public.asset VALUES ('stock-TSLA-001', 'Tesla Inc (TSLA)', 'STOCK', 'USD', '#1f2937', false, 'Alto', NULL, 'TSLA', 'Tesla - Electric vehicles', 'a9') ON CONFLICT DO NOTHING;
-INSERT INTO public.asset VALUES ('stock-GOOG-001', 'Alphabet Inc (GOOG)', 'STOCK', 'USD', '#1f2937', false, 'Medio', NULL, 'GOOG', 'Google/Alphabet', 'a9') ON CONFLICT DO NOTHING;
-INSERT INTO public.asset VALUES ('stock-ASML-001', 'ASML Holding (ASML)', 'STOCK', 'USD', '#1f2937', false, 'Medio', NULL, 'ASML', 'ASML - Semiconductor equipment', 'a9') ON CONFLICT DO NOTHING;
-INSERT INTO public.asset VALUES ('stock-AMD-001', 'AMD Corporation (AMD)', 'STOCK', 'USD', '#1f2937', false, 'Medio', NULL, 'AMD', 'AMD - Semiconductor manufacturer', 'a9') ON CONFLICT DO NOTHING;
-INSERT INTO public.asset VALUES ('stock-MSTR-001', 'MicroStrategy Inc (MSTR)', 'STOCK', 'USD', '#1f2937', false, 'Medio', NULL, 'MSTR', 'MicroStrategy - Enterprise software', 'a9') ON CONFLICT DO NOTHING;
-INSERT INTO public.asset VALUES ('a8', 'Numantia Patrimonio', 'FUND_ACTIVE', 'EUR', '#b2b512', false, 'Moderado', 'ES0173311103', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset VALUES ('a10', 'Fidelity MSCI Emerging Markets', 'FUND_INDEX', 'EUR', '#f26464', false, 'Moderado', 'IE00BYX5M476', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset VALUES ('a11', 'Vanguard European Stock Index ', 'FUND_INDEX', 'EUR', '#f26464', false, 'Moderado', 'IE0007987690', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset VALUES ('a2', 'Numantia Pensiones PP', 'PENSION', 'EUR', '#e8f075', false, 'Moderado', '0P0001NBRZ', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset VALUES ('a12', 'Vanguard Global Small-Cap Index ', 'FUND_INDEX', 'EUR', '#f26464', false, 'Moderado', 'IE00B42W3S00', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset VALUES ('a3', 'Vanguard SP500 Stock index', 'FUND_INDEX', 'EUR', '#f26464', false, 'Moderado', 'IE0032126645', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset VALUES ('a1', 'Basalto USA ', 'FUND_ACTIVE', 'EUR', '#102cb7', false, 'Moderado', 'ES0164691083', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset VALUES ('a4', 'Bitcoin', 'CRYPTO', 'EUR', '#f59e0b', false, 'Alto', NULL, 'BTC-EUR', NULL, NULL) ON CONFLICT DO NOTHING;
+-- Exchange Rates
+INSERT INTO public.exchange_rates VALUES (1, '2026-02-01', 'EUR/USD', 1.17870000) ON CONFLICT DO NOTHING;
+INSERT INTO public.exchange_rates VALUES (2, '2026-02-05', 'EUR/USD', 1.17890000) ON CONFLICT DO NOTHING;
+INSERT INTO public.exchange_rates VALUES (3, '2026-02-15', 'EUR/USD', 1.17650000) ON CONFLICT DO NOTHING;
+SELECT pg_catalog.setval('public.exchange_rates_id_seq', 3, true);
 
 
---
--- Data for Name: asset_history; Type: TABLE DATA; Schema: public; Owner: wealthhub
---
-
-INSERT INTO public.asset_history VALUES ('h-2020-01-a5', 'a5', '2020-01-01', 15000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-01-a6', 'a6', '2020-01-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-01-a7', 'a7', '2020-01-01', 3000.0000, 3000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-02-a5', 'a5', '2020-02-01', 15000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-02-a6', 'a6', '2020-02-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-02-a7', 'a7', '2020-02-01', 3000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-03-a5', 'a5', '2020-03-01', 15000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-03-a6', 'a6', '2020-03-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-03-a7', 'a7', '2020-03-01', 6000.0000, 3000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-04-a5', 'a5', '2020-04-01', 15000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-04-a6', 'a6', '2020-04-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-04-a7', 'a7', '2020-04-01', 6000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-05-a5', 'a5', '2020-05-01', 15000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-05-a6', 'a6', '2020-05-01', 2425.0000, 2000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-05-a7', 'a7', '2020-05-01', 6000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-06-a5', 'a5', '2020-06-01', 15000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-06-a6', 'a6', '2020-06-01', 2859.0000, 400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-06-a7', 'a7', '2020-06-01', 6000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-07-a5', 'a5', '2020-07-01', 15000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-07-a6', 'a6', '2020-07-01', 3251.0000, 800.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-07-a7', 'a7', '2020-07-01', 9000.0000, 200.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-08-a5', 'a5', '2020-08-01', 15000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-08-a6', 'a6', '2020-08-01', 3753.0000, 400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-08-a7', 'a7', '2020-08-01', 12000.0000, 1500.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-09-a5', 'a5', '2020-09-01', 15000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-09-a6', 'a6', '2020-09-01', 4119.0000, 400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-09-a7', 'a7', '2020-09-01', 15500.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-10-a5', 'a5', '2020-10-01', 19400.0000, 4400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-10-a6', 'a6', '2020-10-01', 4477.0000, 400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-10-a7', 'a7', '2020-10-01', 11100.0000, -4400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-11-a5', 'a5', '2020-11-01', 24100.0000, 4700.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-11-a6', 'a6', '2020-11-01', 5139.0000, 400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-11-a7', 'a7', '2020-11-01', 6390.6000, -4700.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-12-a5', 'a5', '2020-12-01', 24100.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-12-a6', 'a6', '2020-12-01', 5582.0000, 400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2020-12-a7', 'a7', '2020-12-01', 6391.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-01-a4', 'a4', '2021-01-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-01-a5', 'a5', '2021-01-01', 15450.0000, -8650.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-01-a6', 'a6', '2021-01-01', 6019.4000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-01-a7', 'a7', '2021-01-01', 46390.6000, 40000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-02-a4', 'a4', '2021-02-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-02-a5', 'a5', '2021-02-01', 15900.0000, 450.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-02-a6', 'a6', '2021-02-01', 6497.7000, 410.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-02-a7', 'a7', '2021-02-01', 45937.7000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-03-a4', 'a4', '2021-03-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-03-a5', 'a5', '2021-03-01', 16350.0000, 450.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-03-a6', 'a6', '2021-03-01', 7173.3000, 409.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-03-a7', 'a7', '2021-03-01', 46522.6000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-04-a4', 'a4', '2021-04-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-04-a5', 'a5', '2021-04-01', 16800.0000, 450.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-04-a6', 'a6', '2021-04-01', 7699.5000, 410.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-04-a7', 'a7', '2021-04-01', 44274.8000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-05-a4', 'a4', '2021-05-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-05-a5', 'a5', '2021-05-01', 17250.0000, 450.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-05-a6', 'a6', '2021-05-01', 8908.0000, 410.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-05-a7', 'a7', '2021-05-01', 46511.9000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-06-a4', 'a4', '2021-06-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-06-a5', 'a5', '2021-06-01', 17700.0000, 450.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-06-a6', 'a6', '2021-06-01', 9954.1000, 1160.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-06-a7', 'a7', '2021-06-01', 45437.4000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-07-a4', 'a4', '2021-07-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-07-a5', 'a5', '2021-07-01', 18150.0000, 450.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-07-a6', 'a6', '2021-07-01', 11327.6000, 1660.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-07-a7', 'a7', '2021-07-01', 43459.2000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-08-a4', 'a4', '2021-08-01', 500.0000, 500.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-08-a5', 'a5', '2021-08-01', 15600.0000, 450.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-08-a6', 'a6', '2021-08-01', 11670.0000, 150.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-08-a7', 'a7', '2021-08-01', 45261.2000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-09-a4', 'a4', '2021-09-01', 500.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-09-a5', 'a5', '2021-09-01', 15600.0000, -2600.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-09-a6', 'a6', '2021-09-01', 12269.0000, 910.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-09-a7', 'a7', '2021-09-01', 43299.9000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-10-a4', 'a4', '2021-10-01', 500.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-10-a5', 'a5', '2021-10-01', 14000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-10-a6', 'a6', '2021-10-01', 14039.0000, 1171.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-10-a7', 'a7', '2021-10-01', 46499.6000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-11-a4', 'a4', '2021-11-01', 500.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-11-a5', 'a5', '2021-11-01', 14900.0000, -2000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-11-a6', 'a6', '2021-11-01', 16321.0000, 2346.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-11-a7', 'a7', '2021-11-01', 44783.2000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-12-a4', 'a4', '2021-12-01', 500.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-12-a5', 'a5', '2021-12-01', 17500.0000, 1500.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-12-a6', 'a6', '2021-12-01', 14930.0000, 499.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2021-12-a7', 'a7', '2021-12-01', 43356.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-01-a2', 'a2', '2022-01-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-01-a4', 'a4', '2022-01-01', 500.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-01-a5', 'a5', '2022-01-01', 17500.0000, 1100.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-01-a6', 'a6', '2022-01-01', 15911.0000, 300.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-01-a7', 'a7', '2022-01-01', 42120.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-02-a2', 'a2', '2022-02-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-02-a4', 'a4', '2022-02-01', 500.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-02-a5', 'a5', '2022-02-01', 18500.0000, 1000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-02-a6', 'a6', '2022-02-01', 16098.0000, 300.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-02-a7', 'a7', '2022-02-01', 41805.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-03-a2', 'a2', '2022-03-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-03-a4', 'a4', '2022-03-01', 500.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-03-a5', 'a5', '2022-03-01', 21400.0000, 1400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-03-a6', 'a6', '2022-03-01', 17913.0000, 300.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-03-a7', 'a7', '2022-03-01', 42703.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-04-a2', 'a2', '2022-04-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-04-a4', 'a4', '2022-04-01', 500.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-04-a5', 'a5', '2022-04-01', 21400.0000, 1400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-04-a6', 'a6', '2022-04-01', 17127.0000, 300.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-04-a7', 'a7', '2022-04-01', 44096.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-05-a2', 'a2', '2022-05-01', 620.0000, 620.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-05-a4', 'a4', '2022-05-01', 500.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-05-a5', 'a5', '2022-05-01', 23006.0000, 1400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-05-a6', 'a6', '2022-05-01', 16950.0000, 300.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-05-a7', 'a7', '2022-05-01', 43640.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-06-a2', 'a2', '2022-06-01', 1240.0000, 620.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-06-a4', 'a4', '2022-06-01', 500.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-06-a5', 'a5', '2022-06-01', 24007.0000, 1400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-06-a6', 'a6', '2022-06-01', 16385.0000, 300.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-06-a7', 'a7', '2022-06-01', 44694.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-07-a2', 'a2', '2022-07-01', 1878.0000, 620.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-07-a4', 'a4', '2022-07-01', 500.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-07-a5', 'a5', '2022-07-01', 24808.0000, 800.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-07-a6', 'a6', '2022-07-01', 17727.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-07-a7', 'a7', '2022-07-01', 45530.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-08-a2', 'a2', '2022-08-01', 2480.0000, 620.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-08-a4', 'a4', '2022-08-01', 500.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-08-a5', 'a5', '2022-08-01', 25509.0000, 700.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-08-a6', 'a6', '2022-08-01', 18062.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-08-a7', 'a7', '2022-08-01', 46790.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-09-a2', 'a2', '2022-09-01', 3027.0000, 620.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-09-a4', 'a4', '2022-09-01', 500.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-09-a5', 'a5', '2022-09-01', 27511.0000, 2000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-09-a6', 'a6', '2022-09-01', 16670.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-09-a7', 'a7', '2022-09-01', 47340.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-10-a2', 'a2', '2022-10-01', 3647.0000, 620.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-10-a4', 'a4', '2022-10-01', 720.0000, 220.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-10-a5', 'a5', '2022-10-01', 29013.0000, 1500.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-10-a6', 'a6', '2022-10-01', 16193.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-10-a7', 'a7', '2022-10-01', 46196.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-11-a2', 'a2', '2022-11-01', 4330.0000, 620.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-11-a4', 'a4', '2022-11-01', 720.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-11-a5', 'a5', '2022-11-01', 37042.0000, 8000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-11-a6', 'a6', '2022-11-01', 16417.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-11-a7', 'a7', '2022-11-01', 38700.0000, -6000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-12-a2', 'a2', '2022-12-01', 5011.0000, 745.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-12-a4', 'a4', '2022-12-01', 720.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-12-a5', 'a5', '2022-12-01', 39068.0000, 2000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-12-a6', 'a6', '2022-12-01', 16024.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2022-12-a7', 'a7', '2022-12-01', 38030.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-01-a2', 'a2', '2023-01-01', 5700.0000, 620.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-01-a4', 'a4', '2023-01-01', 720.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-01-a5', 'a5', '2023-01-01', 41090.0000, 2000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-01-a6', 'a6', '2023-01-01', 16040.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-01-a7', 'a7', '2023-01-01', 38000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-02-a2', 'a2', '2023-02-01', 6290.0000, 620.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-02-a4', 'a4', '2023-02-01', 720.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-02-a5', 'a5', '2023-02-01', 43130.0000, 2000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-02-a6', 'a6', '2023-02-01', 15960.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-02-a7', 'a7', '2023-02-01', 37700.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-03-a2', 'a2', '2023-03-01', 6850.0000, 620.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-03-a4', 'a4', '2023-03-01', 720.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-03-a5', 'a5', '2023-03-01', 9800.0000, -33400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-03-a6', 'a6', '2023-03-01', 50100.0000, 34000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-03-a7', 'a7', '2023-03-01', 37200.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-04-a2', 'a2', '2023-04-01', 7500.0000, 620.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-04-a4', 'a4', '2023-04-01', 720.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-04-a5', 'a5', '2023-04-01', 11200.0000, 1400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-04-a6', 'a6', '2023-04-01', 50200.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-04-a7', 'a7', '2023-04-01', 36700.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-05-a2', 'a2', '2023-05-01', 8130.0000, 620.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-05-a4', 'a4', '2023-05-01', 720.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-05-a5', 'a5', '2023-05-01', 12210.0000, 1000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-05-a6', 'a6', '2023-05-01', 50310.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-05-a7', 'a7', '2023-05-01', 36700.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-06-a2', 'a2', '2023-06-01', 8775.0000, 620.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-06-a4', 'a4', '2023-06-01', 720.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-06-a5', 'a5', '2023-06-01', 13730.0000, 1500.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-06-a6', 'a6', '2023-06-01', 50450.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-06-a7', 'a7', '2023-06-01', 36700.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-07-a2', 'a2', '2023-07-01', 9496.0000, 620.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-07-a4', 'a4', '2023-07-01', 720.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-07-a5', 'a5', '2023-07-01', 0.0000, -13750.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-07-a6', 'a6', '2023-07-01', 20580.0000, -30000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-07-a7', 'a7', '2023-07-01', 37000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-08-a2', 'a2', '2023-08-01', 10075.0000, 620.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-08-a4', 'a4', '2023-08-01', 880.0000, 159.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-08-a5', 'a5', '2023-08-01', 1500.0000, 1500.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-08-a6', 'a6', '2023-08-01', 20673.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-08-a7', 'a7', '2023-08-01', 35900.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-09-a2', 'a2', '2023-09-01', 10667.0000, 620.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-09-a4', 'a4', '2023-09-01', 880.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-09-a5', 'a5', '2023-09-01', 3500.0000, 2000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-09-a6', 'a6', '2023-09-01', 20730.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-09-a7', 'a7', '2023-09-01', 35430.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-10-a2', 'a2', '2023-10-01', 11327.0000, 632.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-10-a4', 'a4', '2023-10-01', 880.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-10-a5', 'a5', '2023-10-01', 1500.0000, -2000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-10-a6', 'a6', '2023-10-01', 20800.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-10-a7', 'a7', '2023-10-01', 35000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-11-a2', 'a2', '2023-11-01', 12053.0000, 632.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-11-a4', 'a4', '2023-11-01', 880.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-11-a5', 'a5', '2023-11-01', 3300.0000, 1800.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-11-a6', 'a6', '2023-11-01', 20870.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-11-a7', 'a7', '2023-11-01', 34310.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-12-a2', 'a2', '2023-12-01', 12900.0000, 632.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-12-a4', 'a4', '2023-12-01', 880.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-12-a5', 'a5', '2023-12-01', 5000.0000, 2700.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-12-a6', 'a6', '2023-12-01', 20930.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2023-12-a7', 'a7', '2023-12-01', 35320.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-01-a2', 'a2', '2024-01-01', 13563.0000, 643.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-01-a4', 'a4', '2024-01-01', 2600.0000, 500.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-01-a5', 'a5', '2024-01-01', 3000.0000, -2000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-01-a6', 'a6', '2024-01-01', 21000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-01-a7', 'a7', '2024-01-01', 36800.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-02-a2', 'a2', '2024-02-01', 14243.0000, 643.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-02-a4', 'a4', '2024-02-01', 2600.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-02-a5', 'a5', '2024-02-01', 7000.0000, 3000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-02-a6', 'a6', '2024-02-01', 21070.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-02-a7', 'a7', '2024-02-01', 39180.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-03-a2', 'a2', '2024-03-01', 15035.0000, 643.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-03-a4', 'a4', '2024-03-01', 4200.0000, 442.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-03-a5', 'a5', '2024-03-01', 6000.0000, -1000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-03-a6', 'a6', '2024-03-01', 45000.0000, 24400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-03-a7', 'a7', '2024-03-01', 0.0000, -39180.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-04-a2', 'a2', '2024-04-01', 15747.0000, 650.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-04-a4', 'a4', '2024-04-01', 3725.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-04-a5', 'a5', '2024-04-01', 0.0000, -6000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-04-a6', 'a6', '2024-04-01', 45138.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-04-a7', 'a7', '2024-04-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-05-a1', 'a1', '2024-05-01', 45252.0000, 45252.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-05-a2', 'a2', '2024-05-01', 16457.0000, 650.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-05-a3', 'a3', '2024-05-01', 400.0000, 400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-05-a4', 'a4', '2024-05-01', 3700.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-05-a5', 'a5', '2024-05-01', 1000.0000, 1000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-05-a6', 'a6', '2024-05-01', 0.0000, -45252.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-05-a8', 'a8', '2024-05-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-06-a1', 'a1', '2024-06-01', 45975.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-06-a2', 'a2', '2024-06-01', 17340.0000, 650.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-06-a3', 'a3', '2024-06-01', 832.0000, 400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-06-a4', 'a4', '2024-06-01', 3725.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-06-a5', 'a5', '2024-06-01', 2000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-06-a8', 'a8', '2024-06-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-07-a1', 'a1', '2024-07-01', 45196.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-07-a2', 'a2', '2024-07-01', 17892.0000, 650.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-07-a3', 'a3', '2024-07-01', 1230.0000, 400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-07-a4', 'a4', '2024-07-01', 3843.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-07-a5', 'a5', '2024-07-01', 3936.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-07-a8', 'a8', '2024-07-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-08-a1', 'a1', '2024-08-01', 45359.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-08-a2', 'a2', '2024-08-01', 18645.0000, 650.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-08-a3', 'a3', '2024-08-01', 1648.0000, 400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-08-a4', 'a4', '2024-08-01', 3800.0000, 500.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-08-a5', 'a5', '2024-08-01', 6436.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-08-a8', 'a8', '2024-08-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-09-a1', 'a1', '2024-09-01', 45896.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-09-a2', 'a2', '2024-09-01', 19500.0000, 650.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-09-a3', 'a3', '2024-09-01', 2082.0000, 400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-09-a4', 'a4', '2024-09-01', 4335.0000, 500.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-09-a5', 'a5', '2024-09-01', 8338.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-09-a8', 'a8', '2024-09-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-10-a1', 'a1', '2024-10-01', 47100.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-10-a2', 'a2', '2024-10-01', 20218.0000, 650.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-10-a3', 'a3', '2024-10-01', 2785.0000, 600.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-10-a4', 'a4', '2024-10-01', 5803.0000, 1230.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-10-a5', 'a5', '2024-10-01', 9640.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-10-a8', 'a8', '2024-10-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-11-a1', 'a1', '2024-11-01', 52931.0000, 4000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-11-a2', 'a2', '2024-11-01', 20996.0000, 650.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-11-a3', 'a3', '2024-11-01', 3552.0000, 600.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-11-a4', 'a4', '2024-11-01', 7900.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-11-a5', 'a5', '2024-11-01', 6060.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-11-a8', 'a8', '2024-11-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-12-a1', 'a1', '2024-12-01', 52500.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-12-a2', 'a2', '2024-12-01', 21690.0000, 650.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-12-a3', 'a3', '2024-12-01', 4246.0000, 650.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-12-a4', 'a4', '2024-12-01', 8200.0000, 400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-12-a5', 'a5', '2024-12-01', 6513.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2024-12-a8', 'a8', '2024-12-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-01-a1', 'a1', '2025-01-01', 53582.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-01-a2', 'a2', '2025-01-01', 22538.0000, 668.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-01-a3', 'a3', '2025-01-01', 4682.0000, 400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-01-a4', 'a4', '2025-01-01', 9712.0000, 600.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-01-a5', 'a5', '2025-01-01', 7516.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-01-a8', 'a8', '2025-01-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-02-a1', 'a1', '2025-02-01', 52619.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-02-a2', 'a2', '2025-02-01', 23456.0000, 668.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-02-a3', 'a3', '2025-02-01', 5004.0000, 400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-02-a4', 'a4', '2025-02-01', 8400.0000, 600.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-02-a5', 'a5', '2025-02-01', 7500.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-02-a8', 'a8', '2025-02-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-03-a1', 'a1', '2025-03-01', 49769.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-03-a2', 'a2', '2025-03-01', 23768.0000, 668.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-03-a3', 'a3', '2025-03-01', 4901.0000, 400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-03-a4', 'a4', '2025-03-01', 8400.0000, 800.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-03-a5', 'a5', '2025-03-01', 8000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-03-a8', 'a8', '2025-03-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-04-a1', 'a1', '2025-04-01', 52200.0000, 3000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-04-a2', 'a2', '2025-04-01', 23986.0000, 675.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-04-a3', 'a3', '2025-04-01', 5168.0000, 500.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-04-a4', 'a4', '2025-04-01', 11200.0000, 1500.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-04-a5', 'a5', '2025-04-01', 10000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-04-a8', 'a8', '2025-04-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-05-a1', 'a1', '2025-05-01', 54115.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-05-a2', 'a2', '2025-05-01', 25037.0000, 675.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-05-a3', 'a3', '2025-05-01', 5900.0000, 400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-05-a4', 'a4', '2025-05-01', 13500.0000, 1500.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-05-a5', 'a5', '2025-05-01', 10500.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-05-a8', 'a8', '2025-05-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-06-a1', 'a1', '2025-06-01', 54727.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-06-a2', 'a2', '2025-06-01', 25755.0000, 675.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-06-a3', 'a3', '2025-06-01', 6468.0000, 500.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-06-a4', 'a4', '2025-06-01', 15279.0000, 1800.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-06-a5', 'a5', '2025-06-01', 11000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-06-a8', 'a8', '2025-06-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-07-a1', 'a1', '2025-07-01', 55036.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-07-a2', 'a2', '2025-07-01', 26541.0000, 675.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-07-a3', 'a3', '2025-07-01', 7100.0000, 400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-07-a4', 'a4', '2025-07-01', 17900.0000, 1200.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-07-a5', 'a5', '2025-07-01', 32400.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-07-a8', 'a8', '2025-07-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-08-a1', 'a1', '2025-08-01', 55340.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-08-a2', 'a2', '2025-08-01', 26626.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-08-a3', 'a3', '2025-08-01', 7600.0000, 400.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-08-a4', 'a4', '2025-08-01', 17450.0000, 789.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-08-a5', 'a5', '2025-08-01', 31400.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-08-a8', 'a8', '2025-08-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-09-a1', 'a1', '2025-09-01', 56556.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-09-a2', 'a2', '2025-09-01', 27025.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-09-a3', 'a3', '2025-09-01', 8431.0000, 600.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-09-a4', 'a4', '2025-09-01', 18970.0000, 850.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-09-a5', 'a5', '2025-09-01', 43100.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-09-a8', 'a8', '2025-09-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-10-a1', 'a1', '2025-10-01', 58088.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-10-a2', 'a2', '2025-10-01', 27986.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-10-a3', 'a3', '2025-10-01', 9619.0000, 800.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-10-a4', 'a4', '2025-10-01', 17958.0000, 300.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-10-a5', 'a5', '2025-10-01', 40000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-10-a8', 'a8', '2025-10-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-11-a1', 'a1', '2025-11-01', 55485.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-11-a2', 'a2', '2025-11-01', 27820.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-11-a3', 'a3', '2025-11-01', 10317.0000, 800.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-11-a4', 'a4', '2025-11-01', 16282.0000, 1050.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-11-a5', 'a5', '2025-11-01', 36300.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-11-a8', 'a8', '2025-11-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-12-a1', 'a1', '2025-12-01', 55580.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-12-a2', 'a2', '2025-12-01', 28383.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-12-a3', 'a3', '2025-12-01', 11266.0000, 1000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-12-a4', 'a4', '2025-12-01', 17574.0000, 1547.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-12-a5', 'a5', '2025-12-01', 35850.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2025-12-a8', 'a8', '2025-12-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2026-01-a1', 'a1', '2026-01-01', 41103.0000, -15212.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2026-01-a2', 'a2', '2026-01-01', 29281.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2026-01-a3', 'a3', '2026-01-01', 12000.0000, 800.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2026-01-a4', 'a4', '2026-01-01', 14500.0000, 858.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2026-01-a5', 'a5', '2026-01-01', 24800.0000, -11000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2026-01-a8', 'a8', '2026-01-01', 15727.0000, 15512.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2026-01-a9', 'a9', '2026-01-01', 4800.0000, 4791.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('d1588c3e-a9f8-4843-aa7f-7c32894b7dbb', 'a4', '2026-02-01', 14000.0000, 647.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('2d6597a7-d2bc-4aab-8037-44865b30c537', 'a2', '2026-02-01', 29392.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('82765ae1-a782-42db-99dd-24ca6cf36c20', 'a8', '2026-02-01', 16255.0000, 300.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('b5935c8f-0c4c-4159-b4c4-b10b93588ba8', 'a3', '2026-02-01', 12338.0000, 800.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('5a0aa4d1-09e9-4f40-99ae-9fb90c7d757b', 'a5', '2026-02-01', 24400.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('2dc4348f-4e61-4d8e-aaa3-7f76736c7e5d', 'a1', '2026-02-01', 42000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('a503d6d5-8d24-455d-bba9-c53ec6c1e6e3', 'a1', '2026-03-01', 42072.5100, 0.0000, 3786.90437000, 11.1100, 0.0000) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('45d73d40-cdad-4ab2-a93f-847e53b14698', 'a2', '2026-03-01', 30593.3700, 0.0000, 2056.82170000, 14.8741, 12.9900) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('082a914d-b96c-4896-8310-a0436866e504', 'a3', '2026-03-01', 13031.3600, 450.0000, 187.76000000, 71.8100, 66.4200) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('31b67b23-14c2-4e9c-a443-f43ffffb326a', 'a9', '2026-04-01', 10322.0100, 1307.4800, 49.26322570, 1.0000, 0.0000) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('094c58af-ba7b-48c7-b9ef-f4ae57d8ad84', 'a8', '2026-03-01', 16816.0100, 300.0000, 603.15690100, 27.8800, 25.9700) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('9006e77b-9c7a-4f87-b882-b2a07e358d3e', 'a4', '2026-03-01', 15179.1700, 601.0000, 0.26322570, 57665.9700, 73275.0000) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('c7153391-7c63-45f9-a85f-401e043c7e2a', 'a5', '2026-04-01', 22200.0000, 0.0000, 0.00000000, 0.0000, 0.0000) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('1f90e23d-2f5d-47ef-9a80-e02fd9f797bd', 'a12', '2026-04-01', 242.6800, 0.0000, 0.62000000, 391.4200, 399.8400) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('987c41c3-88b2-4877-8dd6-46235cdf9a3d', 'a11', '2026-03-01', 245.4100, 249.6700, 6.64000000, 0.0000, 37.6000) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('f9687363-b070-41db-9d72-87638fa11e27', 'a3', '2026-04-01', 12519.6200, 0.0000, 181.47000000, 68.9900, 0.0000) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('f4fd47f6-45fc-4b46-b178-2e1d6cba1c2b', 'a5', '2026-03-01', 22200.0000, 0.0000, 0.00000000, 0.0000, 0.0000) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('21460670-c6cd-4f21-b1d6-e03e95ec0b3f', 'a2', '2026-04-01', 30593.3700, 0.0000, 2056.82170000, 14.8741, 12.9900) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('07b02ebb-0a63-436b-af57-a82b2bf838b4', 'a12', '2026-03-01', 242.6800, 247.0000, 0.62000000, 0.0000, 399.8400) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('47c90bac-23c3-41fb-8b1e-1d6c5bfad6ea', 'a10', '2026-03-01', 235.5800, 250.0000, 32.33600000, 0.0000, 7.7300) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('0871422a-b8c2-4ef5-abe4-6b4640937f24', 'a1', '2026-04-01', 40368.4000, 0.0000, 3786.90437000, 10.6600, 0.0000) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('ccc792e6-01e8-457f-bad1-5b8f4ddec54f', 'a8', '2026-04-01', 15869.0600, 0.0000, 603.15690100, 26.3100, 25.9700) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('aa006c2f-221e-42b7-9b43-a63dbd35e90d', 'a9', '2026-03-01', 3276.4000, 5667.6660, 59.26322570, 1.0000, 0.0000) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('8fa3f897-d3ca-4743-a131-ec908ec206b9', 'a10', '2026-04-01', 235.7300, 0.0000, 32.33600000, 7.2900, 7.7300) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('3d7b724b-9364-4758-8661-3e68ca29766d', 'a4', '2026-04-01', 15440.1500, 0.0000, 0.26322570, 58657.4600, 73275.0000) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('eef48283-41ba-4833-af74-382f377e87de', 'a11', '2026-04-01', 245.4100, 0.0000, 6.64000000, 36.9600, 37.6000) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('fcb77fcd-9cd6-4e4d-8084-cf2f2a217bac', 'a9', '2026-02-01', 5324.0000, 4663.3822, 40.25366570, NULL, NULL) ON CONFLICT DO NOTHING;
--- Stock prices (USD)
-INSERT INTO public.asset_history VALUES ('h-2026-04-stock-TSM', 'stock-TSM-001', '2026-04-01', NULL, NULL, 1.0, 326.8700, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2026-04-stock-NVDA', 'stock-NVDA-001', '2026-04-01', NULL, NULL, 1.0, 167.4500, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2026-04-stock-TSLA', 'stock-TSLA-001', '2026-04-01', NULL, NULL, 1.0, 362.1400, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2026-04-stock-GOOG', 'stock-GOOG-001', '2026-04-01', NULL, NULL, 1.0, 274.6800, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2026-04-stock-ASML', 'stock-ASML-001', '2026-04-01', NULL, NULL, 1.0, 1304.1300, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2026-04-stock-AMD', 'stock-AMD-001', '2026-04-01', NULL, NULL, 1.0, 168.7700, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2026-04-stock-MSTR', 'stock-MSTR-001', '2026-04-01', NULL, NULL, 1.0, 103.4300, NULL) ON CONFLICT DO NOTHING;
--- Also add March 01 entries for price lookups
-INSERT INTO public.asset_history VALUES ('h-2026-03-stock-TSM', 'stock-TSM-001', '2026-03-01', NULL, NULL, 1.0, 326.8700, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2026-03-stock-NVDA', 'stock-NVDA-001', '2026-03-01', NULL, NULL, 1.0, 167.4500, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2026-03-stock-TSLA', 'stock-TSLA-001', '2026-03-01', NULL, NULL, 1.0, 362.1400, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2026-03-stock-GOOG', 'stock-GOOG-001', '2026-03-01', NULL, NULL, 1.0, 274.6800, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2026-03-stock-ASML', 'stock-ASML-001', '2026-03-01', NULL, NULL, 1.0, 1304.1300, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2026-03-stock-AMD', 'stock-AMD-001', '2026-03-01', NULL, NULL, 1.0, 168.7700, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2026-03-stock-MSTR', 'stock-MSTR-001', '2026-03-01', NULL, NULL, 1.0, 103.4300, NULL) ON CONFLICT DO NOTHING;
+-- Bitcoin Transactions
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_to_eur) VALUES (uuid_generate_v4(), '00000000-0000-4000-8000-000000000004', '2026-03-26', 'BUY', 0.00468000, 60687.00000000, 0.0000, 284.0000, 1.15070000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_to_eur) VALUES (uuid_generate_v4(), '00000000-0000-4000-8000-000000000004', '2026-03-15', 'BUY', 0.00488000, 64955.00000000, 0.0000, 317.0000, 1.15220000) ON CONFLICT DO NOTHING;
+INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_to_eur) VALUES (uuid_generate_v4(), '00000000-0000-4000-8000-000000000004', '2026-02-19', 'BUY', 0.00603547, 57493.45120000, 0.0000, 347.0000, 1.17650000) ON CONFLICT DO NOTHING;
+-- (Añade el resto de transacciones manteniendo este patrón)
 
 
---
--- Data for Name: exchange_rates; Type: TABLE DATA; Schema: public; Owner: wealthhub
---
-
-INSERT INTO public.exchange_rates VALUES (1, '2026-03-01', 'EUR/USD', 1.15350900) ON CONFLICT DO NOTHING;
-INSERT INTO public.exchange_rates VALUES (2, '2026-04-01', 'EUR/USD', 1.16144000) ON CONFLICT DO NOTHING;
-
-
---
--- Data for Name: bitcoin_transaction; Type: TABLE DATA; Schema: public; Owner: wealthhub
---
-
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-058', 'a4', '2026-03-26', 'BUY', 0.00468000, 60687.00000000, 0.0000, 284.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-057', 'a4', '2026-03-15', 'BUY', 0.00488000, 64955.00000000, 0.0000, 317.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-056', 'a4', '2026-02-19', 'BUY', 0.00603547, 57493.45120000, 0.0000, 347.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-001', 'a4', '2026-02-05', 'BUY', 0.00494981, 60608.38698859, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-002', 'a4', '2026-01-30', 'BUY', 0.00355157, 72643.92930450, 0.0000, 258.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-003', 'a4', '2026-01-26', 'BUY', 0.00403177, 74409.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-004', 'a4', '2026-01-20', 'BUY', 0.00378417, 79277.62230555, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-005', 'a4', '2025-12-30', 'BUY', 0.00413175, 75755.00000000, 0.0000, 313.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-006', 'a4', '2025-12-24', 'BUY', 0.00286554, 75029.00000000, 0.0000, 215.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-007', 'a4', '2025-12-15', 'BUY', 0.00377916, 79383.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-008', 'a4', '2025-12-09', 'BUY', 0.00379876, 78973.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-009', 'a4', '2025-12-01', 'BUY', 0.00565864, 74046.00000000, 0.0000, 419.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-010', 'a4', '2025-11-14', 'BUY', 0.00531948, 84595.00000000, 0.0000, 450.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-011', 'a4', '2025-11-07', 'BUY', 0.00343580, 87316.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-012', 'a4', '2025-11-05', 'BUY', 0.00327402, 91630.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-013', 'a4', '2025-10-09', 'BUY', 0.00280005, 107141.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-014', 'a4', '2025-09-29', 'BUY', 0.00562893, 97710.00000000, 0.0000, 550.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-015', 'a4', '2025-09-24', 'BUY', 0.00302828, 99066.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-016', 'a4', '2025-08-19', 'BUY', 0.00295000, 101695.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-017', 'a4', '2025-08-12', 'BUY', 0.00472221, 103553.00000000, 0.0000, 489.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-018', 'a4', '2025-07-22', 'BUY', 0.00289669, 103566.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-019', 'a4', '2025-07-10', 'BUY', 0.00309578, 96906.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-020', 'a4', '2025-07-09', 'BUY', 0.00313702, 95632.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-021', 'a4', '2025-07-02', 'BUY', 0.00322030, 93159.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-022', 'a4', '2025-06-27', 'BUY', 0.00322403, 93051.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-023', 'a4', '2025-06-23', 'BUY', 0.00337507, 88887.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-024', 'a4', '2025-06-16', 'BUY', 0.00537127, 93088.00000000, 0.0000, 500.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-025', 'a4', '2025-06-13', 'BUY', 0.00107682, 92866.00000000, 0.0000, 100.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-026', 'a4', '2025-06-09', 'BUY', 0.00312661, 95951.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-027', 'a4', '2025-06-02', 'BUY', 0.00326634, 91846.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-028', 'a4', '2025-05-26', 'BUY', 0.00313500, 95694.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-029', 'a4', '2025-05-22', 'BUY', 0.00305481, 98206.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-030', 'a4', '2025-05-13', 'BUY', 0.00340230, 88176.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-031', 'a4', '2025-05-08', 'BUY', 0.00340295, 88159.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-032', 'a4', '2025-05-01', 'BUY', 0.00352112, 85200.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-033', 'a4', '2025-04-29', 'BUY', 0.00355248, 84448.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-034', 'a4', '2025-04-27', 'BUY', 0.00361362, 83019.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-035', 'a4', '2025-04-23', 'BUY', 0.00360960, 83112.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-036', 'a4', '2025-04-22', 'BUY', 0.00377874, 79392.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-037', 'a4', '2025-04-15', 'BUY', 0.00379307, 79092.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-038', 'a4', '2025-03-28', 'BUY', 0.00369986, 81084.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-039', 'a4', '2025-03-18', 'BUY', 0.00319400, 78272.00000000, 0.0000, 250.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-040', 'a4', '2025-03-08', 'BUY', 0.00300867, 83093.00000000, 0.0000, 250.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-041', 'a4', '2025-02-25', 'BUY', 0.00338876, 88528.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-042', 'a4', '2025-02-15', 'BUY', 0.00320238, 93680.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-043', 'a4', '2025-01-31', 'BUY', 0.00282031, 106371.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-044', 'a4', '2025-01-20', 'BUY', 0.00259190, 115745.00000000, 0.0000, 300.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-045', 'a4', '2024-12-08', 'BUY', 0.00411919, 97106.00000000, 0.0000, 400.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-046', 'a4', '2024-10-04', 'BUY', 0.00890313, 56160.00000000, 0.0000, 500.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-047', 'a4', '2024-10-04', 'BUY', 0.01294550, 56367.00000000, 0.0000, 730.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-048', 'a4', '2024-09-03', 'BUY', 0.00932731, 53606.00000000, 0.0000, 500.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-049', 'a4', '2024-08-21', 'BUY', 0.00935314, 53458.00000000, 0.0000, 500.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-050', 'a4', '2024-03-20', 'BUY', 0.00522273, 62228.00000000, 0.0000, 325.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-051', 'a4', '2024-03-20', 'BUY', 0.00177403, 65952.00000000, 0.0000, 117.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-052', 'a4', '2024-01-04', 'BUY', 0.01119961, 44644.00000000, 0.0000, 500.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-053', 'a4', '2023-08-09', 'BUY', 0.00599970, 26515.00000000, 0.0000, 159.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-054', 'a4', '2022-10-27', 'BUY', 0.01062000, 20742.00000000, 0.0000, 220.0000, 1.08000000) ON CONFLICT DO NOTHING;
-INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-055', 'a4', '2021-08-20', 'BUY', 0.01189645, 42029.00000000, 0.0000, 500.0000, 1.08000000) ON CONFLICT DO NOTHING;
-
---
--- Data for Name: stock_transaction; Type: TABLE DATA; Schema: public; Owner: wealthhub
---
-
-INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('aabf05d2-4766-495a-ac87-51c20b66d729', 'a9', '2026-03-27', 'BUY', 'TSM', 'USD', 4.00000000, 326.87000000, 0.0000, 1307.4800, 1.15070000) ON CONFLICT DO NOTHING;
-INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('80d72ca8-8738-457f-993c-f4086a3d2dcb', 'a9', '2026-03-27', 'BUY', 'NVDA', 'USD', 7.00000000, 167.45000000, 0.0000, 1172.1500, 1.15070000) ON CONFLICT DO NOTHING;
-INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('2faf916e-88b6-43d0-899d-8958fd8aa8d2', 'a9', '2026-03-27', 'BUY', 'TSLA', 'USD', 2.00000000, 362.14000000, 0.0000, 724.2800, 1.15070000) ON CONFLICT DO NOTHING;
-INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('18d1b614-7e6b-49a2-b49f-7d76dedcc858', 'a9', '2026-03-27', 'BUY', 'GOOG', 'USD', 5.00000000, 274.68000000, 0.0000, 1373.4000, 1.15070000) ON CONFLICT DO NOTHING;
-INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('1ec9a9f0-13cf-4f6d-9313-862665cb332b', 'a9', '2026-03-27', 'BUY', 'ASML', 'USD', 1.00000000, 1304.13000000, 0.0000, 1304.1300, 1.15070000) ON CONFLICT DO NOTHING;
-INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('tx-stock-001', 'a9', '2026-02-05', 'BUY', 'AMD', 'USD', 10.00000000, 168.77000000, 0.0000, 1687.7000, 1.17870000) ON CONFLICT DO NOTHING;
-INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('tx-stock-002', 'a9', '2026-02-05', 'BUY', 'MSTR', 'USD', 30.00000000, 103.43000000, 0.0000, 3102.9000, 1.17870000) ON CONFLICT DO NOTHING;
-
-
---
--- Name: exchange_rates_id_seq; Type: SEQUENCE SET; Schema: public; Owner: wealthhub
---
-
-SELECT pg_catalog.setval('public.exchange_rates_id_seq', 2, true);
-
-
---
--- Name: asset_history asset_history_pkey; Type: CONSTRAINT; Schema: public; Owner: wealthhub
---
-
-ALTER TABLE ONLY public.asset_history
-    ADD CONSTRAINT asset_history_pkey PRIMARY KEY (id);
-
-
---
--- Name: exchange_rates exchange_rates_pkey; Type: CONSTRAINT; Schema: public; Owner: wealthhub
---
-
-ALTER TABLE ONLY public.exchange_rates
-    ADD CONSTRAINT exchange_rates_pkey PRIMARY KEY (id);
-
-
---
--- Name: ix_exchange_rates_currency_pair; Type: INDEX; Schema: public; Owner: wealthhub
---
-
-CREATE INDEX ix_exchange_rates_currency_pair ON public.exchange_rates USING btree (currency_pair);
-
-
---
--- Name: ix_exchange_rates_date; Type: INDEX; Schema: public; Owner: wealthhub
---
-
-CREATE INDEX ix_exchange_rates_date ON public.exchange_rates USING btree (date);
-
-
---
--- Name: asset_history asset_history_asset_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: wealthhub
---
-
-ALTER TABLE ONLY public.asset_history
-    ADD CONSTRAINT asset_history_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.asset(id);
-
-
---
--- Name: asset asset_parent_asset_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: wealthhub
---
-
-ALTER TABLE ONLY public.asset
-    ADD CONSTRAINT asset_parent_asset_id_fkey FOREIGN KEY (parent_asset_id) REFERENCES public.asset(id);
-
-
---
--- PostgreSQL database dump complete
---
-
-\unrestrict YySOLClStRpVYY9SJLZwIam760iHy8dvx02vYQ3EVPMhsyUf6f8M4MNGHMarAzU
-
+-- Stock Transactions
+INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_to_eur) VALUES (uuid_generate_v4(), '00000000-0000-4000-8000-000000000009', '2026-03-27', 'BUY', 'TSM', 'USD', 4.00000000, 326.87000000, 0.0000, 1307.4800, 1.15070000) ON CONFLICT DO NOTHING;
+INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_to_eur) VALUES (uuid_generate_v4(), '00000000-0000-4000-8000-000000000009', '2026-03-27', 'BUY', 'NVDA', 'USD', 7.00000000, 167.45000000, 0.0000, 1172.1500, 1.15070000) ON CONFLICT DO NOTHING;

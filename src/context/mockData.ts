@@ -109,7 +109,7 @@ export const SAMPLE_DATA = {
       priceEurPerBtc: 42500,
       feesEur: 0,
       totalAmountEur: 10000,
-      exchangeRateUsdEur: 1.08
+      exchangeRateUsdEur: 1.15
     },
     {
       id: 'btc-2',
@@ -120,7 +120,7 @@ export const SAMPLE_DATA = {
       priceEurPerBtc: 50000,
       feesEur: 0,
       totalAmountEur: 8000,
-      exchangeRateUsdEur: 1.08
+      exchangeRateUsdEur: 1.15
     }
   ] as BitcoinTransaction[],
   stockTransactions: [
@@ -135,7 +135,7 @@ export const SAMPLE_DATA = {
       pricePerUnit: 150,
       fees: 5,
       totalAmount: 1505,
-      exchangeRateEurUsd: 1.08
+      exchangeRateEurUsd: 1.15
     },
     {
       id: 'stock-2',
@@ -148,7 +148,7 @@ export const SAMPLE_DATA = {
       pricePerUnit: 380,
       fees: 3,
       totalAmount: 1903,
-      exchangeRateEurUsd: 1.08
+      exchangeRateEurUsd: 1.15
     },
     {
       id: 'stock-3',
@@ -161,7 +161,7 @@ export const SAMPLE_DATA = {
       pricePerUnit: 160,
       fees: 4,
       totalAmount: 1284,
-      exchangeRateEurUsd: 1.08
+      exchangeRateEurUsd: 1.15
     }
   ] as StockTransaction[]
 }

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback } from 'react'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { Trash2, Plus, Edit3, ArrowUp, ArrowDown } from 'lucide-react'
-import { useWealth } from '../context/WealthContext'
+import { useWealthData } from '../hooks'
 import { useStockPortfolio } from '../hooks'
 import { Card } from '../components/ui/Card'
 import { MetricCard } from '../components/ui/MetricCard'
@@ -10,11 +10,11 @@ import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { formatCurrency, formatUSD, formatDate, generateUUID } from '../utils'
-import type { StockTransaction } from '../types'
+import type { StockTransaction, Asset } from '../types'
 import { api } from '../services/api'
 
 export default function Stocks() {
-  const { stockTransactions, refetchData, assets, eurUsdRate } = useWealth()
+  const { stockTransactions, refetchData, assets, eurUsdRate } = useWealthData()
   const { portfolio, loading: portfolioLoading, error: portfolioError, refetch: refetchPortfolio } = useStockPortfolio()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingTransaction, setEditingTransaction] = useState<StockTransaction | null>(null)
@@ -30,11 +30,11 @@ export default function Stocks() {
     pricePerUnit: 0,
     fees: 0,
     totalAmount: 0,
-    exchangeRateEurUsd: 1.08
+    exchangeRateEurUsd: 1.15
   })
   
   // EUR/USD rate for converting transaction amounts (stored in USD) to EUR
-  const fxRate = eurUsdRate > 0 ? eurUsdRate : 1.08 // fallback
+  const fxRate = eurUsdRate > 0 ? eurUsdRate : 1.15 // fallback
 
   // Portfolio metrics now come from backend through the hook
   const portfolioMetrics = useMemo(() => {
@@ -119,11 +119,11 @@ export default function Stocks() {
         
         // Find asset id
         const searchTicker = formData.ticker.trim().toUpperCase();
-        const tickerAsset = assets.find(a => 
+        const tickerAsset = assets.find((a: Asset) => 
           (a.ticker && a.ticker.trim().toUpperCase() === searchTicker) || 
           (a.name && a.name.trim().toUpperCase() === searchTicker)
         );
-        const fbAsset = assets.find(a => a.name === 'Interactive Brokers' || a.category === 'Stocks');
+        const fbAsset = assets.find((a: Asset) => a.name === 'Interactive Brokers' || a.category === 'Stocks');
         const assetId = tickerAsset ? tickerAsset.id : (fbAsset ? fbAsset.id : undefined);
 
         const txData = {
@@ -162,7 +162,7 @@ export default function Stocks() {
           pricePerUnit: 0,
           fees: 0,
           totalAmount: 0,
-          exchangeRateEurUsd: fxRate
+          exchangeRateEurUsd: 0 // Se obtiene automáticamente del backend
         });
       } catch (error) {
         console.error("Error saving stock transaction", error);
@@ -200,7 +200,7 @@ export default function Stocks() {
         pricePerUnit: 0,
         fees: 0,
         totalAmount: 0,
-        exchangeRateEurUsd: fxRate
+        exchangeRateEurUsd: 0 // Se obtiene automáticamente del backend
       })
     }
     setIsModalOpen(true)
@@ -493,9 +493,9 @@ export default function Stocks() {
                   </td>
                   <td className="py-3 px-4 text-right font-bold dark:text-white">{tx.quantity}</td>
                   <td className="py-3 px-4 text-right font-bold text-slate-600 dark:text-slate-300">{formatUSD(tx.pricePerUnit)}</td>
-                  <td className="py-3 px-4 text-right font-bold dark:text-white">{(tx.exchangeRateEurUsd || 1.08).toFixed(4)}</td>
+                  <td className="py-3 px-4 text-right font-bold dark:text-white">{(tx.exchangeRateEurUsd || 1.15).toFixed(4)}</td>
                   <td className="py-3 px-4 text-right font-bold text-indigo-600 dark:text-indigo-400">
-                    {formatCurrency(tx.totalAmount / (tx.exchangeRateEurUsd || 1.08))}
+                    {formatCurrency(tx.totalAmount / (tx.exchangeRateEurUsd || 1.15))}
                   </td>
                   <td className="py-3 px-4 text-right font-bold dark:text-white">{formatUSD(tx.fees)}</td>
                   <td className="py-3 px-4 text-right font-bold dark:text-white">{formatUSD(tx.totalAmount)}</td>
@@ -594,16 +594,16 @@ export default function Stocks() {
           />
           
           <Input
-            label="Tipo de Cambio (1€ = X$)"
+            label="Tipo de Cambio (1€ = X$) - Opcional"
             type="number"
             value={formData.exchangeRateEurUsd}
-            onChange={(e) => setFormData({ ...formData, exchangeRateEurUsd: parseFloat(e.target.value) || 1.08 })}
+            onChange={(e) => setFormData({ ...formData, exchangeRateEurUsd: parseFloat(e.target.value) || 0 })}
             step="0.0001"
             min="0.0001"
-            required
+            placeholder="Se obtiene automáticamente del historial de cambios"
           />
           <p className="text-xs text-slate-500 mt-1 italic">
-            * Ratio aplicado para calcular el coste base real en euros.
+            * Se obtiene automáticamente del día de la transacción. Puedes editarlo si necesitas usar un valor específico.
           </p>
 
           {formData.quantity > 0 && formData.pricePerUnit > 0 && (
