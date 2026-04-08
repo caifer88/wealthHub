@@ -3,7 +3,6 @@ import asyncio
 from typing import List, Optional, Tuple
 from datetime import datetime, timedelta
 from decimal import Decimal
-import uuid
 
 from fastapi import HTTPException, status
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -439,9 +438,9 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                 history_entry.mean_cost = mean_cost
                 await db_service.update_history_entry(session, history_entry.id, history_entry)
             else:
+                from uuid import UUID as _UUID
                 history_entry = HistoryEntry(
-                    id=str(uuid.uuid4()),
-                    asset_id=asset_id,
+                    asset_id=_UUID(str(asset_id)) if not isinstance(asset_id, _UUID) else asset_id,
                     snapshot_date=date_obj,
                     liquid_nav_value=liquid_nav,
                     nav=nav_val,

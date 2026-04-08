@@ -11,7 +11,7 @@ from typing import Optional, List, Dict
 from enum import Enum
 from decimal import Decimal
 from datetime import date as DateType, datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 class AssetCategory(str, Enum):
     """Asset category types - FUND (legacy generic) removed in favor of FUND_ACTIVE/FUND_INDEX"""
@@ -45,12 +45,25 @@ frontend_config = ConfigDict(
 )
 
 
-class Asset(SQLModel, table=True):
-    """Asset model with DB fields - modernized with UUID PKs and enum enforcement"""
-    __tablename__ = "asset"
-    model_config = frontend_config
+def _uuid_to_str(v: Any) -> Any:
+    """Helper: convert UUID objects to str in-place on a dict."""
+    if isinstance(v, UUID):
+        return str(v)
+    return v
 
-    id: Optional[str] = Field(primary_key=True, default=None)
+
+class Asset(SQLModel, table=True):
+    """Asset model with DB fields - UUID PK stored as native UUID in PG"""
+    __tablename__ = "asset"
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        from_attributes=True,
+        # Allow UUID objects to be serialised as str
+        json_encoders={UUID: str},
+    )
+
+    id: Optional[UUID] = Field(primary_key=True, default_factory=uuid4)
     name: str = Field(max_length=255)
     category: AssetCategory = Field(default=AssetCategory.CASH)
     currency: Optional[str] = Field(default="EUR", max_length=10)
@@ -60,22 +73,27 @@ class Asset(SQLModel, table=True):
     isin: Optional[str] = Field(default=None, max_length=50)
     ticker: Optional[str] = Field(default=None, max_length=50)
     description: Optional[str] = Field(default="")
-    parent_asset_id: Optional[str] = Field(default=None, foreign_key="asset.id")
+    parent_asset_id: Optional[UUID] = Field(default=None, foreign_key="asset.id")
 
 
 class HistoryEntry(SQLModel, table=True):
-    """History entry model corresponding to asset_history - modernized with UUID PKs"""
+    """History entry model corresponding to asset_history"""
     __tablename__ = "asset_history"
-    model_config = frontend_config
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        from_attributes=True,
+        json_encoders={UUID: str},
+    )
 
-    id: Optional[str] = Field(primary_key=True, default=None)
-    asset_id: Optional[str] = Field(default=None, foreign_key="asset.id", index=True)
+    id: Optional[UUID] = Field(primary_key=True, default_factory=uuid4)
+    asset_id: Optional[UUID] = Field(default=None, foreign_key="asset.id", index=True)
     snapshot_date: DateType = Field(index=True)
-    nav: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
-    contribution: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
+    nav: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(15, 4)))
+    contribution: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(15, 4)))
     participations: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
-    liquid_nav_value: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
-    mean_cost: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
+    liquid_nav_value: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(15, 4)))
+    mean_cost: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(15, 4)))
 
 
 class HistoryResponseDTO(BaseModel):
@@ -83,7 +101,7 @@ class HistoryResponseDTO(BaseModel):
     model_config = frontend_config
 
     id: str  # UUID as string for frontend
-    asset_id: Optional[str] = Field(default=None, alias="asset_id")  # UUID as string for frontend
+    asset_id: Optional[str] = Field(default=None, alias="asset_id")
     month: str
     nav: float
     contribution: float
@@ -98,8 +116,8 @@ class HistoryResponseDTO(BaseModel):
             return obj
 
         return {
-            "id": obj.id,
-            "asset_id": obj.asset_id,
+            "id": str(obj.id) if obj.id is not None else None,
+            "asset_id": str(obj.asset_id) if obj.asset_id is not None else None,
             "month": obj.snapshot_date.strftime("%Y-%m") if hasattr(obj, "snapshot_date") else getattr(obj, "month", ""),
             "nav": str(obj.nav) if getattr(obj, "nav", None) is not None else "0.0",
             "contribution": str(obj.contribution) if getattr(obj, "contribution", None) is not None else "0.0",
@@ -111,28 +129,38 @@ class HistoryResponseDTO(BaseModel):
 
 
 class BitcoinTransaction(SQLModel, table=True):
-    """Bitcoin-specific transaction model with optimized schema - modernized with UUID PKs and enum types"""
+    """Bitcoin-specific transaction model"""
     __tablename__ = "bitcoin_transaction"
-    model_config = frontend_config
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        from_attributes=True,
+        json_encoders={UUID: str},
+    )
 
-    id: Optional[str] = Field(primary_key=True, default=None)
-    asset_id: Optional[str] = Field(default=None, foreign_key="asset.id", index=True)
+    id: Optional[UUID] = Field(primary_key=True, default_factory=uuid4)
+    asset_id: Optional[UUID] = Field(default=None, foreign_key="asset.id", index=True)
     transaction_date: DateType
     type: Optional[TransactionType] = Field(default=None)
     amount_btc: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
     price_eur_per_btc: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
     fees_eur: Optional[Decimal] = Field(default=Decimal("0"), sa_column=Column(Numeric(10, 4)))
     total_amount_eur: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(15, 4)))
-    exchange_rate_to_eur: Optional[Decimal] = Field(default=Decimal("1.08"), sa_column=Column(Numeric(15, 8)))
+    exchange_rate_to_eur: Optional[Decimal] = Field(default=Decimal("1.15"), sa_column=Column(Numeric(15, 8)))
 
 
 class StockTransaction(SQLModel, table=True):
-    """Stock-specific transaction model - modernized with UUID PKs and enum types"""
+    """Stock-specific transaction model"""
     __tablename__ = "stock_transaction"
-    model_config = frontend_config
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        from_attributes=True,
+        json_encoders={UUID: str},
+    )
 
-    id: Optional[str] = Field(primary_key=True, default=None)
-    asset_id: Optional[str] = Field(default=None, foreign_key="asset.id", index=True)
+    id: Optional[UUID] = Field(primary_key=True, default_factory=uuid4)
+    asset_id: Optional[UUID] = Field(default=None, foreign_key="asset.id", index=True)
     transaction_date: DateType
     type: Optional[TransactionType] = Field(default=None)
     ticker: Optional[str] = Field(default=None, max_length=50, index=True)
@@ -141,7 +169,7 @@ class StockTransaction(SQLModel, table=True):
     price_per_unit: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(18, 8)))
     fees: Optional[Decimal] = Field(default=Decimal("0"), sa_column=Column(Numeric(10, 4)))
     total_amount: Optional[Decimal] = Field(default=None, sa_column=Column(Numeric(15, 4)))
-    exchange_rate_to_eur: Optional[Decimal] = Field(default=Decimal("1.08"), sa_column=Column(Numeric(15, 8)))
+    exchange_rate_to_eur: Optional[Decimal] = Field(default=Decimal("1.15"), sa_column=Column(Numeric(15, 8)))
 
 
 class ExchangeRate(SQLModel, table=True):
@@ -253,34 +281,79 @@ class StockPortfolioSummaryDTO(BaseModel):
     tickers: List[StockMetricsDTO]  # List of individual holdings
 
 
-# Añade esto en backend/models.py
-
 class BitcoinTransactionDTO(BaseModel):
-    """DTO para comunicación API de Bitcoin Transactions - modernized with enum types"""
+    """DTO para comunicación API de Bitcoin Transactions"""
     model_config = frontend_config
 
-    id: str  # UUID as string for frontend
-    asset_id: Optional[str] = None  # UUID as string for frontend
+    id: Optional[str] = None   # UUID as string for frontend
+    asset_id: Optional[str] = None
     transaction_date: DateType
-    type: Optional[str] = None  # TransactionType enum value
+    type: Optional[str] = None
     amount_btc: Optional[Decimal] = None
     price_eur_per_btc: Optional[Decimal] = None
     fees_eur: Optional[Decimal] = None
     total_amount_eur: Optional[Decimal] = None
-    exchange_rate_to_eur: Optional[Decimal] = None  # Renamed from exchange_rate_usd_eur
+    exchange_rate_to_eur: Optional[Decimal] = None
+
+    @model_validator(mode='before')
+    @classmethod
+    def coerce_uuids(cls, obj: Any) -> Any:
+        """Convert UUID objects to str so the frontend always gets plain strings."""
+        if isinstance(obj, dict):
+            for k in ('id', 'asset_id'):
+                if isinstance(obj.get(k), UUID):
+                    obj[k] = str(obj[k])
+            return obj
+        # SQLModel instance
+        return {
+            'id': str(obj.id) if obj.id is not None else None,
+            'asset_id': str(obj.asset_id) if obj.asset_id is not None else None,
+            'transaction_date': obj.transaction_date,
+            'type': obj.type,
+            'amount_btc': obj.amount_btc,
+            'price_eur_per_btc': obj.price_eur_per_btc,
+            'fees_eur': obj.fees_eur,
+            'total_amount_eur': obj.total_amount_eur,
+            'exchange_rate_to_eur': obj.exchange_rate_to_eur,
+        }
+
 
 class StockTransactionDTO(BaseModel):
-    """DTO para comunicación API de Stock Transactions - modernized with enum types"""
+    """DTO para comunicación API de Stock Transactions"""
     model_config = frontend_config
 
-    id: str  # UUID as string for frontend
-    asset_id: Optional[str] = None  # UUID as string for frontend
+    id: Optional[str] = None   # UUID as string for frontend
+    asset_id: Optional[str] = None
     transaction_date: DateType
-    type: Optional[str] = None  # TransactionType enum value
+    type: Optional[str] = None
     ticker: Optional[str] = None
     currency: Optional[str] = None
     quantity: Optional[Decimal] = None
     price_per_unit: Optional[Decimal] = None
     fees: Optional[Decimal] = None
     total_amount: Optional[Decimal] = None
-    exchange_rate_to_eur: Optional[Decimal] = None  # Renamed from exchange_rate_to_eur for standardization
+    exchange_rate_to_eur: Optional[Decimal] = None
+
+    @model_validator(mode='before')
+    @classmethod
+    def coerce_uuids(cls, obj: Any) -> Any:
+        """Convert UUID objects to str so the frontend always gets plain strings."""
+        if isinstance(obj, dict):
+            for k in ('id', 'asset_id'):
+                if isinstance(obj.get(k), UUID):
+                    obj[k] = str(obj[k])
+            return obj
+        # SQLModel instance
+        return {
+            'id': str(obj.id) if obj.id is not None else None,
+            'asset_id': str(obj.asset_id) if obj.asset_id is not None else None,
+            'transaction_date': obj.transaction_date,
+            'type': obj.type,
+            'ticker': obj.ticker,
+            'currency': obj.currency,
+            'quantity': obj.quantity,
+            'price_per_unit': obj.price_per_unit,
+            'fees': obj.fees,
+            'total_amount': obj.total_amount,
+            'exchange_rate_to_eur': obj.exchange_rate_to_eur,
+        }
