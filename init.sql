@@ -1,160 +1,90 @@
---
--- PostgreSQL database dump
---
+-- WealthHub Database Schema
+-- Idempotent: safe to run on fresh or existing databases
 
-\restrict YySOLClStRpVYY9SJLZwIam760iHy8dvx02vYQ3EVPMhsyUf6f8M4MNGHMarAzU
+-- ============================================================
+-- TABLES
+-- ============================================================
 
--- Dumped from database version 15.17
--- Dumped by pg_dump version 15.17
-
-SET statement_timeout = 0;
-SET lock_timeout = 0;
-SET idle_in_transaction_session_timeout = 0;
-SET client_encoding = 'UTF8';
-SET standard_conforming_strings = on;
-SELECT pg_catalog.set_config('search_path', '', false);
-SET check_function_bodies = false;
-SET xmloption = content;
-SET client_min_messages = warning;
-SET row_security = off;
-
-SET default_tablespace = '';
-
-SET default_table_access_method = heap;
-
---
--- Name: asset; Type: TABLE; Schema: public; Owner: wealthhub
---
-
-CREATE TABLE public.asset (
-    id character varying(50) NOT NULL,
-    name character varying(255) NOT NULL,
-    category character varying(50) NOT NULL,
-    currency character varying(10) DEFAULT 'EUR'::character varying,
-    color character varying(20),
-    is_archived boolean DEFAULT false,
-    risk_level character varying(50),
-    isin character varying(50),
-    ticker character varying(50),
-    description text,
+CREATE TABLE IF NOT EXISTS public.asset (
+    id              character varying(50) NOT NULL,
+    name            character varying(255) NOT NULL,
+    category        character varying(50) NOT NULL,
+    currency        character varying(10) DEFAULT 'EUR',
+    color           character varying(20),
+    is_archived     boolean DEFAULT false,
+    risk_level      character varying(50),
+    isin            character varying(50),
+    ticker          character varying(50),
+    description     text,
     parent_asset_id character varying(50),
-    CONSTRAINT asset_pkey PRIMARY KEY (id)
+    CONSTRAINT asset_pkey PRIMARY KEY (id),
+    CONSTRAINT asset_parent_asset_id_fkey FOREIGN KEY (parent_asset_id) REFERENCES public.asset(id)
 );
 
-
-ALTER TABLE public.asset OWNER TO wealthhub;
-
---
--- Name: asset_history; Type: TABLE; Schema: public; Owner: wealthhub
---
-
-CREATE TABLE public.asset_history (
-    id character varying(100) NOT NULL,
-    asset_id character varying(50),
-    snapshot_date date NOT NULL,
-    nav numeric(15,4),
-    contribution numeric(15,4),
-    participations numeric(18,8),
+CREATE TABLE IF NOT EXISTS public.asset_history (
+    id               character varying(100) NOT NULL,
+    asset_id         character varying(50),
+    snapshot_date    date NOT NULL,
+    nav              numeric(15,4),
+    contribution     numeric(15,4),
+    participations   numeric(18,8),
     liquid_nav_value numeric(15,4),
-    mean_cost numeric(15,4)
+    mean_cost        numeric(15,4),
+    CONSTRAINT asset_history_pkey PRIMARY KEY (id),
+    CONSTRAINT asset_history_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.asset(id)
 );
 
-
-ALTER TABLE public.asset_history OWNER TO wealthhub;
-
---
--- Name: exchange_rates; Type: TABLE; Schema: public; Owner: wealthhub
---
-
-CREATE TABLE public.exchange_rates (
-    id integer NOT NULL,
-    date date NOT NULL,
+CREATE TABLE IF NOT EXISTS public.exchange_rates (
+    id            serial PRIMARY KEY,
+    date          date NOT NULL,
     currency_pair character varying NOT NULL,
-    rate numeric(18,8)
+    rate          numeric(18,8)
 );
 
-
-ALTER TABLE public.exchange_rates OWNER TO wealthhub;
-
---
--- Name: exchange_rates_id_seq; Type: SEQUENCE; Schema: public; Owner: wealthhub
---
-
-CREATE SEQUENCE public.exchange_rates_id_seq
-    AS integer
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE public.exchange_rates_id_seq OWNER TO wealthhub;
-
---
--- Name: exchange_rates_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: wealthhub
---
-
-ALTER SEQUENCE public.exchange_rates_id_seq OWNED BY public.exchange_rates.id;
-
-
---
--- Name: bitcoin_transaction; Type: TABLE; Schema: public; Owner: wealthhub
---
-
-CREATE TABLE public.bitcoin_transaction (
-    id character varying(100) NOT NULL,
-    asset_id character varying(50),
-    transaction_date date NOT NULL,
-    type character varying(20),
-    amount_btc numeric(18,8),
-    price_eur_per_btc numeric(18,8),
-    fees_eur numeric(10,4),
-    total_amount_eur numeric(15,4),
+CREATE TABLE IF NOT EXISTS public.bitcoin_transaction (
+    id                    character varying(100) NOT NULL,
+    asset_id              character varying(50),
+    transaction_date      date NOT NULL,
+    type                  character varying(20),
+    amount_btc            numeric(18,8),
+    price_eur_per_btc     numeric(18,8),
+    fees_eur              numeric(10,4),
+    total_amount_eur      numeric(15,4),
     exchange_rate_usd_eur numeric(15,8) DEFAULT 1.08,
     CONSTRAINT bitcoin_transaction_pkey PRIMARY KEY (id),
     CONSTRAINT bitcoin_transaction_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.asset(id)
 );
 
-ALTER TABLE public.bitcoin_transaction OWNER TO wealthhub;
-
-CREATE INDEX ix_bitcoin_transaction_asset_id ON public.bitcoin_transaction USING btree (asset_id);
-
---
--- Name: stock_transaction; Type: TABLE; Schema: public; Owner: wealthhub
---
-
-CREATE TABLE public.stock_transaction (
-    id character varying(100) NOT NULL,
-    asset_id character varying(50),
-    transaction_date date NOT NULL,
-    type character varying(20),
-    ticker character varying(50),
-    currency character varying(10) DEFAULT 'USD'::character varying,
-    quantity numeric(18,8),
-    price_per_unit numeric(18,8),
-    fees numeric(10,4),
-    total_amount numeric(15,4),
+CREATE TABLE IF NOT EXISTS public.stock_transaction (
+    id                    character varying(100) NOT NULL,
+    asset_id              character varying(50),
+    transaction_date      date NOT NULL,
+    type                  character varying(20),
+    ticker                character varying(50),
+    currency              character varying(10) DEFAULT 'USD',
+    quantity              numeric(18,8),
+    price_per_unit        numeric(18,8),
+    fees                  numeric(10,4),
+    total_amount          numeric(15,4),
     exchange_rate_eur_usd numeric(15,8) DEFAULT 1.08,
     CONSTRAINT stock_transaction_pkey PRIMARY KEY (id),
     CONSTRAINT stock_transaction_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.asset(id)
 );
 
-ALTER TABLE public.stock_transaction OWNER TO wealthhub;
+-- ============================================================
+-- INDEXES
+-- ============================================================
 
-CREATE INDEX ix_stock_transaction_asset_id ON public.stock_transaction USING btree (asset_id);
-CREATE INDEX ix_stock_transaction_ticker ON public.stock_transaction USING btree (ticker);
+CREATE INDEX IF NOT EXISTS ix_asset_parent_id             ON public.asset(parent_asset_id);
+CREATE INDEX IF NOT EXISTS ix_bitcoin_transaction_asset_id ON public.bitcoin_transaction(asset_id);
+CREATE INDEX IF NOT EXISTS ix_stock_transaction_asset_id   ON public.stock_transaction(asset_id);
+CREATE INDEX IF NOT EXISTS ix_stock_transaction_ticker     ON public.stock_transaction(ticker);
+CREATE INDEX IF NOT EXISTS ix_exchange_rates_currency_pair ON public.exchange_rates(currency_pair);
+CREATE INDEX IF NOT EXISTS ix_exchange_rates_date          ON public.exchange_rates(date);
 
---
--- Name: exchange_rates id; Type: DEFAULT; Schema: public; Owner: wealthhub
---
-
-ALTER TABLE ONLY public.exchange_rates ALTER COLUMN id SET DEFAULT nextval('public.exchange_rates_id_seq'::regclass);
-
-
---
--- Data for Name: asset; Type: TABLE DATA; Schema: public; Owner: wealthhub
---
+-- ============================================================
+-- SEED DATA
+-- ============================================================
 
 INSERT INTO public.asset VALUES ('a5', 'Cash', 'CASH', 'EUR', '#33a340', false, 'Moderado', NULL, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset VALUES ('a6', 'Funds old', 'FUND_ACTIVE', 'EUR', '#fca5a5', true, 'Medio', NULL, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
@@ -175,12 +105,6 @@ INSERT INTO public.asset VALUES ('a12', 'Vanguard Global Small-Cap Index ', 'FUN
 INSERT INTO public.asset VALUES ('a3', 'Vanguard SP500 Stock index', 'FUND_INDEX', 'EUR', '#f26464', false, 'Moderado', 'IE0032126645', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset VALUES ('a1', 'Basalto USA ', 'FUND_ACTIVE', 'EUR', '#102cb7', false, 'Moderado', 'ES0164691083', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset VALUES ('a4', 'Bitcoin', 'CRYPTO', 'EUR', '#f59e0b', false, 'Alto', NULL, 'BTC-EUR', NULL, NULL) ON CONFLICT DO NOTHING;
-
-
---
--- Data for Name: asset_history; Type: TABLE DATA; Schema: public; Owner: wealthhub
---
-
 INSERT INTO public.asset_history VALUES ('h-2020-01-a5', 'a5', '2020-01-01', 15000.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset_history VALUES ('h-2020-01-a6', 'a6', '2020-01-01', 0.0000, 0.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset_history VALUES ('h-2020-01-a7', 'a7', '2020-01-01', 3000.0000, 3000.0000, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
@@ -560,7 +484,6 @@ INSERT INTO public.asset_history VALUES ('8fa3f897-d3ca-4743-a131-ec908ec206b9',
 INSERT INTO public.asset_history VALUES ('3d7b724b-9364-4758-8661-3e68ca29766d', 'a4', '2026-04-01', 15440.1500, 0.0000, 0.26322570, 58657.4600, 73275.0000) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset_history VALUES ('eef48283-41ba-4833-af74-382f377e87de', 'a11', '2026-04-01', 245.4100, 0.0000, 6.64000000, 36.9600, 37.6000) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset_history VALUES ('fcb77fcd-9cd6-4e4d-8084-cf2f2a217bac', 'a9', '2026-02-01', 5324.0000, 4663.3822, 40.25366570, NULL, NULL) ON CONFLICT DO NOTHING;
--- Stock prices (USD)
 INSERT INTO public.asset_history VALUES ('h-2026-04-stock-TSM', 'stock-TSM-001', '2026-04-01', NULL, NULL, 1.0, 326.8700, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset_history VALUES ('h-2026-04-stock-NVDA', 'stock-NVDA-001', '2026-04-01', NULL, NULL, 1.0, 167.4500, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset_history VALUES ('h-2026-04-stock-TSLA', 'stock-TSLA-001', '2026-04-01', NULL, NULL, 1.0, 362.1400, NULL) ON CONFLICT DO NOTHING;
@@ -568,7 +491,6 @@ INSERT INTO public.asset_history VALUES ('h-2026-04-stock-GOOG', 'stock-GOOG-001
 INSERT INTO public.asset_history VALUES ('h-2026-04-stock-ASML', 'stock-ASML-001', '2026-04-01', NULL, NULL, 1.0, 1304.1300, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset_history VALUES ('h-2026-04-stock-AMD', 'stock-AMD-001', '2026-04-01', NULL, NULL, 1.0, 168.7700, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset_history VALUES ('h-2026-04-stock-MSTR', 'stock-MSTR-001', '2026-04-01', NULL, NULL, 1.0, 103.4300, NULL) ON CONFLICT DO NOTHING;
--- Also add March 01 entries for price lookups
 INSERT INTO public.asset_history VALUES ('h-2026-03-stock-TSM', 'stock-TSM-001', '2026-03-01', NULL, NULL, 1.0, 326.8700, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset_history VALUES ('h-2026-03-stock-NVDA', 'stock-NVDA-001', '2026-03-01', NULL, NULL, 1.0, 167.4500, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset_history VALUES ('h-2026-03-stock-TSLA', 'stock-TSLA-001', '2026-03-01', NULL, NULL, 1.0, 362.1400, NULL) ON CONFLICT DO NOTHING;
@@ -576,20 +498,8 @@ INSERT INTO public.asset_history VALUES ('h-2026-03-stock-GOOG', 'stock-GOOG-001
 INSERT INTO public.asset_history VALUES ('h-2026-03-stock-ASML', 'stock-ASML-001', '2026-03-01', NULL, NULL, 1.0, 1304.1300, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset_history VALUES ('h-2026-03-stock-AMD', 'stock-AMD-001', '2026-03-01', NULL, NULL, 1.0, 168.7700, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset_history VALUES ('h-2026-03-stock-MSTR', 'stock-MSTR-001', '2026-03-01', NULL, NULL, 1.0, 103.4300, NULL) ON CONFLICT DO NOTHING;
-
-
---
--- Data for Name: exchange_rates; Type: TABLE DATA; Schema: public; Owner: wealthhub
---
-
 INSERT INTO public.exchange_rates VALUES (1, '2026-03-01', 'EUR/USD', 1.15350900) ON CONFLICT DO NOTHING;
 INSERT INTO public.exchange_rates VALUES (2, '2026-04-01', 'EUR/USD', 1.16144000) ON CONFLICT DO NOTHING;
-
-
---
--- Data for Name: bitcoin_transaction; Type: TABLE DATA; Schema: public; Owner: wealthhub
---
-
 INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-058', 'a4', '2026-03-26', 'BUY', 0.00468000, 60687.00000000, 0.0000, 284.0000, 1.08000000) ON CONFLICT DO NOTHING;
 INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-057', 'a4', '2026-03-15', 'BUY', 0.00488000, 64955.00000000, 0.0000, 317.0000, 1.08000000) ON CONFLICT DO NOTHING;
 INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-056', 'a4', '2026-02-19', 'BUY', 0.00603547, 57493.45120000, 0.0000, 347.0000, 1.08000000) ON CONFLICT DO NOTHING;
@@ -648,11 +558,6 @@ INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, am
 INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-053', 'a4', '2023-08-09', 'BUY', 0.00599970, 26515.00000000, 0.0000, 159.0000, 1.08000000) ON CONFLICT DO NOTHING;
 INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-054', 'a4', '2022-10-27', 'BUY', 0.01062000, 20742.00000000, 0.0000, 220.0000, 1.08000000) ON CONFLICT DO NOTHING;
 INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-055', 'a4', '2021-08-20', 'BUY', 0.01189645, 42029.00000000, 0.0000, 500.0000, 1.08000000) ON CONFLICT DO NOTHING;
-
---
--- Data for Name: stock_transaction; Type: TABLE DATA; Schema: public; Owner: wealthhub
---
-
 INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('aabf05d2-4766-495a-ac87-51c20b66d729', 'a9', '2026-03-27', 'BUY', 'TSM', 'USD', 4.00000000, 326.87000000, 0.0000, 1307.4800, 1.15070000) ON CONFLICT DO NOTHING;
 INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('80d72ca8-8738-457f-993c-f4086a3d2dcb', 'a9', '2026-03-27', 'BUY', 'NVDA', 'USD', 7.00000000, 167.45000000, 0.0000, 1172.1500, 1.15070000) ON CONFLICT DO NOTHING;
 INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('2faf916e-88b6-43d0-899d-8958fd8aa8d2', 'a9', '2026-03-27', 'BUY', 'TSLA', 'USD', 2.00000000, 362.14000000, 0.0000, 724.2800, 1.15070000) ON CONFLICT DO NOTHING;
@@ -660,64 +565,3 @@ INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, tick
 INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('1ec9a9f0-13cf-4f6d-9313-862665cb332b', 'a9', '2026-03-27', 'BUY', 'ASML', 'USD', 1.00000000, 1304.13000000, 0.0000, 1304.1300, 1.15070000) ON CONFLICT DO NOTHING;
 INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('tx-stock-001', 'a9', '2026-02-05', 'BUY', 'AMD', 'USD', 10.00000000, 168.77000000, 0.0000, 1687.7000, 1.17870000) ON CONFLICT DO NOTHING;
 INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('tx-stock-002', 'a9', '2026-02-05', 'BUY', 'MSTR', 'USD', 30.00000000, 103.43000000, 0.0000, 3102.9000, 1.17870000) ON CONFLICT DO NOTHING;
-
-
---
--- Name: exchange_rates_id_seq; Type: SEQUENCE SET; Schema: public; Owner: wealthhub
---
-
-SELECT pg_catalog.setval('public.exchange_rates_id_seq', 2, true);
-
-
---
--- Name: asset_history asset_history_pkey; Type: CONSTRAINT; Schema: public; Owner: wealthhub
---
-
-ALTER TABLE ONLY public.asset_history
-    ADD CONSTRAINT asset_history_pkey PRIMARY KEY (id);
-
-
---
--- Name: exchange_rates exchange_rates_pkey; Type: CONSTRAINT; Schema: public; Owner: wealthhub
---
-
-ALTER TABLE ONLY public.exchange_rates
-    ADD CONSTRAINT exchange_rates_pkey PRIMARY KEY (id);
-
-
---
--- Name: ix_exchange_rates_currency_pair; Type: INDEX; Schema: public; Owner: wealthhub
---
-
-CREATE INDEX ix_exchange_rates_currency_pair ON public.exchange_rates USING btree (currency_pair);
-
-
---
--- Name: ix_exchange_rates_date; Type: INDEX; Schema: public; Owner: wealthhub
---
-
-CREATE INDEX ix_exchange_rates_date ON public.exchange_rates USING btree (date);
-
-
---
--- Name: asset_history asset_history_asset_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: wealthhub
---
-
-ALTER TABLE ONLY public.asset_history
-    ADD CONSTRAINT asset_history_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.asset(id);
-
-
---
--- Name: asset asset_parent_asset_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: wealthhub
---
-
-ALTER TABLE ONLY public.asset
-    ADD CONSTRAINT asset_parent_asset_id_fkey FOREIGN KEY (parent_asset_id) REFERENCES public.asset(id);
-
-
---
--- PostgreSQL database dump complete
---
-
-\unrestrict YySOLClStRpVYY9SJLZwIam760iHy8dvx02vYQ3EVPMhsyUf6f8M4MNGHMarAzU
-

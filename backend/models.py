@@ -3,7 +3,7 @@ Data models for WealthHub Backend API
 Combined SQLModel (DB + Validation) and Pydantic models
 """
 from sqlmodel import Field, SQLModel
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from pydantic.alias_generators import to_camel
 from typing import Any
 from sqlalchemy import Column, Numeric
@@ -98,8 +98,8 @@ class HistoryResponseDTO(BaseModel):
             return obj
 
         return {
-            "id": obj.id,
-            "asset_id": obj.asset_id,
+            "id": str(obj.id),
+            "asset_id": str(obj.asset_id) if obj.asset_id is not None else None,
             "month": obj.snapshot_date.strftime("%Y-%m") if hasattr(obj, "snapshot_date") else getattr(obj, "month", ""),
             "nav": str(obj.nav) if getattr(obj, "nav", None) is not None else "0.0",
             "contribution": str(obj.contribution) if getattr(obj, "contribution", None) is not None else "0.0",
@@ -269,6 +269,24 @@ class BitcoinTransactionDTO(BaseModel):
     total_amount_eur: Optional[Decimal] = None
     exchange_rate_usd_eur: Optional[Decimal] = None
 
+    @model_validator(mode='before')
+    @classmethod
+    def coerce_uuids(cls, obj: Any) -> Any:
+        if isinstance(obj, dict):
+            return obj
+        return {
+            "id": str(obj.id) if obj.id is not None else None,
+            "asset_id": str(obj.asset_id) if obj.asset_id is not None else None,
+            "transaction_date": obj.transaction_date,
+            "type": obj.type,
+            "amount_btc": obj.amount_btc,
+            "price_eur_per_btc": obj.price_eur_per_btc,
+            "fees_eur": obj.fees_eur,
+            "total_amount_eur": obj.total_amount_eur,
+            "exchange_rate_usd_eur": obj.exchange_rate_usd_eur,
+        }
+
+
 class StockTransactionDTO(BaseModel):
     """DTO para comunicación API de Stock Transactions"""
     model_config = frontend_config
@@ -284,3 +302,22 @@ class StockTransactionDTO(BaseModel):
     fees: Optional[Decimal] = None
     total_amount: Optional[Decimal] = None
     exchange_rate_eur_usd: Optional[Decimal] = None
+
+    @model_validator(mode='before')
+    @classmethod
+    def coerce_uuids(cls, obj: Any) -> Any:
+        if isinstance(obj, dict):
+            return obj
+        return {
+            "id": str(obj.id) if obj.id is not None else None,
+            "asset_id": str(obj.asset_id) if obj.asset_id is not None else None,
+            "transaction_date": obj.transaction_date,
+            "type": obj.type,
+            "ticker": getattr(obj, "ticker", None),
+            "currency": getattr(obj, "currency", None),
+            "quantity": getattr(obj, "quantity", None),
+            "price_per_unit": getattr(obj, "price_per_unit", None),
+            "fees": getattr(obj, "fees", None),
+            "total_amount": getattr(obj, "total_amount", None),
+            "exchange_rate_eur_usd": getattr(obj, "exchange_rate_eur_usd", None),
+        }
