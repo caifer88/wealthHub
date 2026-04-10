@@ -100,7 +100,7 @@ INSERT INTO public.asset VALUES ('stock-MSTR-001', 'MicroStrategy Inc (MSTR)', '
 INSERT INTO public.asset VALUES ('a8', 'Numantia Patrimonio', 'FUND_ACTIVE', 'EUR', '#b2b512', false, 'Moderado', 'ES0173311103', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset VALUES ('a10', 'Fidelity MSCI Emerging Markets', 'FUND_INDEX', 'EUR', '#f26464', false, 'Moderado', 'IE00BYX5M476', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset VALUES ('a11', 'Vanguard European Stock Index ', 'FUND_INDEX', 'EUR', '#f26464', false, 'Moderado', 'IE0007987690', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset VALUES ('a2', 'Numantia Pensiones PP', 'PENSION', 'EUR', '#e8f075', false, 'Moderado', '0P0001NBRZ', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset VALUES ('a2', 'Numantia Pensiones PP', 'PENSION', 'EUR', '#e8f075', false, 'Moderado', 'N5430', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset VALUES ('a12', 'Vanguard Global Small-Cap Index ', 'FUND_INDEX', 'EUR', '#f26464', false, 'Moderado', 'IE00B42W3S00', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset VALUES ('a3', 'Vanguard SP500 Stock index', 'FUND_INDEX', 'EUR', '#f26464', false, 'Moderado', 'IE0032126645', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset VALUES ('a1', 'Basalto USA ', 'FUND_ACTIVE', 'EUR', '#102cb7', false, 'Moderado', 'ES0164691083', NULL, NULL, NULL) ON CONFLICT DO NOTHING;
@@ -496,8 +496,8 @@ INSERT INTO public.asset_history VALUES ('h-2026-03-stock-NVDA', 'stock-NVDA-001
 INSERT INTO public.asset_history VALUES ('h-2026-03-stock-TSLA', 'stock-TSLA-001', '2026-03-01', NULL, NULL, 1.0, 362.1400, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset_history VALUES ('h-2026-03-stock-GOOG', 'stock-GOOG-001', '2026-03-01', NULL, NULL, 1.0, 274.6800, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.asset_history VALUES ('h-2026-03-stock-ASML', 'stock-ASML-001', '2026-03-01', NULL, NULL, 1.0, 1304.1300, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2026-03-stock-AMD', 'stock-AMD-001', '2026-03-01', NULL, NULL, 1.0, 168.7700, NULL) ON CONFLICT DO NOTHING;
-INSERT INTO public.asset_history VALUES ('h-2026-03-stock-MSTR', 'stock-MSTR-001', '2026-03-01', NULL, NULL, 1.0, 103.4300, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset_history VALUES ('h-2026-03-stock-AMD', 'stock-AMD-001', '2026-03-01', NULL, NULL, 1.0, 200.3300, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.asset_history VALUES ('h-2026-03-stock-MSTR', 'stock-MSTR-001', '2026-03-01', NULL, NULL, 1.0, 122.7000, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO public.exchange_rates VALUES (1, '2026-03-01', 'EUR/USD', 1.15350900) ON CONFLICT DO NOTHING;
 INSERT INTO public.exchange_rates VALUES (2, '2026-04-01', 'EUR/USD', 1.16144000) ON CONFLICT DO NOTHING;
 INSERT INTO public.bitcoin_transaction (id, asset_id, transaction_date, type, amount_btc, price_eur_per_btc, fees_eur, total_amount_eur, exchange_rate_usd_eur) VALUES ('tx-btc-058', 'a4', '2026-03-26', 'BUY', 0.00468000, 60687.00000000, 0.0000, 284.0000, 1.08000000) ON CONFLICT DO NOTHING;
@@ -563,5 +563,5 @@ INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, tick
 INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('2faf916e-88b6-43d0-899d-8958fd8aa8d2', 'a9', '2026-03-27', 'BUY', 'TSLA', 'USD', 2.00000000, 362.14000000, 0.0000, 724.2800, 1.15070000) ON CONFLICT DO NOTHING;
 INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('18d1b614-7e6b-49a2-b49f-7d76dedcc858', 'a9', '2026-03-27', 'BUY', 'GOOG', 'USD', 5.00000000, 274.68000000, 0.0000, 1373.4000, 1.15070000) ON CONFLICT DO NOTHING;
 INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('1ec9a9f0-13cf-4f6d-9313-862665cb332b', 'a9', '2026-03-27', 'BUY', 'ASML', 'USD', 1.00000000, 1304.13000000, 0.0000, 1304.1300, 1.15070000) ON CONFLICT DO NOTHING;
-INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('tx-stock-001', 'a9', '2026-02-05', 'BUY', 'AMD', 'USD', 10.00000000, 168.77000000, 0.0000, 1687.7000, 1.17870000) ON CONFLICT DO NOTHING;
-INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('tx-stock-002', 'a9', '2026-02-05', 'BUY', 'MSTR', 'USD', 30.00000000, 103.43000000, 0.0000, 3102.9000, 1.17870000) ON CONFLICT DO NOTHING;
+INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('tx-stock-001', 'a9', '2026-02-05', 'BUY', 'AMD', 'USD', 10.00000000, 200.33000000, 0.0000, 2003.3000, 1.17870000) ON CONFLICT DO NOTHING;
+INSERT INTO public.stock_transaction (id, asset_id, transaction_date, type, ticker, currency, quantity, price_per_unit, fees, total_amount, exchange_rate_eur_usd) VALUES ('tx-stock-002', 'a9', '2026-02-05', 'BUY', 'MSTR', 'USD', 30.00000000, 122.70000000, 0.0000, 3681.0000, 1.17870000) ON CONFLICT DO NOTHING;
