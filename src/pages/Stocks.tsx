@@ -1,6 +1,9 @@
 import React, { useState, useMemo, useCallback } from 'react'
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
-import { Trash2, Plus, Edit3, ArrowUp, ArrowDown } from 'lucide-react'
+import {
+  PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis
+} from 'recharts'
+import { Trash2, Plus, Edit3, ArrowUp, ArrowDown, Search, X, TrendingUp, TrendingDown } from 'lucide-react'
 import { useWealth } from '../context/WealthContext'
 import { useStockPortfolio } from '../hooks'
 import { Card } from '../components/ui/Card'
@@ -13,6 +16,8 @@ import { formatCurrency, formatUSD, formatDate, generateUUID } from '../utils'
 import type { StockTransaction } from '../types'
 import { api } from '../services/api'
 
+const CHART_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316']
+
 export default function Stocks() {
   const { stockTransactions, refetchData, assets, eurUsdRate } = useWealth()
   const { portfolio, loading: portfolioLoading, error: portfolioError, refetch: refetchPortfolio } = useStockPortfolio()
@@ -20,6 +25,8 @@ export default function Stocks() {
   const [editingTransaction, setEditingTransaction] = useState<StockTransaction | null>(null)
   const [sortColumn, setSortColumn] = useState<'transactionDate' | 'ticker' | 'type' | 'quantity' | 'price' | 'fees' | 'total'>('transactionDate')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [typeFilter, setTypeFilter] = useState<'ALL' | 'BUY' | 'SELL'>('ALL')
   const [formData, setFormData] = useState({
     ticker: '',
     assetId: '',
@@ -32,11 +39,9 @@ export default function Stocks() {
     totalAmount: 0,
     exchangeRateEurUsd: 1.08
   })
-  
-  // EUR/USD rate for converting transaction amounts (stored in USD) to EUR
-  const fxRate = eurUsdRate > 0 ? eurUsdRate : 1.08 // fallback
 
-  // Portfolio metrics now come from backend through the hook
+  const fxRate = eurUsdRate > 0 ? eurUsdRate : 1.08
+
   const portfolioMetrics = useMemo(() => {
     if (!portfolio) {
       return {
@@ -48,7 +53,6 @@ export default function Stocks() {
       }
     }
 
-    // Transform backend DTO to frontend display format
     const tickers = portfolio.tickers.map(ticker => [
       ticker.ticker,
       {
@@ -78,7 +82,7 @@ export default function Stocks() {
   const getSortedTransactions = useCallback((txs: StockTransaction[], column: 'transactionDate' | 'ticker' | 'type' | 'quantity' | 'price' | 'fees' | 'total', direction: 'asc' | 'desc') => {
     const sorted = [...txs]
     const isAsc = direction === 'asc'
-    
+
     switch (column) {
       case 'transactionDate':
         return sorted.sort((a, b) => isAsc ? new Date(a.transactionDate).getTime() - new Date(b.transactionDate).getTime() : new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime())
@@ -99,14 +103,42 @@ export default function Stocks() {
     }
   }, [])
 
-  const sortedTransactions = useMemo(() => getSortedTransactions(stockTransactions, sortColumn, sortDirection), [stockTransactions, sortColumn, sortDirection, getSortedTransactions])
+  const sortedTransactions = useMemo(
+    () => getSortedTransactions(stockTransactions, sortColumn, sortDirection),
+    [stockTransactions, sortColumn, sortDirection, getSortedTransactions]
+  )
 
+  const filteredTransactions = useMemo(() => {
+    let filtered = sortedTransactions
+    if (searchQuery.trim()) {
+      filtered = filtered.filter(tx =>
+        tx.ticker.toLowerCase().includes(searchQuery.trim().toLowerCase())
+      )
+    }
+    if (typeFilter !== 'ALL') {
+      filtered = filtered.filter(tx => tx.type === typeFilter)
+    }
+    return filtered
+  }, [sortedTransactions, searchQuery, typeFilter])
+
+  // Fix: use current market value for allocation, not cost basis
   const distributionData = portfolioMetrics.tickers.map(([ticker, data]) => ({
     name: ticker,
-    value: data.costEUR,
+    value: data.currentValue,
     shares: data.shares,
     avgPrice: data.avgPriceEUR
   }))
+
+  // Bar chart: ranking by current value
+  const barData = portfolioMetrics.tickers
+    .map(([ticker, data], idx) => ({
+      ticker,
+      value: Math.round(data.currentValue),
+      gain: data.unrealizedGainPercent,
+      isPositive: data.unrealizedGain >= 0,
+      color: CHART_COLORS[idx % CHART_COLORS.length]
+    }))
+    .sort((a, b) => b.value - a.value)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -115,16 +147,15 @@ export default function Stocks() {
 
     const runUpdate = async () => {
       try {
-        const totalAmount = formData.quantity * formData.pricePerUnit + formData.fees;
-        
-        // Find asset id
-        const searchTicker = formData.ticker.trim().toUpperCase();
-        const tickerAsset = assets.find(a => 
-          (a.ticker && a.ticker.trim().toUpperCase() === searchTicker) || 
+        const totalAmount = formData.quantity * formData.pricePerUnit + formData.fees
+
+        const searchTicker = formData.ticker.trim().toUpperCase()
+        const tickerAsset = assets.find(a =>
+          (a.ticker && a.ticker.trim().toUpperCase() === searchTicker) ||
           (a.name && a.name.trim().toUpperCase() === searchTicker)
-        );
-        const fbAsset = assets.find(a => a.name === 'Interactive Brokers' || a.category === 'Stocks');
-        const assetId = tickerAsset ? tickerAsset.id : (fbAsset ? fbAsset.id : undefined);
+        )
+        const fbAsset = assets.find(a => a.name === 'Interactive Brokers' || a.category === 'Stocks')
+        const assetId = tickerAsset ? tickerAsset.id : (fbAsset ? fbAsset.id : undefined)
 
         const txData = {
           id: editingTransaction ? editingTransaction.id : generateUUID(),
@@ -138,20 +169,19 @@ export default function Stocks() {
           fees: formData.fees,
           totalAmount: totalAmount,
           exchangeRateEurUsd: formData.exchangeRateEurUsd
-        };
-
-        if (editingTransaction) {
-          await api.updateStockTransaction(editingTransaction.id, txData as any);
-        } else {
-          await api.createStockTransaction(txData as any);
         }
 
-        // Refetch both context data and portfolio data
-        await refetchData();
-        await refetchPortfolio();
+        if (editingTransaction) {
+          await api.updateStockTransaction(editingTransaction.id, txData as any)
+        } else {
+          await api.createStockTransaction(txData as any)
+        }
 
-        setIsModalOpen(false);
-        setEditingTransaction(null);
+        await refetchData()
+        await refetchPortfolio()
+
+        setIsModalOpen(false)
+        setEditingTransaction(null)
         setFormData({
           ticker: '',
           assetId: '',
@@ -163,14 +193,14 @@ export default function Stocks() {
           fees: 0,
           totalAmount: 0,
           exchangeRateEurUsd: fxRate
-        });
+        })
       } catch (error) {
-        console.error("Error saving stock transaction", error);
-        alert("Error guardando la transacción");
+        console.error('Error saving stock transaction', error)
+        alert('Error guardando la transacción')
       }
-    };
-    
-    runUpdate();
+    }
+
+    runUpdate()
   }
 
   const handleOpenModal = (transaction?: StockTransaction) => {
@@ -210,17 +240,35 @@ export default function Stocks() {
     if (confirm('¿Está seguro de que desea eliminar esta transacción?')) {
       const runDelete = async () => {
         try {
-          await api.deleteStockTransaction(id);
-          await refetchData();
-          await refetchPortfolio();
+          await api.deleteStockTransaction(id)
+          await refetchData()
+          await refetchPortfolio()
         } catch (error) {
-          console.error("Error deleting stock transaction", error);
-          alert("Error eliminando la transacción");
+          console.error('Error deleting stock transaction', error)
+          alert('Error eliminando la transacción')
         }
-      };
-      runDelete();
+      }
+      runDelete()
     }
   }
+
+  const handleSort = (column: typeof sortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortColumn(column)
+      setSortDirection(column === 'transactionDate' || column === 'total' || column === 'quantity' || column === 'price' || column === 'fees' ? 'desc' : 'asc')
+    }
+  }
+
+  const SortIcon = ({ col }: { col: typeof sortColumn }) =>
+    sortColumn === col
+      ? (sortDirection === 'asc' ? <ArrowUp size={12} className="shrink-0" /> : <ArrowDown size={12} className="shrink-0" />)
+      : null
+
+  const gainPct = portfolioMetrics.totalInvestment > 0
+    ? (portfolioMetrics.unrealizedGains / portfolioMetrics.totalInvestment * 100).toFixed(1)
+    : '0.0'
 
   return (
     <div className="space-y-6">
@@ -231,7 +279,7 @@ export default function Stocks() {
           </p>
         </div>
       )}
-      
+
       <header className="flex justify-between items-start">
         <div>
           <h1 className="text-4xl md:text-5xl font-black tracking-tighter dark:text-white">
@@ -247,7 +295,7 @@ export default function Stocks() {
         </Button>
       </header>
 
-      {/* Métricas (all in EUR) */}
+      {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <MetricCard
           title="Valor Total Cartera"
@@ -264,13 +312,13 @@ export default function Stocks() {
         <MetricCard
           title="Ganancia No Realizada"
           value={portfolioLoading ? 'Cargando...' : formatCurrency(Math.round(portfolioMetrics.unrealizedGains))}
-          subtitle={portfolioLoading ? 'Cargando...' : `P&L actual (${portfolioMetrics.totalInvestment > 0 ? (portfolioMetrics.unrealizedGains / portfolioMetrics.totalInvestment * 100).toFixed(1) + '%' : '0%'})`}
+          subtitle={portfolioLoading ? 'Cargando...' : `${portfolioMetrics.unrealizedGains >= 0 ? '▲' : '▼'} ${gainPct}% sobre inversión`}
           color={portfolioMetrics.unrealizedGains >= 0 ? 'text-emerald-500' : 'text-rose-500'}
         />
         <MetricCard
           title="Tickers"
           value={portfolioLoading ? 'Cargando...' : portfolioMetrics.tickers.length}
-          subtitle="Acciones únicas"
+          subtitle="Posiciones abiertas"
           color="text-slate-900 dark:text-white"
         />
         <MetricCard
@@ -281,10 +329,10 @@ export default function Stocks() {
         />
       </div>
 
-      {/* Distribución y Resumen */}
+      {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Distribución */}
-        <Card title="Distribución por Ticker" className="overflow-hidden">
+        {/* Pie: Allocation by market value */}
+        <Card title="Distribución por Valor de Mercado">
           {distributionData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
@@ -294,224 +342,282 @@ export default function Stocks() {
                   cy="50%"
                   labelLine={false}
                   label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={80}
-                  fill="#8884d8"
+                  outerRadius={90}
+                  innerRadius={40}
                   dataKey="value"
                 >
                   {distributionData.map((_, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'][index % 6]}
-                    />
+                    <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(v) => formatCurrency(Number(v))} />
+                <Tooltip
+                  formatter={(v) => [formatCurrency(Number(v)), 'Valor actual']}
+                  contentStyle={{ borderRadius: '8px', fontSize: '13px' }}
+                />
               </PieChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-slate-500 dark:text-slate-400 text-center py-8">
+            <p className="text-slate-500 dark:text-slate-400 text-center py-16">
               Sin acciones en cartera
             </p>
           )}
         </Card>
 
-        {/* Resumen de Tickers */}
-        <Card title="Resumen de Tickers">
-          <div className="space-y-2">
-            {portfolioMetrics.tickers.length > 0 ? (
-              portfolioMetrics.tickers.map(([ticker, data]) => (
-                <div key={ticker} className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-bold dark:text-white">{ticker}</span>
-                    <span className="text-sm text-slate-600 dark:text-slate-400">{data.shares.toLocaleString('es-ES', { maximumFractionDigits: 4 })} acciones</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-600 dark:text-slate-400">
-                      Precio Medio: {formatUSD(data.avgPriceUSD)} ({formatCurrency(Math.round(data.avgPriceEUR))})
-                    </span>
-                    <span className="font-bold dark:text-white">Inversión: {formatCurrency(Math.round(data.costEUR))}</span>
-                  </div>
-                  <div className="flex justify-between text-sm mt-1">
-                    <span className="text-slate-600 dark:text-slate-400">Valor actual: {formatCurrency(Math.round(data.currentValue))}</span>
-                    <span className="text-slate-600 dark:text-slate-400">Precio: {formatCurrency(Math.round(data.lastPrice))}/acción</span>
-                  </div>
-                  {/* P&L per ticker */}
-                  <div className="flex justify-between items-center text-sm mt-1 border-t border-slate-200 dark:border-slate-700 pt-1">
-                    <span className="text-slate-600 dark:text-slate-400">P&L Actual:</span>
-                    <span className={`font-bold ${data.unrealizedGain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                       {data.unrealizedGain >= 0 ? '↑' : '↓'} {formatCurrency(Math.abs(Math.round(data.unrealizedGain)))} ({data.unrealizedGainPercent.toFixed(1)}%)
-                    </span>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-center text-slate-600 dark:text-slate-400 py-8">
-                Sin acciones aún
-              </p>
-            )}
-          </div>
+        {/* Bar: Ranking by current value */}
+        <Card title="Posiciones por Valor Actual (€)">
+          {barData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart
+                data={barData}
+                layout="vertical"
+                margin={{ top: 0, right: 60, left: 10, bottom: 0 }}
+              >
+                <XAxis
+                  type="number"
+                  tick={{ fontSize: 11, fill: '#94a3b8' }}
+                  tickFormatter={(v) => `€${(v / 1000).toFixed(0)}k`}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="ticker"
+                  tick={{ fontSize: 12, fontWeight: 700, fill: '#64748b' }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={48}
+                />
+                <Tooltip
+                  formatter={(v, _, props) => [
+                    `${formatCurrency(Number(v))}  (${props.payload?.gain?.toFixed(1)}%)`,
+                    'Valor actual'
+                  ]}
+                  contentStyle={{ borderRadius: '8px', fontSize: '13px' }}
+                />
+                <Bar dataKey="value" radius={[0, 6, 6, 0]} maxBarSize={28}>
+                  {barData.map((entry, index) => (
+                    <Cell key={`bar-${index}`} fill={entry.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <p className="text-slate-500 dark:text-slate-400 text-center py-16">
+              Sin acciones en cartera
+            </p>
+          )}
         </Card>
       </div>
 
-      {/* Tabla de Transacciones (amounts in USD) */}
+      {/* Ticker Position Cards */}
+      {portfolioMetrics.tickers.length > 0 && (
+        <div>
+          <h2 className="text-lg font-bold dark:text-white mb-3">Posiciones Abiertas</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {portfolioMetrics.tickers.map(([ticker, data], idx) => {
+              const portfolioPct = portfolioMetrics.totalValue > 0
+                ? (data.currentValue / portfolioMetrics.totalValue) * 100
+                : 0
+              const isPositive = data.unrealizedGain >= 0
+              const color = CHART_COLORS[idx % CHART_COLORS.length]
+
+              return (
+                <div
+                  key={ticker}
+                  className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm"
+                >
+                  {/* Header */}
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="w-3 h-3 rounded-full shrink-0"
+                        style={{ backgroundColor: color }}
+                      />
+                      <span className="text-xl font-black tracking-tight dark:text-white">{ticker}</span>
+                      <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                        {data.shares.toLocaleString('es-ES', { maximumFractionDigits: 4 })} acc.
+                      </span>
+                    </div>
+                    <span
+                      className={`flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full ${
+                        isPositive
+                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300'
+                          : 'bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300'
+                      }`}
+                    >
+                      {isPositive ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
+                      {isPositive ? '+' : ''}{data.unrealizedGainPercent.toFixed(1)}%
+                    </span>
+                  </div>
+
+                  {/* Main values */}
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    <div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">Valor actual</p>
+                      <p className="text-lg font-black tabular-nums dark:text-white">
+                        {formatCurrency(Math.round(data.currentValue))}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">P&L</p>
+                      <p className={`text-lg font-black tabular-nums ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {isPositive ? '+' : ''}{formatCurrency(Math.round(data.unrealizedGain))}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Secondary info */}
+                  <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400 mb-2">
+                    <span>Invertido: <strong className="dark:text-slate-300">{formatCurrency(Math.round(data.costEUR))}</strong></span>
+                    <span>Precio/acc: <strong className="dark:text-slate-300">{formatCurrency(Math.round(data.lastPrice))}</strong></span>
+                  </div>
+
+                  {/* Portfolio weight progress bar */}
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-xs text-slate-400">% del portfolio</span>
+                      <span className="text-xs font-bold dark:text-slate-300">{portfolioPct.toFixed(1)}%</span>
+                    </div>
+                    <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${portfolioPct}%`, backgroundColor: color }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Transactions Table */}
       <Card title="Historial de Transacciones" className="overflow-hidden">
+        {/* Filters */}
+        <div className="flex flex-col sm:flex-row gap-3 mb-4">
+          <div className="relative flex-1">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Buscar por ticker..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-8 py-2 text-sm border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
+            {(['ALL', 'BUY', 'SELL'] as const).map(f => (
+              <button
+                key={f}
+                onClick={() => setTypeFilter(f)}
+                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
+                  typeFilter === f
+                    ? f === 'BUY'
+                      ? 'bg-emerald-500 text-white shadow-sm'
+                      : f === 'SELL'
+                        ? 'bg-rose-500 text-white shadow-sm'
+                        : 'bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                }`}
+              >
+                {f === 'ALL' ? 'Todas' : f === 'BUY' ? '▲ Compras' : '▼ Ventas'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 dark:border-slate-800">
-                <th 
-                  onClick={() => {
-                    if (sortColumn === 'transactionDate') {
-                      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
-                    } else {
-                      setSortColumn('transactionDate')
-                      setSortDirection('desc')
-                    }
-                  }}
-                  className="text-left py-3 px-4 font-bold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-slate-900 dark:hover:text-slate-200 select-none"
-                >
-                  <div className="flex items-center gap-2">
-                    Fecha
-                    {sortColumn === 'transactionDate' && (sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />)}
-                  </div>
-                </th>
-                <th 
-                  onClick={() => {
-                    if (sortColumn === 'ticker') {
-                      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
-                    } else {
-                      setSortColumn('ticker')
-                      setSortDirection('asc')
-                    }
-                  }}
-                  className="text-left py-3 px-4 font-bold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-slate-900 dark:hover:text-slate-200 select-none"
-                >
-                  <div className="flex items-center gap-2">
-                    Ticker
-                    {sortColumn === 'ticker' && (sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />)}
-                  </div>
-                </th>
-                <th 
-                  onClick={() => {
-                    if (sortColumn === 'type') {
-                      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
-                    } else {
-                      setSortColumn('type')
-                      setSortDirection('asc')
-                    }
-                  }}
-                  className="text-left py-3 px-4 font-bold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-slate-900 dark:hover:text-slate-200 select-none"
-                >
-                  <div className="flex items-center gap-2">
-                    Tipo
-                    {sortColumn === 'type' && (sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />)}
-                  </div>
-                </th>
-                <th 
-                  onClick={() => {
-                    if (sortColumn === 'quantity') {
-                      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
-                    } else {
-                      setSortColumn('quantity')
-                      setSortDirection('desc')
-                    }
-                  }}
+                {([
+                  { col: 'transactionDate', label: 'Fecha', align: 'left' },
+                  { col: 'ticker', label: 'Ticker', align: 'left' },
+                  { col: 'type', label: 'Tipo', align: 'left' },
+                  { col: 'quantity', label: 'Acciones', align: 'right' },
+                  { col: 'price', label: 'Precio ($)', align: 'right' },
+                ] as const).map(({ col, label, align }) => (
+                  <th
+                    key={col}
+                    onClick={() => handleSort(col)}
+                    className={`text-${align} py-3 px-4 font-bold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-slate-900 dark:hover:text-slate-200 select-none`}
+                  >
+                    <div className={`flex items-center gap-1 ${align === 'right' ? 'justify-end' : ''}`}>
+                      {label}
+                      <SortIcon col={col} />
+                    </div>
+                  </th>
+                ))}
+                <th className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-400">Ratio (€/$)</th>
+                <th className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-400">Inversión (€)</th>
+                <th
+                  onClick={() => handleSort('fees')}
                   className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-slate-900 dark:hover:text-slate-200 select-none"
                 >
-                  <div className="flex items-center justify-end gap-2">
-                    Acciones
-                    {sortColumn === 'quantity' && (sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />)}
+                  <div className="flex items-center justify-end gap-1">
+                    Comisión ($)<SortIcon col="fees" />
                   </div>
                 </th>
-                <th 
-                  onClick={() => {
-                    if (sortColumn === 'price') {
-                      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
-                    } else {
-                      setSortColumn('price')
-                      setSortDirection('desc')
-                    }
-                  }}
-                >
-                  <div className="flex items-center justify-end gap-2">
-                    Precio ($)
-                    {sortColumn === 'price' && (sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />)}
-                  </div>
-                </th>
-                <th className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-400">
-                  Ratio (€/$)
-                </th>
-                <th className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-400">
-                  Inversión (€)
-                </th>
-                <th 
-                  onClick={() => {
-                    if (sortColumn === 'fees') {
-                      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
-                    } else {
-                      setSortColumn('fees')
-                      setSortDirection('desc')
-                    }
-                  }}
+                <th
+                  onClick={() => handleSort('total')}
                   className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-slate-900 dark:hover:text-slate-200 select-none"
                 >
-                  <div className="flex items-center justify-end gap-2">
-                    Comisión ($)
-                    {sortColumn === 'fees' && (sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />)}
-                  </div>
-                </th>
-                <th 
-                  onClick={() => {
-                    if (sortColumn === 'total') {
-                      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
-                    } else {
-                      setSortColumn('total')
-                      setSortDirection('desc')
-                    }
-                  }}
-                  className="text-right py-3 px-4 font-bold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-slate-900 dark:hover:text-slate-200 select-none"
-                >
-                  <div className="flex items-center justify-end gap-2">
-                    Total ($)
-                    {sortColumn === 'total' && (sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />)}
+                  <div className="flex items-center justify-end gap-1">
+                    Total ($)<SortIcon col="total" />
                   </div>
                 </th>
                 <th className="text-center py-3 px-4 font-bold text-slate-600 dark:text-slate-400">Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {sortedTransactions.map(tx => (
-                <tr key={tx.id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900">
+              {filteredTransactions.map(tx => (
+                <tr key={tx.id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/60 transition-colors">
                   <td className="py-3 px-4 font-semibold dark:text-white">{formatDate(tx.transactionDate)}</td>
-                  <td className="py-3 px-4 font-bold dark:text-white">{tx.ticker}</td>
+                  <td className="py-3 px-4 font-black dark:text-white">{tx.ticker}</td>
                   <td className="py-3 px-4">
-                    <span className={`px-2 py-1 rounded text-xs font-bold ${
-                      tx.type === 'BUY' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-200' : 'bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-200'
+                    <span className={`px-2 py-1 rounded-md text-xs font-bold ${
+                      tx.type === 'BUY'
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300'
+                        : 'bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300'
                     }`}>
                       {tx.type === 'BUY' ? '▲ Compra' : '▼ Venta'}
                     </span>
                   </td>
                   <td className="py-3 px-4 text-right font-bold dark:text-white">{tx.quantity}</td>
-                  <td className="py-3 px-4 text-right font-bold text-slate-600 dark:text-slate-300">{formatUSD(tx.pricePerUnit)}</td>
-                  <td className="py-3 px-4 text-right font-bold dark:text-white">{(tx.exchangeRateEurUsd || 1.08).toFixed(4)}</td>
+                  <td className="py-3 px-4 text-right dark:text-slate-300">{formatUSD(tx.pricePerUnit)}</td>
+                  <td className="py-3 px-4 text-right dark:text-white">{(tx.exchangeRateEurUsd || 1.08).toFixed(4)}</td>
                   <td className="py-3 px-4 text-right font-bold text-indigo-600 dark:text-indigo-400">
                     {formatCurrency(tx.totalAmount / (tx.exchangeRateEurUsd || 1.08))}
                   </td>
-                  <td className="py-3 px-4 text-right font-bold dark:text-white">{formatUSD(tx.fees)}</td>
+                  <td className="py-3 px-4 text-right dark:text-slate-300">{formatUSD(tx.fees)}</td>
                   <td className="py-3 px-4 text-right font-bold dark:text-white">{formatUSD(tx.totalAmount)}</td>
-                  <td className="py-3 px-4 text-center space-x-2 flex gap-2 justify-center">
-                    <button
-                      onClick={() => handleOpenModal(tx)}
-                      className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded transition-colors"
-                    >
-                      <Edit3 size={14} className="text-blue-500" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(tx.id)}
-                      className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded transition-colors"
-                    >
-                      <Trash2 size={14} className="text-rose-500" />
-                    </button>
+                  <td className="py-3 px-4">
+                    <div className="flex gap-1.5 justify-center">
+                      <button
+                        onClick={() => handleOpenModal(tx)}
+                        className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                        title="Editar"
+                      >
+                        <Edit3 size={13} className="text-blue-500" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(tx.id)}
+                        className="p-1.5 hover:bg-rose-100 dark:hover:bg-rose-900/30 rounded-lg transition-colors"
+                        title="Eliminar"
+                      >
+                        <Trash2 size={13} className="text-rose-500" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -519,14 +625,33 @@ export default function Stocks() {
           </table>
         </div>
 
-        {stockTransactions.length === 0 && (
-          <p className="text-center text-slate-600 dark:text-slate-400 py-8">
-            Sin transacciones aún
+        {filteredTransactions.length === 0 && (
+          <div className="text-center py-10">
+            {stockTransactions.length === 0 ? (
+              <p className="text-slate-500 dark:text-slate-400">Sin transacciones aún</p>
+            ) : (
+              <div>
+                <p className="text-slate-500 dark:text-slate-400 mb-2">Sin resultados para los filtros aplicados</p>
+                <button
+                  onClick={() => { setSearchQuery(''); setTypeFilter('ALL') }}
+                  className="text-xs text-indigo-500 hover:text-indigo-700 font-semibold"
+                >
+                  Limpiar filtros
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Footer with count */}
+        {filteredTransactions.length > 0 && (
+          <p className="text-xs text-slate-400 mt-3 text-right">
+            {filteredTransactions.length} de {stockTransactions.length} transacciones
           </p>
         )}
       </Card>
 
-      {/* Modal de Nueva Transacción */}
+      {/* Modal */}
       <Modal
         isOpen={isModalOpen}
         title={editingTransaction ? 'Editar Transacción Acción' : 'Nueva Transacción Acción'}
@@ -592,7 +717,7 @@ export default function Stocks() {
             step="0.01"
             min="0"
           />
-          
+
           <Input
             label="Tipo de Cambio (1€ = X$)"
             type="number"
