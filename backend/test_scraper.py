@@ -17,3 +17,7 @@ for name, isin in isins.items():
     res = FundScraper.fetch_fund_price(isin, name, isin)
     print("RESULT:", res)
 
+print(f"--- FETCHING Numantia Pensiones - N5430 ---")
+res2 = FundScraper.fetch_pension_price("N5430", "Numantia Pensiones", "UUID-1234")
+print("RESULT:", res2)
+

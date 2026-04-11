@@ -96,14 +96,21 @@ class FundScraper:
             
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, "html.parser")
-                # NAV is usually in a span with class "float-right enorme"
+                
+                # Robust search using text directly to survive redesigns
+                text = soup.get_text()
+                match = re.search(r'[Vv]alor[^\d]*liquidativo[^\d]*([\d\.,]+)', text)
+                if match:
+                    return FundScraper._create_price_data(asset_id, asset_name, isin, match.group(1))
+
+                # Legacy NAV class
                 price_element = soup.find("span", class_="float-right enorme")
                 if price_element:
                     price_text = price_element.text.strip()
-                    # Extract the number
                     price_match = re.search(r'[\d\.,]+', price_text)
                     if price_match:
                         return FundScraper._create_price_data(asset_id, asset_name, isin, price_match.group())
+                        
         except Exception as e:
             logger.debug(f"Error in QueFondos scraper for {isin}: {e}")
         return None
@@ -221,12 +228,20 @@ class FundScraper:
             response = requests.get(url, headers=FundScraper.HEADERS, timeout=15)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, "html.parser")
-                # Same class as fund pages
+                
+                # Robust search using text directly to survive redesigns
+                text = soup.get_text()
+                match = re.search(r'[Vv]alor[^\d]*liquidativo[^\d]*([\d\.,]+)', text)
+                if match:
+                    return FundScraper._create_price_data(asset_id, asset_name, dgs_code, match.group(1))
+                    
+                # Legacy NAV class
                 price_element = soup.find("span", class_="float-right enorme")
                 if price_element:
                     price_match = re.search(r'[\d\.,]+', price_element.text.strip())
                     if price_match:
                         return FundScraper._create_price_data(asset_id, asset_name, dgs_code, price_match.group())
+                        
                 # Fallback: look for any table cell that contains the value liquidativo
                 for td in soup.find_all("td"):
                     if "valor" in td.text.lower() or "liquidativo" in td.text.lower():
