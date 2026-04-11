@@ -3,7 +3,7 @@ Data models for WealthHub Backend API
 Combined SQLModel (DB + Validation) and Pydantic models
 """
 from sqlmodel import Field, SQLModel
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from pydantic.alias_generators import to_camel
 from typing import Any
 from sqlalchemy import Column, Numeric
@@ -315,6 +315,24 @@ class BitcoinTransactionDTO(BaseModel):
             'fees_eur': obj.fees_eur,
             'total_amount_eur': obj.total_amount_eur,
             'exchange_rate_to_eur': obj.exchange_rate_to_eur,
+        }
+
+
+    @model_validator(mode='before')
+    @classmethod
+    def coerce_uuids(cls, obj: Any) -> Any:
+        if isinstance(obj, dict):
+            return obj
+        return {
+            "id": str(obj.id) if obj.id is not None else None,
+            "asset_id": str(obj.asset_id) if obj.asset_id is not None else None,
+            "transaction_date": obj.transaction_date,
+            "type": obj.type,
+            "amount_btc": obj.amount_btc,
+            "price_eur_per_btc": obj.price_eur_per_btc,
+            "fees_eur": obj.fees_eur,
+            "total_amount_eur": obj.total_amount_eur,
+            "exchange_rate_usd_eur": obj.exchange_rate_usd_eur,
         }
 
 

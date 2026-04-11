@@ -20,9 +20,9 @@ class FundScraper:
     @staticmethod
     @cached(cache=TTLCache(maxsize=100, ttl=14400))
     def fetch_fund_price(isin: str, asset_name: str, asset_id: str) -> Optional[PriceData]:
-        """Try multiple strategies to fetch fund price"""
-        
-        # Strategy 1: QueFondos (Most reliable for Spanish funds and PP)
+        """Try multiple strategies to fetch fund (fondo de inversión) price"""
+
+        # Strategy 1: QueFondos (Most reliable for Spanish funds)
         price_data = FundScraper._fetch_from_quefondos(isin, asset_name, asset_id)
         if price_data:
             logger.info(f"✅ {asset_name}: {price_data.price} EUR (QueFondos)")
@@ -33,20 +33,57 @@ class FundScraper:
         if price_data:
             logger.info(f"✅ {asset_name}: {price_data.price} EUR (Morningstar)")
             return price_data
-        
+
         # Strategy 3: FT Markets
         price_data = FundScraper._fetch_from_ft(isin, asset_name, asset_id)
         if price_data:
             logger.info(f"✅ {asset_name}: {price_data.price} EUR (FT Markets)")
             return price_data
-        
+
         # Strategy 4: Fondos.net
         price_data = FundScraper._fetch_from_fondosnet(isin, asset_name, asset_id)
         if price_data:
             logger.info(f"✅ {asset_name}: {price_data.price} EUR (Fondos.net)")
             return price_data
-        
+
         logger.error(f"❌ No price found for {asset_name} ({isin}) in any source")
+        return None
+
+    @staticmethod
+    @cached(cache=TTLCache(maxsize=100, ttl=14400))
+    def fetch_pension_price(dgs_code: str, asset_name: str, asset_id: str) -> Optional[PriceData]:
+        """
+        Fetch NAV for Spanish pension plans (planes de pensiones).
+
+        Pension plans use DGS codes (e.g. N5430) issued by the Dirección General
+        de Seguros, NOT standard ISINs. Each source uses a different URL pattern
+        from regular investment funds.
+        """
+        # Strategy 1: QueFondos – pension plan page (/planes/ not /fondos/)
+        price_data = FundScraper._fetch_pension_from_quefondos(dgs_code, asset_name, asset_id)
+        if price_data:
+            logger.info(f"✅ {asset_name}: {price_data.price} EUR (QueFondos PP)")
+            return price_data
+
+        # Strategy 2: Morningstar pension plan search by DGS code / name
+        price_data = FundScraper._fetch_pension_from_morningstar(dgs_code, asset_name, asset_id)
+        if price_data:
+            logger.info(f"✅ {asset_name}: {price_data.price} EUR (Morningstar PP)")
+            return price_data
+
+        # Strategy 3: Finect planes de pensiones
+        price_data = FundScraper._fetch_pension_from_finect(dgs_code, asset_name, asset_id)
+        if price_data:
+            logger.info(f"✅ {asset_name}: {price_data.price} EUR (Finect PP)")
+            return price_data
+
+        # Strategy 4: Inverco (official pension data)
+        price_data = FundScraper._fetch_pension_from_inverco(dgs_code, asset_name, asset_id)
+        if price_data:
+            logger.info(f"✅ {asset_name}: {price_data.price} EUR (Inverco PP)")
+            return price_data
+
+        logger.error(f"❌ No price found for {asset_name} ({dgs_code}) in any pension source")
         return None
 
     @staticmethod
@@ -59,14 +96,21 @@ class FundScraper:
             
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, "html.parser")
-                # NAV is usually in a span with class "float-right enorme"
+                
+                # Robust search using text directly to survive redesigns
+                text = soup.get_text()
+                match = re.search(r'[Vv]alor[^\d]*liquidativo[^\d]*([\d\.,]+)', text)
+                if match:
+                    return FundScraper._create_price_data(asset_id, asset_name, isin, match.group(1))
+
+                # Legacy NAV class
                 price_element = soup.find("span", class_="float-right enorme")
                 if price_element:
                     price_text = price_element.text.strip()
-                    # Extract the number
                     price_match = re.search(r'[\d\.,]+', price_text)
                     if price_match:
                         return FundScraper._create_price_data(asset_id, asset_name, isin, price_match.group())
+                        
         except Exception as e:
             logger.debug(f"Error in QueFondos scraper for {isin}: {e}")
         return None
@@ -170,6 +214,164 @@ class FundScraper:
         except Exception as e:
             logger.debug(f"Error in Fondos.net scraper for {isin}: {e}")
             return None
+
+    # ─────────────────────────────────────────────────────────────
+    # Pension plan specific scrapers (DGS codes, not ISINs)
+    # ─────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _fetch_pension_from_quefondos(dgs_code: str, asset_name: str, asset_id: str) -> Optional[PriceData]:
+        """QueFondos pension plan page — /planes/ path uses the DGS code directly."""
+        try:
+            logger.info(f"🔄 Trying QueFondos PP for {asset_name} ({dgs_code})")
+            url = f"https://www.quefondos.com/es/planes/ficha/index.html?isin={dgs_code}"
+            response = requests.get(url, headers=FundScraper.HEADERS, timeout=15)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, "html.parser")
+                
+                # Robust search using text directly to survive redesigns
+                text = soup.get_text()
+                match = re.search(r'[Vv]alor[^\d]*liquidativo[^\d]*([\d\.,]+)', text)
+                if match:
+                    return FundScraper._create_price_data(asset_id, asset_name, dgs_code, match.group(1))
+                    
+                # Legacy NAV class
+                price_element = soup.find("span", class_="float-right enorme")
+                if price_element:
+                    price_match = re.search(r'[\d\.,]+', price_element.text.strip())
+                    if price_match:
+                        return FundScraper._create_price_data(asset_id, asset_name, dgs_code, price_match.group())
+                        
+                # Fallback: look for any table cell that contains the value liquidativo
+                for td in soup.find_all("td"):
+                    if "valor" in td.text.lower() or "liquidativo" in td.text.lower():
+                        sibling = td.find_next_sibling("td")
+                        if sibling:
+                            price_match = re.search(r'[\d\.,]+', sibling.text.strip())
+                            if price_match:
+                                return FundScraper._create_price_data(asset_id, asset_name, dgs_code, price_match.group())
+        except Exception as e:
+            logger.debug(f"Error in QueFondos PP for {dgs_code}: {e}")
+        return None
+
+    @staticmethod
+    def _fetch_pension_from_morningstar(dgs_code: str, asset_name: str, asset_id: str) -> Optional[PriceData]:
+        """
+        Morningstar pension plan lookup.
+
+        1. Search for the fund by DGS code or name to get the Morningstar ID.
+        2. Fetch the time-series price with that ID using the pension endpoint.
+        """
+        import json
+        try:
+            logger.info(f"🔄 Trying Morningstar PP search for {asset_name} ({dgs_code})")
+
+            # Step 1: search Morningstar for the pension plan
+            search_url = (
+                "https://www.morningstar.es/es/search/getSearchResults.aspx"
+                f"?t=PP&q={requests.utils.quote(dgs_code)}"
+            )
+            resp = requests.get(search_url, headers=FundScraper.HEADERS, timeout=10)
+            ms_id = None
+            if resp.status_code == 200:
+                try:
+                    data = resp.json()
+                    results = data.get("results", [])
+                    if results:
+                        ms_id = results[0].get("id")
+                except Exception:
+                    pass
+
+            # If DGS code search failed, try by name
+            if not ms_id:
+                search_url2 = (
+                    "https://www.morningstar.es/es/search/getSearchResults.aspx"
+                    f"?t=PP&q={requests.utils.quote(asset_name)}"
+                )
+                resp2 = requests.get(search_url2, headers=FundScraper.HEADERS, timeout=10)
+                if resp2.status_code == 200:
+                    try:
+                        data2 = resp2.json()
+                        results2 = data2.get("results", [])
+                        if results2:
+                            ms_id = results2[0].get("id")
+                    except Exception:
+                        pass
+
+            if not ms_id:
+                logger.debug(f"Morningstar PP: no ID found for {dgs_code}")
+                return None
+
+            # Step 2: fetch time-series price
+            for suffix in ["", "]2]0]PPALL$$EUR"]:
+                api_url = (
+                    f"https://tools.morningstar.es/api/rest.svc/timeseries_price/t92wz0sj7c"
+                    f"?id={ms_id}{suffix}&currencyId=EUR&idtype=MSID&frequency=daily&outputType=JSON"
+                )
+                api_resp = requests.get(api_url, headers=FundScraper.HEADERS, timeout=10)
+                if api_resp.status_code == 200 and "TimeSeries" in api_resp.text:
+                    try:
+                        ts_data = api_resp.json()
+                        history = ts_data.get("TimeSeries", {}).get("Security", [{}])[0].get("HistoryDetail", [])
+                        if history:
+                            last_price = history[-1].get("Value")
+                            if last_price:
+                                return FundScraper._create_price_data(asset_id, asset_name, dgs_code, str(last_price))
+                    except Exception:
+                        pass
+
+        except Exception as e:
+            logger.debug(f"Error in Morningstar PP for {dgs_code}: {e}")
+        return None
+
+    @staticmethod
+    def _fetch_pension_from_finect(dgs_code: str, asset_name: str, asset_id: str) -> Optional[PriceData]:
+        """Finect pension plan pages use the DGS code in the URL."""
+        try:
+            logger.info(f"🔄 Trying Finect PP for {asset_name} ({dgs_code})")
+            url = f"https://www.finect.com/fondos-de-pensiones/{dgs_code}"
+            response = requests.get(url, headers=FundScraper.HEADERS, timeout=15)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, "html.parser")
+                text = soup.get_text()
+                # Look for "Valor liquidativo" followed by a price
+                patterns = [
+                    r'[Vv]alor\s+liquidativo[^\d]*([\d\.,]+)',
+                    r'[Úú]ltimo\s+[Vv]alor[^\d]*([\d\.,]+)',
+                    r'NAV[^\d]*([\d\.,]+)',
+                ]
+                for pattern in patterns:
+                    match = re.search(pattern, text)
+                    if match:
+                        return FundScraper._create_price_data(asset_id, asset_name, dgs_code, match.group(1))
+        except Exception as e:
+            logger.debug(f"Error in Finect PP for {dgs_code}: {e}")
+        return None
+
+    @staticmethod
+    def _fetch_pension_from_inverco(dgs_code: str, asset_name: str, asset_id: str) -> Optional[PriceData]:
+        """
+        Inverco publishes monthly pension plan data.
+        Try a direct search on their site.
+        """
+        try:
+            logger.info(f"🔄 Trying Inverco for {asset_name} ({dgs_code})")
+            url = f"https://www.inverco.es/inversiones/planes-de-pensiones/{dgs_code}"
+            response = requests.get(url, headers=FundScraper.HEADERS, timeout=15)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, "html.parser")
+                text = soup.get_text()
+                patterns = [
+                    r'[Vv]alor\s+[Ll]iquidativo[^\d]*([\d\.,]+)',
+                    r'NAV[^\d]*([\d\.,]+)',
+                ]
+                for pattern in patterns:
+                    match = re.search(pattern, text)
+                    if match:
+                        return FundScraper._create_price_data(asset_id, asset_name, dgs_code, match.group(1))
+        except Exception as e:
+            logger.debug(f"Error in Inverco for {dgs_code}: {e}")
+        return None
 
     @staticmethod
     def _create_price_data(asset_id, name, isin, price_str):

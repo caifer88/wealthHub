@@ -166,11 +166,21 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
 
         def make_fund_fetcher(fund):
             def fetch():
-                return ("fund", fund, FundScraper.fetch_fund_price(
-                    isin=fund["isin"],
-                    asset_name=fund["name"],
-                    asset_id=fund["id"]
-                ))
+                is_pension = fund.get("category") == AssetCategory.PENSION.value
+                if is_pension:
+                    # Pension plans use DGS codes and different source URLs
+                    price = FundScraper.fetch_pension_price(
+                        dgs_code=fund["isin"],
+                        asset_name=fund["name"],
+                        asset_id=fund["id"]
+                    )
+                else:
+                    price = FundScraper.fetch_fund_price(
+                        isin=fund["isin"],
+                        asset_name=fund["name"],
+                        asset_id=fund["id"]
+                    )
+                return ("fund", fund, price)
             return fetch
 
         for fund in fund_assets:

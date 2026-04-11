@@ -58,12 +58,49 @@ app.add_middleware(
 
 logger.info(f"🔧 CORS configured for: {', '.join(frontend_urls)}")
 
+async def run_migrations():
+    """Apply schema fixes on startup to handle persistent DB column name mismatches."""
+    from sqlalchemy import text
+
+    steps = [
+        (
+            "rename bitcoin_transaction.exchange_rate_to_eur -> exchange_rate_usd_eur",
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'bitcoin_transaction'
+                      AND column_name = 'exchange_rate_to_eur'
+                ) THEN
+                    ALTER TABLE bitcoin_transaction
+                        RENAME COLUMN exchange_rate_to_eur TO exchange_rate_usd_eur;
+                END IF;
+            END $$
+            """,
+        ),
+        (
+            "add stock_transaction.exchange_rate_eur_usd if missing",
+            "ALTER TABLE stock_transaction ADD COLUMN IF NOT EXISTS exchange_rate_eur_usd numeric(15,8) DEFAULT 1.08",
+        ),
+    ]
+
+    async with engine.begin() as conn:
+        for description, stmt in steps:
+            try:
+                await conn.execute(text(stmt))
+                logger.info(f"✅ Migration OK: {description}")
+            except Exception as e:
+                logger.warning(f"⚠️ Migration skipped ({description}): {e}")
+
+
 @app.on_event("startup")
 async def on_startup():
     # Schema is managed by init.sql; skip automatic table creation
     # to avoid conflicts with the pre-initialized database
     logger.info("📦 Database tables already initialized via init.sql")
-    
+    await run_migrations()
+
     scheduler.add_job(scheduled_update_nav, 'cron', hour=9, minute=00)
     scheduler.start()
     logger.info("🕒 Scheduler started. NAV update scheduled at 9:00 AM.")

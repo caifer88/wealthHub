@@ -206,23 +206,27 @@ async def calculate_stock_metrics(
     average_price_usd = total_cost_usd / total_shares if total_shares > 0 else 0.0
     
     # Get latest price from asset_history using real asset_id
+    # NOTE: liquid_nav_value is stored in EUR (monthly_fetch_service converts USD→EUR before saving)
     ticker_upper = ticker.upper()
-    current_price_usd = await get_latest_stock_price_usd(
-        session, 
-        ticker_upper, 
+    current_price_eur = await get_latest_stock_price_eur(
+        session,
+        ticker_upper,
         ticker_asset_map
     )
-    
-    if current_price_usd is None:
-        logger.warning(f"⚠️ No current price found for {ticker}, using cost basis as proxy")
-        current_price_usd = average_price_usd
-    
-    # Convert to EUR
+
+    # Fallback: derive EUR price from cost basis if no history
     cost_basis_eur = total_cost_usd / eur_usd_rate if eur_usd_rate > 0 else total_cost_usd
-    current_value_usd = total_shares * current_price_usd
-    current_value_eur = current_value_usd / eur_usd_rate if eur_usd_rate > 0 else current_value_usd
-    current_price_eur = current_price_usd / eur_usd_rate if eur_usd_rate > 0 else current_price_usd
-    
+    average_price_eur = average_price_usd / eur_usd_rate if eur_usd_rate > 0 else average_price_usd
+
+    if current_price_eur is None:
+        logger.warning(f"⚠️ No current price found for {ticker}, using cost basis as proxy")
+        current_price_eur = average_price_eur
+
+    # USD equivalents (for display only — price history is stored in EUR)
+    current_price_usd = current_price_eur * eur_usd_rate if eur_usd_rate > 0 else current_price_eur
+    current_value_eur = total_shares * current_price_eur
+    current_value_usd = current_value_eur * eur_usd_rate if eur_usd_rate > 0 else current_value_eur
+
     # Calculate gains
     unrealized_gain_usd = current_value_usd - total_cost_usd
     unrealized_gain_eur = current_value_eur - cost_basis_eur
@@ -254,49 +258,47 @@ async def calculate_stock_metrics(
     )
 
 
-async def get_latest_stock_price_usd(
+async def get_latest_stock_price_eur(
     session: AsyncSession,
     ticker: str,
     ticker_asset_map: Dict[str, str]
 ) -> Optional[float]:
     """
-    Get the latest price for a stock ticker in USD.
-    
-    Queries asset_history using the real asset_id from the mapping.
-    
+    Get the latest price for a stock ticker in EUR.
+
+    NOTE: monthly_fetch_service converts USD→EUR before storing in liquid_nav_value,
+    so the value stored is already in EUR — NOT USD.
+
     Args:
         session: Database session
         ticker: Stock ticker (uppercase)
         ticker_asset_map: Mapping of ticker → asset_id
-    
+
     Returns:
-        Latest price in USD, or None if not found
+        Latest price in EUR, or None if not found
     """
-    # Get the real asset_id for this ticker
     asset_id = ticker_asset_map.get(ticker)
-    
+
     if not asset_id:
         logger.warning(f"⚠️ No real asset found for ticker {ticker}")
         return None
-    
+
     try:
-        # Query latest history entry for this asset
-        # For stocks, liquid_nav_value is directly the price in USD
         statement = select(AssetHistory).where(
             AssetHistory.asset_id == asset_id
         ).order_by(AssetHistory.snapshot_date.desc())
-        
+
         result = (await session.exec(statement)).first()
-        
+
         if result and result.liquid_nav_value and result.liquid_nav_value > 0:
-            # For stocks, liquid_nav_value IS the price in USD
-            price_usd = float(result.liquid_nav_value)
-            logger.debug(f"✓ Latest price for {ticker}: ${price_usd:.2f} (from {result.snapshot_date})")
-            return price_usd
-            
+            # liquid_nav_value is stored in EUR (converted from USD by monthly_fetch_service)
+            price_eur = float(result.liquid_nav_value)
+            logger.debug(f"✓ Latest price for {ticker}: €{price_eur:.2f} (from {result.snapshot_date})")
+            return price_eur
+
     except Exception as e:
         logger.debug(f"⚠️ Error fetching latest price for {ticker}: {str(e)}")
-    
+
     return None
 
 
