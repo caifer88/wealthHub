@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useWealth } from '../context/WealthContext'
+import { useWealthData } from '../hooks'
 import { MetricCard } from '../components/ui/MetricCard'
 import { Card } from '../components/ui/Card'
 import { formatCurrency } from '../utils'
@@ -7,23 +8,25 @@ import { useROIMetrics, useEvolutionData, useCumulativeReturn } from '../hooks'
 import { WealthEvolutionChart } from '../components/dashboard/WealthEvolutionChart'
 import { AssetDistributionPie } from '../components/dashboard/AssetDistributionPie'
 import { RoiCard } from '../components/dashboard/RoiCard'
+import type { Asset } from '../types'
 import { RoiTable } from '../components/dashboard/RoiTable'
 import { AllocationBar } from '../components/dashboard/AllocationBar'
 import { useAllocationByCategory } from '../hooks/useAllocation'
 
 export default function Dashboard() {
-  const { assets, history, darkMode, metrics } = useWealth()
+  const { darkMode } = useWealth()
+  const { assets, history, metrics, isLoading } = useWealthData()
   const [roiViewMode, setRoiViewMode] = useState<'chart' | 'table'>('chart')
 
-  const activeAssets       = useMemo(() => assets.filter(a => !a.isArchived), [assets])
-  const allAssetsForHistory = useMemo(() => assets.filter(a => a.name !== 'Cash'), [assets])
+  const activeAssets       = useMemo(() => assets.filter((a: Asset) => !a.isArchived), [assets])
+  const allAssetsForHistory = useMemo(() => assets.filter((a: Asset) => a.name !== 'Cash'), [assets])
 
   const evolutionData = useEvolutionData(history, allAssetsForHistory)
   const roiData       = useCumulativeReturn(history, allAssetsForHistory)
   const roiMetrics    = useROIMetrics(assets, history)
   const allocations   = useAllocationByCategory(assets, history, roiMetrics)
 
-  if (!metrics) {
+  if (isLoading || !metrics) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <p className="text-lg text-slate-600 dark:text-slate-400">Cargando datos...</p>
@@ -34,15 +37,15 @@ export default function Dashboard() {
   /** Build distribution data for the pie chart based on an optional filter */
   const getDistributionData = (filter: string[]) =>
     activeAssets
-      .filter(a => filter.length === 0 || filter.includes(a.id))
-      .map(asset => ({
+      .filter((a: Asset) => filter.length === 0 || filter.includes(a.id))
+      .map((asset: Asset) => ({
         name: asset.name,
         value: asset.name === 'Cash'
           ? metrics.cash
           : (roiMetrics.find(m => m.asset.id === asset.id)?.nav ?? 0),
         color: asset.color
       }))
-      .filter(d => d.value > 0)
+      .filter((d: { name: string; value: number; color: string }) => d.value > 0)
 
   const activeClass   = 'bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300'
   const inactiveClass = 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'

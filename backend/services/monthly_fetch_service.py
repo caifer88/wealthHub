@@ -3,7 +3,6 @@ import asyncio
 from typing import List, Optional, Tuple
 from datetime import datetime, timedelta
 from decimal import Decimal
-import uuid
 
 from fastapi import HTTPException, status
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -93,7 +92,7 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                 last_business_day=format_date(last_business_day), 
                 prices=[],
                 errors=["No assets available"],
-                exchange_rate_eur_usd=None,
+                exchange_rate_to_eur=None,
                 exchange_rate_source=None
             )
 
@@ -104,7 +103,6 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
         fund_assets = [
             a for a in active_assets 
             if a.get("category") in (
-                AssetCategory.FUND.value, 
                 AssetCategory.FUND_ACTIVE.value, 
                 AssetCategory.FUND_INDEX.value,
                 AssetCategory.PENSION.value
@@ -232,9 +230,8 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                         p.asset_id = ticker_asset_map[ticker_upper]
                         logger.debug(f"✓ Using real asset_id for {p.ticker}: {p.asset_id}")
                     else:
-                        # Fallback: use fake ID if real asset not found (shouldn't happen after Phase 1)
-                        p.asset_id = f"ticker-{p.ticker}"
-                        logger.warning(f"⚠️ Real asset not found for {p.ticker}, using placeholder ID")
+                        # Stock asset must exist for UUID FK constraints
+                        raise ValueError(f"Stock asset not found for ticker {p.ticker}. Please ensure all tickers are added to the system as assets before fetching prices.")
                     
                     p.asset_name = f"Stock {p.ticker}"
                     copied_individual_prices.append(p)
@@ -295,7 +292,7 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                 last_business_day=format_date(last_business_day),
                 prices=[],
                 errors=errors,
-                exchange_rate_eur_usd=eur_usd_rate if eur_usd_rate else None,
+                exchange_rate_to_eur=eur_usd_rate if eur_usd_rate else None,
                 exchange_rate_source=eur_usd_rate_source
             )
 
@@ -451,9 +448,9 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
                 history_entry.mean_cost = mean_cost
                 await db_service.update_history_entry(session, history_entry.id, history_entry)
             else:
+                from uuid import UUID as _UUID
                 history_entry = HistoryEntry(
-                    id=str(uuid.uuid4()),
-                    asset_id=asset_id,
+                    asset_id=_UUID(str(asset_id)) if not isinstance(asset_id, _UUID) else asset_id,
                     snapshot_date=date_obj,
                     liquid_nav_value=liquid_nav,
                     nav=nav_val,
@@ -474,7 +471,7 @@ async def process_monthly_prices(year: int, month: int, session: AsyncSession) -
             last_business_day=format_date(last_business_day),
             prices=prices,
             errors=errors,
-            exchange_rate_eur_usd=eur_usd_rate if eur_usd_rate else None,
+            exchange_rate_to_eur=eur_usd_rate if eur_usd_rate else None,
             exchange_rate_source=eur_usd_rate_source
         )
 

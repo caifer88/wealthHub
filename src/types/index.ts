@@ -15,7 +15,7 @@ export interface Asset {
   color: string;
   isArchived: boolean;
   riskLevel?: string;
-  parent_asset_id?: string;
+  parentAssetId?: string;
   isin?: string;  // ISIN for mutual funds
   ticker?: string;  // Ticker for stocks and crypto
   participations: number;  // Number of shares/participations
@@ -36,27 +36,27 @@ export interface HistoryEntry {
 export interface BitcoinTransaction {
   id: string;
   assetId: string;
-  transactionDate: string;  // ISO date format
+  transactionDate: string;
   type: 'BUY' | 'SELL';
-  amountBtc: number;        // Amount of Bitcoin
-  priceEurPerBtc: number;   // Price per BTC in EUR
-  feesEur: number;          // Transaction fees in EUR
-  totalAmountEur: number;   // Total amount paid in EUR
-  exchangeRateUsdEur: number; // EUR/USD exchange rate at time of transaction
+  amountBtc: number;
+  priceEurPerBtc: number;
+  feesEur: number;
+  totalAmountEur: number;
+  exchangeRateToEur: number; // <-- CORREGIDO Y ESTANDARIZADO
 }
 
 export interface StockTransaction {
   id: string;
   assetId: string;
-  transactionDate: string;  // ISO date format
+  transactionDate: string;
   type: 'BUY' | 'SELL';
   ticker: string;
-  currency: string;         // USD, EUR, etc.
-  quantity: number;         // Number of shares
-  pricePerUnit: number;     // Price per share
-  fees: number;             // Transaction fees
-  totalAmount: number;      // Total cost
-  exchangeRateEurUsd: number; // EUR/USD exchange rate at time of transaction
+  currency: string;
+  quantity: number;
+  pricePerUnit: number;
+  fees: number;
+  totalAmount: number;
+  exchangeRateToEur: number; // <-- CORREGIDO Y ESTANDARIZADO
 }
 
 

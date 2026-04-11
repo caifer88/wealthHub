@@ -46,7 +46,7 @@ async def get_stock_portfolio_summary(session: AsyncSession) -> StockPortfolioSu
                 total_invested_eur=0.0,
                 total_unrealized_gain_eur=0.0,
                 total_unrealized_gain_percent=0.0,
-                exchange_rate_eur_usd=1.1,
+                exchange_rate_to_eur=1.1,
                 last_update=datetime.now().isoformat(),
                 number_of_tickers=0,
                 tickers=[]
@@ -120,7 +120,7 @@ async def get_stock_portfolio_summary(session: AsyncSession) -> StockPortfolioSu
             total_invested_eur=round(total_invested_eur, 2),
             total_unrealized_gain_eur=round(total_unrealized_gain_eur, 2),
             total_unrealized_gain_percent=round(total_unrealized_gain_percent, 2),
-            exchange_rate_eur_usd=eur_usd_rate,
+            exchange_rate_to_eur=eur_usd_rate,
             last_update=datetime.now().isoformat(),
             number_of_tickers=len(stock_metrics_list),
             tickers=stock_metrics_list
@@ -161,7 +161,7 @@ async def calculate_stock_metrics(
         price_per_unit = float(txn.price_per_unit) if txn.price_per_unit else 0.0
         
         # Use transaction exchange rate to convert to original USD cost
-        txn_eur_to_usd = float(txn.exchange_rate_eur_usd) if txn.exchange_rate_eur_usd else 1.0
+        txn_eur_to_usd = float(txn.exchange_rate_to_eur) if txn.exchange_rate_to_eur else 1.0
         
         if txn.type and txn.type.upper() == "BUY":
             # USD cost = quantity × price_per_unit (price already in USD)

@@ -1,10 +1,7 @@
 import React, { useState, useMemo, useCallback } from 'react'
-import {
-  PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
-  BarChart, Bar, XAxis, YAxis
-} from 'recharts'
-import { Trash2, Plus, Edit3, ArrowUp, ArrowDown, Search, X, TrendingUp, TrendingDown } from 'lucide-react'
-import { useWealth } from '../context/WealthContext'
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
+import { Trash2, Plus, Edit3, ArrowUp, ArrowDown } from 'lucide-react'
+import { useWealthData } from '../hooks'
 import { useStockPortfolio } from '../hooks'
 import { Card } from '../components/ui/Card'
 import { MetricCard } from '../components/ui/MetricCard'
@@ -13,13 +10,13 @@ import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { formatCurrency, formatUSD, formatDate, generateUUID } from '../utils'
-import type { StockTransaction } from '../types'
+import type { StockTransaction, Asset } from '../types'
 import { api } from '../services/api'
 
 const CHART_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316']
 
 export default function Stocks() {
-  const { stockTransactions, refetchData, assets, eurUsdRate } = useWealth()
+  const { stockTransactions, refetchData, assets, eurUsdRate } = useWealthData()
   const { portfolio, loading: portfolioLoading, error: portfolioError, refetch: refetchPortfolio } = useStockPortfolio()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingTransaction, setEditingTransaction] = useState<StockTransaction | null>(null)
@@ -37,8 +34,11 @@ export default function Stocks() {
     pricePerUnit: 0,
     fees: 0,
     totalAmount: 0,
-    exchangeRateEurUsd: 1.08
+    exchangeRateEurUsd: 1.15
   })
+  
+  // EUR/USD rate for converting transaction amounts (stored in USD) to EUR
+  const fxRate = eurUsdRate > 0 ? eurUsdRate : 1.15 // fallback
 
   const fxRate = eurUsdRate > 0 ? eurUsdRate : 1.08
 
@@ -147,15 +147,16 @@ export default function Stocks() {
 
     const runUpdate = async () => {
       try {
-        const totalAmount = formData.quantity * formData.pricePerUnit + formData.fees
-
-        const searchTicker = formData.ticker.trim().toUpperCase()
-        const tickerAsset = assets.find(a =>
-          (a.ticker && a.ticker.trim().toUpperCase() === searchTicker) ||
+        const totalAmount = formData.quantity * formData.pricePerUnit + formData.fees;
+        
+        // Find asset id
+        const searchTicker = formData.ticker.trim().toUpperCase();
+        const tickerAsset = assets.find((a: Asset) => 
+          (a.ticker && a.ticker.trim().toUpperCase() === searchTicker) || 
           (a.name && a.name.trim().toUpperCase() === searchTicker)
-        )
-        const fbAsset = assets.find(a => a.name === 'Interactive Brokers' || a.category === 'Stocks')
-        const assetId = tickerAsset ? tickerAsset.id : (fbAsset ? fbAsset.id : undefined)
+        );
+        const fbAsset = assets.find((a: Asset) => a.name === 'Interactive Brokers' || a.category === 'Stocks');
+        const assetId = tickerAsset ? tickerAsset.id : (fbAsset ? fbAsset.id : undefined);
 
         const txData = {
           id: editingTransaction ? editingTransaction.id : generateUUID(),
@@ -192,8 +193,8 @@ export default function Stocks() {
           pricePerUnit: 0,
           fees: 0,
           totalAmount: 0,
-          exchangeRateEurUsd: fxRate
-        })
+          exchangeRateEurUsd: 0 // Se obtiene automáticamente del backend
+        });
       } catch (error) {
         console.error('Error saving stock transaction', error)
         alert('Error guardando la transacción')
@@ -230,7 +231,7 @@ export default function Stocks() {
         pricePerUnit: 0,
         fees: 0,
         totalAmount: 0,
-        exchangeRateEurUsd: fxRate
+        exchangeRateEurUsd: 0 // Se obtiene automáticamente del backend
       })
     }
     setIsModalOpen(true)
@@ -594,10 +595,10 @@ export default function Stocks() {
                     </span>
                   </td>
                   <td className="py-3 px-4 text-right font-bold dark:text-white">{tx.quantity}</td>
-                  <td className="py-3 px-4 text-right dark:text-slate-300">{formatUSD(tx.pricePerUnit)}</td>
-                  <td className="py-3 px-4 text-right dark:text-white">{(tx.exchangeRateEurUsd || 1.08).toFixed(4)}</td>
+                  <td className="py-3 px-4 text-right font-bold text-slate-600 dark:text-slate-300">{formatUSD(tx.pricePerUnit)}</td>
+                  <td className="py-3 px-4 text-right font-bold dark:text-white">{(tx.exchangeRateEurUsd || 1.15).toFixed(4)}</td>
                   <td className="py-3 px-4 text-right font-bold text-indigo-600 dark:text-indigo-400">
-                    {formatCurrency(tx.totalAmount / (tx.exchangeRateEurUsd || 1.08))}
+                    {formatCurrency(tx.totalAmount / (tx.exchangeRateEurUsd || 1.15))}
                   </td>
                   <td className="py-3 px-4 text-right dark:text-slate-300">{formatUSD(tx.fees)}</td>
                   <td className="py-3 px-4 text-right font-bold dark:text-white">{formatUSD(tx.totalAmount)}</td>
@@ -719,16 +720,16 @@ export default function Stocks() {
           />
 
           <Input
-            label="Tipo de Cambio (1€ = X$)"
+            label="Tipo de Cambio (1€ = X$) - Opcional"
             type="number"
             value={formData.exchangeRateEurUsd}
-            onChange={(e) => setFormData({ ...formData, exchangeRateEurUsd: parseFloat(e.target.value) || 1.08 })}
+            onChange={(e) => setFormData({ ...formData, exchangeRateEurUsd: parseFloat(e.target.value) || 0 })}
             step="0.0001"
             min="0.0001"
-            required
+            placeholder="Se obtiene automáticamente del historial de cambios"
           />
           <p className="text-xs text-slate-500 mt-1 italic">
-            * Ratio aplicado para calcular el coste base real en euros.
+            * Se obtiene automáticamente del día de la transacción. Puedes editarlo si necesitas usar un valor específico.
           </p>
 
           {formData.quantity > 0 && formData.pricePerUnit > 0 && (

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react'
 import { Trash2, Plus, Edit3, ArrowUp, ArrowDown } from 'lucide-react'
-import { useWealth } from '../context/WealthContext'
+import { useWealthData } from '../hooks'
 import { Card } from '../components/ui/Card'
 import { MetricCard } from '../components/ui/MetricCard'
 import { Button } from '../components/ui/Button'
@@ -8,7 +8,7 @@ import { Modal } from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { formatCurrency, formatDate, generateUUID, isCurrentMonth, getMonthFromDate } from '../utils'
-import type { BitcoinTransaction } from '../types'
+import type { BitcoinTransaction, Asset, HistoryEntry } from '../types'
 import { config } from '../config'
 import { api } from '../services/api'
 import {
@@ -39,7 +39,7 @@ const INITIAL_FORM_DATA: FormData = {
 }
 
 export default function Bitcoin() {
-  const { bitcoinTransactions, refetchData, assets, history } = useWealth()
+  const { bitcoinTransactions, refetchData, assets, history } = useWealthData()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingTransaction, setEditingTransaction] = useState<BitcoinTransaction | null>(null)
   const [sortColumn, setSortColumn] = useState<'transactionDate' | 'type' | 'amount' | 'cost' | 'priceEurPerBtc'>('transactionDate')
@@ -85,7 +85,7 @@ export default function Bitcoin() {
     })
 
     // 2. Añadir las compras como puntos sueltos
-    validTransactions.filter(tx => tx.type === 'BUY').forEach(tx => {
+    validTransactions.filter((tx: BitcoinTransaction) => tx.type === 'BUY').forEach((tx: BitcoinTransaction) => {
       if (!tx.transactionDate || !tx.amountBtc) return
       data.push({
         time: new Date(tx.transactionDate).getTime(),
@@ -97,26 +97,26 @@ export default function Bitcoin() {
     })
 
     // Ordenar cronológicamente todo el conjunto
-    return data.sort((a, b) => a.time - b.time)
+    return data.sort((a: any, b: any) => a.time - b.time)
   }, [historicalPrices, validTransactions])
 
 
   const btcAsset = useMemo(() => {
-    return assets.find(a => a.name.toLowerCase().includes('bitcoin') || a.category === 'Crypto')
+    return assets.find((a: Asset) => a.name.toLowerCase().includes('bitcoin') || a.category === 'Crypto')
   }, [assets])
   
   const assetLatestNAV = useMemo(() => {
     if (!btcAsset || !history) return 0
-    const assetHistory = history.filter(h => h.asset_id === btcAsset.id)
+    const assetHistory = history.filter((h: HistoryEntry) => h.asset_id === btcAsset.id)
     if (assetHistory.length === 0) return 0
-    const sorted = [...assetHistory].sort((a, b) => b.month.localeCompare(a.month))
+    const sorted = [...assetHistory].sort((a: HistoryEntry, b: HistoryEntry) => b.month.localeCompare(a.month))
     return sorted[0].nav || 0
   }, [btcAsset, history])
   
   let currentBtcShares = 0
   let currentBtcCost = 0
   
-  validTransactions.forEach(tx => {
+  validTransactions.forEach((tx: BitcoinTransaction) => {
      if (tx.type === 'BUY') {
         currentBtcShares += (tx.amountBtc || 0)
         currentBtcCost += (tx.totalAmountEur || 0)
@@ -208,7 +208,7 @@ export default function Bitcoin() {
       try {
         const txData = createTransaction(formData);
         
-        const btcAsset = assets.find(a => a.name.toLowerCase().includes('bitcoin') || a.category === 'Crypto')
+        const btcAsset = assets.find((a: Asset) => a.name.toLowerCase().includes('bitcoin') || a.category === 'Crypto')
         const assetId = btcAsset ? btcAsset.id : undefined;
 
         const backendPayload = {
@@ -220,7 +220,7 @@ export default function Bitcoin() {
             priceEurPerBtc: txData.priceEurPerBtc,
             feesEur: 0,
             totalAmountEur: txData.totalAmountEur,
-            exchangeRateUsdEur: 1.08,
+            exchangeRateUsdEur: 0, // Se obtiene automáticamente del backend según la fecha
         };
 
         if (editingTransaction) {
@@ -264,7 +264,7 @@ export default function Bitcoin() {
   }, [])
 
   const handleDelete = useCallback((id: string) => {
-    const transaction = bitcoinTransactions.find(t => t.id === id)
+    const transaction = bitcoinTransactions.find((t: BitcoinTransaction) => t.id === id)
     
     if (transaction && !isCurrentMonth(getMonthFromDate(transaction.transactionDate || ''))) {
       alert('No se pueden eliminar transacciones de meses anteriores')

@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { Plus, Archive, ArchiveX, RefreshCw } from 'lucide-react'
-import { useWealth } from '../context/WealthContext'
+import { useWealthData } from '../hooks'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { MetricCard } from '../components/ui/MetricCard'
@@ -16,13 +16,20 @@ import { fetchAndUpdatePrices } from '../services/priceUpdater'
 const AssetCard = ({ 
   asset, 
   onAssetClick, 
-  totalNAV 
+  totalNAV, 
+  assets,
+  history,
+  stockTransactions,
+  bitcoinTransactions
 }: { 
   asset: Asset, 
   onAssetClick: (asset: Asset) => void,
-  totalNAV: number
+  totalNAV: number,
+  assets: Asset[],
+  history: any[],
+  stockTransactions: any[],
+  bitcoinTransactions: any[]
 }) => {
-  const { assets, history, stockTransactions, bitcoinTransactions } = useWealth()
   
   const {
     currentValue,
@@ -123,7 +130,7 @@ const AssetCard = ({
 }
 
 export default function Assets() {
-  const { metrics, assets, refetchData, history, stockTransactions, bitcoinTransactions } = useWealth()
+  const { metrics, assets, refetchData, history, stockTransactions, bitcoinTransactions } = useWealthData()
   const [showArchived, setShowArchived] = useState(false)
   const [sortColumn] = useState<'name' | 'category' | 'value' | 'percentage'>('name')
   const [sortDirection] = useState<'asc' | 'desc'>('asc')
@@ -150,7 +157,7 @@ export default function Assets() {
     }
   }
 
-  const displayedAssets = showArchived ? assets : assets.filter(a => !a.isArchived)
+  const displayedAssets = showArchived ? assets : assets.filter((a: Asset) => !a.isArchived)
 
   // Simplificamos calculo de NAV Global. 
   // Para las tarjetas usamos Metric del backend si existe, o iteramos para sumar.
@@ -165,9 +172,9 @@ export default function Assets() {
 
     switch (column) {
       case 'name':
-        return sorted.sort((a, b) => isAsc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name))
+        return sorted.sort((a: Asset, b: Asset) => isAsc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name))
       case 'category':
-        return sorted.sort((a, b) => isAsc ? a.category.localeCompare(b.category) : b.category.localeCompare(a.category))
+        return sorted.sort((a: Asset, b: Asset) => isAsc ? a.category.localeCompare(b.category) : b.category.localeCompare(a.category))
       default:
         return sorted
     }
@@ -181,7 +188,7 @@ export default function Assets() {
   }
 
   const getArchivedCount = (): number => {
-    return assets.filter(a => a.isArchived).length
+    return assets.filter((a: Asset) => a.isArchived).length
   }
 
   return (
@@ -270,7 +277,11 @@ export default function Assets() {
               key={asset.id} 
               asset={asset} 
               onAssetClick={handleOpenDetail} 
-              totalNAV={globalTotalNAV} 
+              totalNAV={globalTotalNAV}
+              assets={assets}
+              history={history}
+              stockTransactions={stockTransactions}
+              bitcoinTransactions={bitcoinTransactions}
             />
           ))
         )}

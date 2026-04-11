@@ -1,11 +1,14 @@
-import React, { createContext, useContext, useState, useRef, useEffect } from 'react'
-import { Asset, HistoryEntry, BitcoinTransaction, StockTransaction, SyncState, Metrics } from '../types'
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Asset, HistoryEntry, BitcoinTransaction, StockTransaction, Metrics } from '../types'
 import { generateUUID } from '../utils'
-import { SAMPLE_DATA } from './mockData'
 import { config } from '../config'
 
-// Data validation functions
-const sanitizeBitcoinTransactions = (txs: any[]): BitcoinTransaction[] => {
+// ============================================
+// Data Validation Functions
+// ============================================
+
+export const sanitizeBitcoinTransactions = (txs: any[]): BitcoinTransaction[] => {
   if (!Array.isArray(txs)) return []
   return txs.map((tx: any) => {
     let txType: 'BUY' | 'SELL' = 'BUY'
@@ -14,17 +17,16 @@ const sanitizeBitcoinTransactions = (txs: any[]): BitcoinTransaction[] => {
     } else if (tx.type === 'Venta' || tx.type === 'sell' || tx.type === 'SELL') {
       txType = 'SELL'
     }
-    const amountBtc = parseFloat(tx.amountBtc || tx.amountBTC) || 0
     return {
       id: tx.id || generateUUID(),
-      assetId: tx.assetId || tx.asset_id || '',
+      assetId: tx.assetId || '',
       transactionDate: tx.transactionDate || tx.date || new Date().toISOString().split('T')[0],
       type: txType,
-      amountBtc: amountBtc,
+      amountBtc: parseFloat(tx.amountBtc) || 0,
       priceEurPerBtc: parseFloat(tx.priceEurPerBtc || tx.meanPrice) || 0,
       feesEur: parseFloat(tx.feesEur || tx.fees) || 0,
       totalAmountEur: parseFloat(tx.totalAmountEur || tx.totalCost || tx.amount) || 0,
-      exchangeRateUsdEur: parseFloat(tx.exchangeRateUsdEur) || 1.08
+      exchangeRateUsdEur: parseFloat(tx.exchangeRateUsdEur) || 1.15
     } as BitcoinTransaction
   })
 }
@@ -40,7 +42,7 @@ export const sanitizeStockTransactions = (txs: any[]): StockTransaction[] => {
     }
     return {
       id: tx.id || generateUUID(),
-      assetId: tx.assetId || tx.asset_id || '',
+      assetId: tx.assetId || '',
       transactionDate: tx.transactionDate || tx.date || new Date().toISOString().split('T')[0],
       type: txType,
       ticker: tx.ticker || '',
@@ -49,170 +51,177 @@ export const sanitizeStockTransactions = (txs: any[]): StockTransaction[] => {
       pricePerUnit: parseFloat(tx.pricePerUnit || tx.pricePerShare) || 0,
       fees: parseFloat(tx.fees) || 0,
       totalAmount: parseFloat(tx.totalAmount) || 0,
-      exchangeRateEurUsd: parseFloat(tx.exchangeRateEurUsd || tx.exchangeRate || tx.exchange_rate) || 1.08
+      exchangeRateEurUsd: parseFloat(tx.exchangeRateEurUsd || tx.exchangeRate || tx.exchange_rate) || 1.15
     } as StockTransaction
   })
 }
 
+// ============================================
+// Context Definition
+// ============================================
+
 interface WealthContextType {
-  assets: Asset[]
-  history: HistoryEntry[]
-  bitcoinTransactions: BitcoinTransaction[]
-  stockTransactions: StockTransaction[]
-  syncState: SyncState
   darkMode: boolean
-  metrics: Metrics | null
-  eurUsdRate: number
-  setAssets: (assets: Asset[]) => void
-  setHistory: (history: HistoryEntry[]) => void
-  setBitcoinTransactions: (txs: BitcoinTransaction[]) => void
-  setStockTransactions: (txs: StockTransaction[]) => void
   setDarkMode: (mode: boolean) => void
-  refetchData: () => Promise<void>
 }
 
 const WealthContext = createContext<WealthContextType | undefined>(undefined)
 
-export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [assets, setAssets] = useState<Asset[]>([])
-  const [history, setHistory] = useState<HistoryEntry[]>([])
-  const [bitcoinTransactions, setBitcoinTransactions] = useState<BitcoinTransaction[]>([])
-  const [stockTransactions, setStockTransactions] = useState<StockTransaction[]>([])
-  const [syncState, setSyncState] = useState<SyncState>({
-    isSyncing: false,
-    lastSync: null,
-    syncError: null
-  })
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('wm_theme') === 'dark')
-  const [metrics, setMetrics] = useState<Metrics | null>(null)
-  const [eurUsdRate, setEurUsdRate] = useState<number>(1.08) // default fallback
-  
-  // Referencias para controlar cargas
-  const isFirstRender = useRef(true)
-  const [isDataLoaded, setIsDataLoaded] = useState(false)
+// ============================================
+// Query Hooks (Data Fetching)
+// ============================================
 
-  const fetchFromDatabase = async () => {
+/**
+ * Hook para obtener activos con caché automático
+ * - Primero devuelve datos del caché (si existen)
+ * - Luego refetch en background
+ * - isLoading indica carga inicial, isFetching indica actualizaciones
+ */
+export const useAssets = () => {
+  return useQuery({
+    queryKey: ['assets'],
+    queryFn: async () => {
+      const res = await fetch(`${config.backendUrl}/api/assets`)
+      if (!res.ok) throw new Error('Error fetching assets')
+      return res.json() as Promise<Asset[]>
+    },
+    initialData: () => {
+      // Intentar cargar del localStorage para renderizado instantáneo
       try {
-          // 1. Añadimos las dos nuevas rutas de transacciones en lugar de la genérica
-          const [assetsRes, historyRes, btcTxsRes, stockTxsRes, summaryRes, exchangeRateRes] = await Promise.all([
-              fetch(`${config.backendUrl}/api/assets`),
-              fetch(`${config.backendUrl}/api/history`),
-              fetch(`${config.backendUrl}/api/bitcoin/transactions`), // ✅ Nueva ruta BTC
-              fetch(`${config.backendUrl}/api/stocks/transactions`),   // ✅ Nueva ruta Stocks
-              fetch(`${config.backendUrl}/api/portfolio/summary`),
-              fetch(`${config.backendUrl}/api/portfolio/exchange-rate`)
-          ]);
+        const cached = localStorage.getItem('wealthhub_assets_cache')
+        return cached ? JSON.parse(cached) : undefined
+      } catch {
+        return undefined
+      }
+    },
+  })
+}
 
-          // 2. Comprobamos que no falle ninguna de las peticiones principales
-          if (!assetsRes.ok || !historyRes.ok || !btcTxsRes.ok || !stockTxsRes.ok) {
-              throw new Error("Fallo al conectar con la API");
-          }
+export const useHistory = () => {
+  return useQuery({
+    queryKey: ['history'],
+    queryFn: async () => {
+      const res = await fetch(`${config.backendUrl}/api/history`)
+      if (!res.ok) throw new Error('Error fetching history')
+      return res.json() as Promise<HistoryEntry[]>
+    },
+    initialData: () => {
+      try {
+        const cached = localStorage.getItem('wealthhub_history_cache')
+        return cached ? JSON.parse(cached) : undefined
+      } catch {
+        return undefined
+      }
+    },
+  })
+}
 
-          const dbAssets = await assetsRes.json();
-          const dbHistory = await historyRes.json();
-          const dbBtcTxs = await btcTxsRes.json();     // JSON de Bitcoin
-          const dbStockTxs = await stockTxsRes.json(); // JSON de Stocks
-          const dbSummary = summaryRes.ok ? await summaryRes.json() : null;
+export const useBitcoinTransactions = () => {
+  return useQuery({
+    queryKey: ['bitcoinTransactions'],
+    queryFn: async () => {
+      const res = await fetch(`${config.backendUrl}/api/bitcoin/transactions`)
+      if (!res.ok) throw new Error('Error fetching bitcoin transactions')
+      const data = await res.json()
+      return sanitizeBitcoinTransactions(data)
+    },
+    initialData: () => {
+      try {
+        const cached = localStorage.getItem('wealthhub_bitcoinTransactions_cache')
+        return cached ? JSON.parse(cached) : undefined
+      } catch {
+        return undefined
+      }
+    },
+  })
+}
 
-          setAssets(dbAssets || []);
-          setHistory(dbHistory || []);
+export const useStockTransactions = () => {
+  return useQuery({
+    queryKey: ['stockTransactions'],
+    queryFn: async () => {
+      const res = await fetch(`${config.backendUrl}/api/stocks/transactions`)
+      if (!res.ok) throw new Error('Error fetching stock transactions')
+      const data = await res.json()
+      return sanitizeStockTransactions(data)
+    },
+    initialData: () => {
+      try {
+        const cached = localStorage.getItem('wealthhub_stockTransactions_cache')
+        return cached ? JSON.parse(cached) : undefined
+      } catch {
+        return undefined
+      }
+    },
+  })
+}
 
-          // 3. Como el backend ya nos devuelve las transacciones separadas, 
-          // Pasamos los datos directamente a tus funciones sanitizadoras:
-          setBitcoinTransactions(sanitizeBitcoinTransactions(dbBtcTxs || []));
-          setStockTransactions(sanitizeStockTransactions(dbStockTxs || []));
-          
-          setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }));
+export const useMetrics = () => {
+  return useQuery({
+    queryKey: ['metrics'],
+    queryFn: async () => {
+      const res = await fetch(`${config.backendUrl}/api/portfolio/summary`)
+      if (!res.ok) throw new Error('Error fetching metrics')
+      const data = await res.json()
+      return {
+        totalNAV: data.totalValue || 0,
+        totalInv: data.totalInvested || 0,
+        totalProfit: data.absoluteRoi || 0,
+        roi: data.percentageRoi || 0,
+        cash: data.cashValue || 0,
+      } as Metrics
+    },
+  })
+}
 
-          if (dbSummary) {
-              setMetrics({
-                  totalNAV: dbSummary.totalValue || 0,
-                  totalInv: dbSummary.totalInvested || 0,
-                  totalProfit: dbSummary.absoluteRoi || 0,
-                  roi: dbSummary.percentageRoi || 0,
-                  cash: dbSummary.cashValue || 0
-              });
-          }
+export const useExchangeRate = () => {
+  return useQuery({
+    queryKey: ['exchangeRate'],
+    queryFn: async () => {
+      const res = await fetch(`${config.backendUrl}/api/portfolio/exchange-rate`)
+      if (!res.ok) return 1.15
+      const data = await res.json()
+      return data.rate > 0 ? data.rate : 1.15
+    },
+    initialData: 1.15,
+  })
+}
 
-                // Load exchange rate
-                if (exchangeRateRes.ok) {
-                    const rateData = await exchangeRateRes.json();
-                    if (rateData && rateData.rate > 0) {
-                        setEurUsdRate(rateData.rate);
-                    }
-                }
+// ============================================
+// Provider Component
+// ============================================
 
-                setIsDataLoaded(true); // ✅ Avisamos que cargó correctamente
-                
-            } catch (error) {
-                console.error("Error cargando de BD, usando fallback localStorage:", error);
-                
-                const localAssets = JSON.parse(localStorage.getItem('wm_assets_v4') || '[]')
-                const localHistory = JSON.parse(localStorage.getItem('wm_history_v4') || '[]')
-                const localBitcoin = JSON.parse(localStorage.getItem('wm_bitcoinTransactions_v4') || '[]')
-                const localStocks = JSON.parse(localStorage.getItem('wm_stockTransactions_v4') || '[]')
+export const WealthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Detectar preferencia del SO para dark mode (respeta window.matchMedia)
+  const [darkMode, setDarkModeState] = useState(() => {
+    const stored = localStorage.getItem('wealthhub_theme')
+    if (stored) return stored === 'dark'
+    // Si no hay preferencia guardada, respetar la del SO
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
+  })
 
-                if (localAssets.length > 0) {
-                    setAssets(localAssets)
-                    setHistory(localHistory)
-                    setBitcoinTransactions(sanitizeBitcoinTransactions(localBitcoin))
-                    setStockTransactions(sanitizeStockTransactions(localStocks))
-                    setSyncState(prev => ({ ...prev, lastSync: new Date(), syncError: null }))
-                } else {
-                    setAssets(SAMPLE_DATA.assets)
-                    setHistory(SAMPLE_DATA.history)
-                    setBitcoinTransactions(SAMPLE_DATA.bitcoinTransactions)
-                    setStockTransactions(SAMPLE_DATA.stockTransactions)
-                    setSyncState(prev => ({ ...prev, syncError: 'Usando datos de muestra' }))
-                }
-                
-                setIsDataLoaded(true); // ✅ Avisamos que cargó (vía fallback)
-            }
-        };
-
-  // Cargar datos iniciales desde la Base de Datos
-  useEffect(() => {
-    if (isFirstRender.current) {
-        isFirstRender.current = false
-        fetchFromDatabase();
-    }
+  const setDarkMode = useCallback((mode: boolean) => {
+    setDarkModeState(mode)
+    localStorage.setItem('wealthhub_theme', mode ? 'dark' : 'light')
+    document.documentElement.classList.toggle('dark', mode)
   }, [])
 
-  // Guardar en localStorage
+  // Efecto para aplicar dark mode al montar
   useEffect(() => {
-    // ✅ CORRECCIÓN 3: Evitar borrar el localStorage en el primer render
-    if (!isDataLoaded) {
-      return
-    }
-
-    localStorage.setItem('wm_assets_v4', JSON.stringify(assets))
-    localStorage.setItem('wm_history_v4', JSON.stringify(history))
-    localStorage.setItem('wm_bitcoinTransactions_v4', JSON.stringify(bitcoinTransactions))
-    localStorage.setItem('wm_stockTransactions_v4', JSON.stringify(stockTransactions))
-
     document.documentElement.classList.toggle('dark', darkMode)
-    localStorage.setItem('wm_theme', darkMode ? 'dark' : 'light')
-  }, [assets, history, bitcoinTransactions, stockTransactions, darkMode, isDataLoaded])
+  }, [darkMode])
 
   const value: WealthContextType = {
-    assets,
-    history,
-    bitcoinTransactions,
-    stockTransactions,
-    syncState,
     darkMode,
-    metrics,
-    eurUsdRate,
-    setAssets,
-    setHistory,
-    setBitcoinTransactions,
-    setStockTransactions,
     setDarkMode,
-    refetchData: fetchFromDatabase
   }
 
   return <WealthContext.Provider value={value}>{children}</WealthContext.Provider>
 }
+
+// ============================================
+// Context Hook
+// ============================================
 
 export const useWealth = () => {
   const context = useContext(WealthContext)
@@ -220,4 +229,16 @@ export const useWealth = () => {
     throw new Error('useWealth must be used within WealthProvider')
   }
   return context
+}
+
+// ============================================
+// Convenience Hook para refetch all
+// ============================================
+
+export const useRefetchAll = () => {
+  const queryClient = useQueryClient()
+  return useCallback(async () => {
+    // Invalidar todas las queries para que se refetchen
+    await queryClient.invalidateQueries()
+  }, [queryClient])
 }

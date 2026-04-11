@@ -134,6 +134,19 @@ async def get_stock_transaction_by_id(transaction_id: str, session: AsyncSession
 async def create_stock_transaction(transaction: StockTransactionDTO, session: AsyncSession = Depends(get_session)):
     try:
         db_transaction = StockTransaction(**transaction.model_dump(exclude_unset=True))
+        
+        # Auto-fetch exchange rate for transaction date if not provided
+        if not db_transaction.exchange_rate_to_eur or db_transaction.exchange_rate_to_eur <= 0:
+            rate = await db_service.get_exchange_rate_for_date(
+                session, "EUR/USD", db_transaction.transaction_date
+            )
+            if rate:
+                db_transaction.exchange_rate_to_eur = rate
+                logger.info(f"✅ Auto-fetched EUR/USD rate {rate} for {db_transaction.transaction_date}")
+            else:
+                logger.warning(f"⚠️ No rate found, using fallback 1.15")
+                db_transaction.exchange_rate_to_eur = 1.15
+        
         result = await db_service.create_stock_transaction(session, db_transaction)
         return result
     except Exception as e:
@@ -143,6 +156,19 @@ async def create_stock_transaction(transaction: StockTransactionDTO, session: As
 @router.put("/transactions/{transaction_id}", response_model=StockTransactionDTO)
 async def update_stock_transaction(transaction_id: str, transaction: StockTransactionDTO, session: AsyncSession = Depends(get_session)):
     db_transaction = StockTransaction(**transaction.model_dump(exclude_unset=True))
+    
+    # Auto-fetch exchange rate for transaction date if not provided or is default
+    if not db_transaction.exchange_rate_to_eur or db_transaction.exchange_rate_to_eur <= 0:
+        rate = await db_service.get_exchange_rate_for_date(
+            session, "EUR/USD", db_transaction.transaction_date
+        )
+        if rate:
+            db_transaction.exchange_rate_to_eur = rate
+            logger.info(f"✅ Auto-fetched EUR/USD rate {rate} for {db_transaction.transaction_date}")
+        else:
+            logger.warning(f"⚠️ No rate found, using fallback 1.15")
+            db_transaction.exchange_rate_to_eur = 1.15
+    
     result = await db_service.update_stock_transaction(session, transaction_id, db_transaction)
     if not result:
         raise HTTPException(status_code=404, detail="Stock transaction not found")

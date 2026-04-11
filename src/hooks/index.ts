@@ -3,6 +3,7 @@ import { Asset, HistoryEntry } from '../types'
 export { useStockPortfolio } from './useStockPortfolio'
 export { useBitcoinTransactions } from './useBitcoinTransactions'
 export { useStockTransactions } from './useStockTransactions'
+export { useWealthData } from './useWealthData'
 
 const EXCLUDED_ASSETS = ['Cash']
 

@@ -7,10 +7,20 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy import func, case
 from typing import List, Optional, Any
 import logging
+from uuid import UUID
 
 from models import Asset, HistoryEntry as AssetHistory, BitcoinTransaction, StockTransaction, TransactionType
 
 logger = logging.getLogger(__name__)
+
+
+def _to_uuid(value: Any) -> Optional[UUID]:
+    """Safely coerce a string or UUID to UUID (returns None if value is None)."""
+    if value is None:
+        return None
+    if isinstance(value, UUID):
+        return value
+    return UUID(str(value))
 
 async def get_all_assets(session: AsyncSession) -> List[Asset]:
     """Get all assets (including root and child assets)"""
@@ -37,7 +47,7 @@ async def get_assets_by_parent(session: AsyncSession, parent_asset_id: Optional[
     return await get_child_assets(session, parent_asset_id)
 
 async def get_asset_by_id(session: AsyncSession, asset_id: str) -> Optional[Asset]:
-    return await session.get(Asset, asset_id)
+    return await session.get(Asset, _to_uuid(asset_id))
 
 async def create_asset(session: AsyncSession, asset: Asset) -> Asset:
     session.add(asset)
@@ -46,7 +56,7 @@ async def create_asset(session: AsyncSession, asset: Asset) -> Asset:
     return asset
 
 async def update_asset(session: AsyncSession, asset_id: str, asset_data: Asset) -> Optional[Asset]:
-    asset = await session.get(Asset, asset_id)
+    asset = await session.get(Asset, _to_uuid(asset_id))
     if not asset:
         return None
 
@@ -60,7 +70,7 @@ async def update_asset(session: AsyncSession, asset_id: str, asset_data: Asset) 
     return asset
 
 async def delete_asset(session: AsyncSession, asset_id: str) -> bool:
-    asset = await session.get(Asset, asset_id)
+    asset = await session.get(Asset, _to_uuid(asset_id))
     if not asset:
         return False
     await session.delete(asset)
@@ -85,7 +95,7 @@ async def create_history_entry(session: AsyncSession, entry: AssetHistory) -> As
     return entry
 
 async def update_history_entry(session: AsyncSession, history_id: str, history_data: AssetHistory) -> Optional[AssetHistory]:
-    entry = await session.get(AssetHistory, history_id)
+    entry = await session.get(AssetHistory, _to_uuid(history_id))
     if not entry:
         return None
 
@@ -99,7 +109,7 @@ async def update_history_entry(session: AsyncSession, history_id: str, history_d
     return entry
 
 async def delete_history_entry(session: AsyncSession, history_id: str) -> bool:
-    entry = await session.get(AssetHistory, history_id)
+    entry = await session.get(AssetHistory, _to_uuid(history_id))
     if not entry:
         return False
     await session.delete(entry)
@@ -149,7 +159,7 @@ async def get_all_transactions(session: AsyncSession) -> List[dict]:
             'quantity': stock_tx.quantity,
             'total_amount': stock_tx.total_amount,
             'currency': stock_tx.currency,
-            'exchange_rate': stock_tx.exchange_rate_eur_usd
+            'exchange_rate': stock_tx.exchange_rate_to_eur
         })
     
     # Sort by transaction_date descending
@@ -186,7 +196,7 @@ async def get_transactions_by_asset(session: AsyncSession, asset_id: str) -> Lis
             'quantity': stock_tx.quantity,
             'total_amount': stock_tx.total_amount,
             'currency': stock_tx.currency,
-            'exchange_rate': stock_tx.exchange_rate_eur_usd
+            'exchange_rate': stock_tx.exchange_rate_to_eur
         })
     
     # Sort by transaction_date descending
@@ -274,7 +284,6 @@ async def upsert_history_from_transactions(session: AsyncSession, asset_id: str,
     """
     from decimal import Decimal
     from datetime import date
-    import uuid
 
     # month_date is the first day of the month of the transaction
     year = month_date.year
@@ -316,7 +325,7 @@ async def upsert_history_from_transactions(session: AsyncSession, asset_id: str,
     for tx in month_stock_txs:
         if str(tx.type).upper() == 'BUY':
             amount = Decimal(str(tx.total_amount or 0))
-            ex_rate = Decimal(str(tx.exchange_rate_eur_usd or 1.0))
+            ex_rate = Decimal(str(tx.exchange_rate_to_eur or 1.0))
             if tx.currency == 'USD' or ex_rate != Decimal("1.0"):
                 monthly_contribution += amount / ex_rate
             else:
@@ -371,8 +380,7 @@ async def upsert_history_from_transactions(session: AsyncSession, asset_id: str,
         # No history entry for this month yet — create one with 0 NAV/price
         # (the NAV will be filled in on next NAV sync)
         new_entry = AssetHistory(
-            id=str(uuid.uuid4()),
-            asset_id=asset_id,
+            asset_id=_to_uuid(asset_id),
             snapshot_date=month_start,
             contribution=monthly_contribution,
             participations=running_qty,
@@ -419,6 +427,67 @@ async def get_latest_exchange_rate(session: AsyncSession, pair: str) -> float:
     return float(result.rate) if result else 0.0
 
 
+async def get_exchange_rate_for_date(session: AsyncSession, pair: str, target_date) -> Optional[float]:
+    """
+    Get exchange rate for a specific date or the closest available date.
+    
+    Strategy:
+    1. Try exact date match
+    2. If not found, get the closest date (most recent before or after)
+    3. Return None if no data exists
+    
+    Args:
+        session: Database session
+        pair: Currency pair (e.g., 'EUR/USD')
+        target_date: Target date for the rate
+    
+    Returns:
+        Exchange rate as float, or None if not found
+    """
+    from models import ExchangeRate
+    from datetime import date
+    
+    # Ensure we're working with a date object
+    if hasattr(target_date, 'date'):  # If it's a datetime
+        target_date = target_date.date()
+    
+    # Strategy 1: Try exact date match
+    statement = select(ExchangeRate).where(
+        (ExchangeRate.currency_pair == pair) &
+        (ExchangeRate.date == target_date)
+    )
+    result = (await session.exec(statement)).first()
+    if result:
+        logger.debug(f"💱 Found exact rate for {pair} on {target_date}: {result.rate}")
+        return float(result.rate)
+    
+    # Strategy 2: Get closest date (most recent before, or after if none before)
+    # First try to get the most recent rate BEFORE the target date
+    statement = select(ExchangeRate).where(
+        (ExchangeRate.currency_pair == pair) &
+        (ExchangeRate.date <= target_date)
+    ).order_by(ExchangeRate.date.desc())
+    result = (await session.exec(statement)).first()
+    
+    if result:
+        logger.debug(f"💱 Using closest rate for {pair} on {result.date} (before {target_date}): {result.rate}")
+        return float(result.rate)
+    
+    # If no rate before, get the first one after
+    statement = select(ExchangeRate).where(
+        (ExchangeRate.currency_pair == pair) &
+        (ExchangeRate.date > target_date)
+    ).order_by(ExchangeRate.date.asc())
+    result = (await session.exec(statement)).first()
+    
+    if result:
+        logger.debug(f"💱 Using closest rate for {pair} on {result.date} (after {target_date}): {result.rate}")
+        return float(result.rate)
+    
+    logger.warning(f"⚠️ No exchange rate found for {pair}")
+    return None
+
+
 # ===== Bitcoin Transaction Methods =====
 
 async def get_all_bitcoin_transactions(session: AsyncSession) -> List[BitcoinTransaction]:
@@ -439,7 +508,7 @@ async def get_bitcoin_transactions_by_asset(session: AsyncSession, asset_id: str
 
 async def get_bitcoin_transaction_by_id(session: AsyncSession, transaction_id: str) -> Optional[BitcoinTransaction]:
     """Get a specific Bitcoin transaction by ID"""
-    return await session.get(BitcoinTransaction, transaction_id)
+    return await session.get(BitcoinTransaction, _to_uuid(transaction_id))
 
 
 async def create_bitcoin_transaction(session: AsyncSession, transaction: BitcoinTransaction) -> BitcoinTransaction:
@@ -452,7 +521,7 @@ async def create_bitcoin_transaction(session: AsyncSession, transaction: Bitcoin
 
 async def update_bitcoin_transaction(session: AsyncSession, transaction_id: str, transaction_data: BitcoinTransaction) -> Optional[BitcoinTransaction]:
     """Update an existing Bitcoin transaction"""
-    transaction = await session.get(BitcoinTransaction, transaction_id)
+    transaction = await session.get(BitcoinTransaction, _to_uuid(transaction_id))
     if not transaction:
         return None
 
@@ -468,7 +537,7 @@ async def update_bitcoin_transaction(session: AsyncSession, transaction_id: str,
 
 async def delete_bitcoin_transaction(session: AsyncSession, transaction_id: str) -> bool:
     """Delete a Bitcoin transaction"""
-    transaction = await session.get(BitcoinTransaction, transaction_id)
+    transaction = await session.get(BitcoinTransaction, _to_uuid(transaction_id))
     if not transaction:
         return False
     await session.delete(transaction)
@@ -505,7 +574,7 @@ async def get_stock_transactions_by_ticker(session: AsyncSession, ticker: str) -
 
 async def get_stock_transaction_by_id(session: AsyncSession, transaction_id: str) -> Optional[StockTransaction]:
     """Get a specific Stock transaction by ID"""
-    return await session.get(StockTransaction, transaction_id)
+    return await session.get(StockTransaction, _to_uuid(transaction_id))
 
 
 async def create_stock_transaction(session: AsyncSession, transaction: StockTransaction) -> StockTransaction:
@@ -518,7 +587,7 @@ async def create_stock_transaction(session: AsyncSession, transaction: StockTran
 
 async def update_stock_transaction(session: AsyncSession, transaction_id: str, transaction_data: StockTransaction) -> Optional[StockTransaction]:
     """Update an existing Stock transaction"""
-    transaction = await session.get(StockTransaction, transaction_id)
+    transaction = await session.get(StockTransaction, _to_uuid(transaction_id))
     if not transaction:
         return None
 
@@ -534,7 +603,7 @@ async def update_stock_transaction(session: AsyncSession, transaction_id: str, t
 
 async def delete_stock_transaction(session: AsyncSession, transaction_id: str) -> bool:
     """Delete a Stock transaction"""
-    transaction = await session.get(StockTransaction, transaction_id)
+    transaction = await session.get(StockTransaction, _to_uuid(transaction_id))
     if not transaction:
         return False
     await session.delete(transaction)

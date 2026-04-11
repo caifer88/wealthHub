@@ -1,12 +1,14 @@
 import { useState, useMemo } from 'react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { useWealth } from '../context/WealthContext'
+import { useWealthData } from '../hooks'
 import { Card } from '../components/ui/Card'
 import { MetricCard } from '../components/ui/MetricCard'
 import { formatCurrency, calculateCompoundInterest } from '../utils'
 
 export default function Projections() {
-  const { darkMode, metrics, history } = useWealth()
+  const { darkMode } = useWealth()
+  const { metrics, history } = useWealthData()
   
   // Calculate default values based on current portfolio data
   const getDefaultCapital = useMemo(() => {
@@ -28,7 +30,7 @@ export default function Projections() {
     
     // Calculate total contributions per month for the last 12 months
     const monthlyContributions: Record<string, number> = {}
-    history.forEach(entry => {
+    history.forEach((entry: any) => {
       if (monthsToCheck.has(entry.month)) {
         if (!monthlyContributions[entry.month]) {
           monthlyContributions[entry.month] = 0
